@@ -1,7 +1,7 @@
 #pragma once
 
 #include <phy/Layout.h>
-#include "Circuit.h"
+#include "Subckt.h"
 #include "Placer.h"
 #include <set>
 #include <unordered_set>
@@ -164,10 +164,10 @@ struct RouteGroupConstraint {
 
 struct Router {
 	Router();
-	Router(Circuit *base);
+	Router(Subckt *base);
 	~Router();
 
-	Circuit *base;
+	Subckt *base;
 
 	// channel routing constraint graph
 	vector<PinConstraint> pinConstraints;

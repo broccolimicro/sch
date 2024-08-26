@@ -12,7 +12,7 @@
 using namespace phy;
 using namespace std;
 
-struct Circuit;
+struct Subckt;
 
 // This structure represents a single transistor (Metal Oxide Semiconductor (MOS)) in the cell.
 struct Mos {
@@ -30,7 +30,7 @@ struct Mos {
 	int type;
 
 	// A transistor is a four terminal device. These integers reference specific
-	// nets, index into Circuit::nets.
+	// nets, index into Subckt::nets.
 	int gate;
 	vector<int> ports; // source, drain
 	int bulk;
@@ -67,10 +67,10 @@ struct Index {
 	Index(int type, int pin);
 	~Index();
 
-	// index into Circuit::stack (Model::NMOS or Model::PMOS)
+	// index into Subckt::stack (Model::NMOS or Model::PMOS)
 	int type;
 
-	// index into Circuit::stack[type].pins, pin number from left to right
+	// index into Subckt::stack[type].pins, pin number from left to right
 	int pin;
 };
 
@@ -92,12 +92,12 @@ struct Pin {
 
 	// inNet == outNet == gateNet for contacts
 	// inNet and outNet represent source and drain depending on Placer::Device::flip
-	// These index into Circuit::nets
+	// These index into Subckt::nets
 	int leftNet;
 	int outNet;
 	int rightNet;
 
-	// index into Circuit::mos for gates of transistors
+	// index into Subckt::mos for gates of transistors
 	// equal to -1 for contacts
 	int device;
 
@@ -116,7 +116,7 @@ struct Pin {
 	int height;
 
 	// index of the pin in the opposite stack that this pin is aligned to.
-	// index into Circuit::stack[1-Circuit::mos[this->device].type].pins
+	// index into Subckt::stack[1-Subckt::mos[this->device].type].pins
 	int align;
 
 	// minimum offset from other pins following spacing rules
@@ -160,7 +160,7 @@ struct Contact {
 	Layout layout;
 
 	// Minimum required spacing from other pins to the left of
-	// this via to this via. "from" indexes into Circuit::stack, "offset" is
+	// this via to this via. "from" indexes into Subckt::stack, "offset" is
 	// distance in dbunits. This is computed by offsetFromPin()
 	// <from, offset>
 	// |==|==|
@@ -170,7 +170,7 @@ struct Contact {
 	map<Index, int> fromPin;
 
 	// Minimum required spacing from other pins to the left of
-	// this via to this via. "from" indexes into Circuit::stack, "offset" is
+	// this via to this via. "from" indexes into Subckt::stack, "offset" is
 	// distance in dbunits. This is computed by offsetToPin()
 	// <to, offset>
 	// |==|==|
@@ -191,10 +191,10 @@ bool operator!=(const Contact &c0, const Contact &c1);
 // This isn't a particularly integral structure in the Router or Placer. This
 // is just a helper to keep the vias in Wire::pins sorted from left to right.
 struct CompareIndex {
-	CompareIndex(const Circuit *s, bool orderIndex = true);
+	CompareIndex(const Subckt *s, bool orderIndex = true);
 	~CompareIndex();
 
-	const Circuit *s;
+	const Subckt *s;
 	bool orderIndex;
 
 	bool operator()(const Index &i0, const Index &i1);
@@ -211,11 +211,11 @@ struct Wire {
 	Wire(const Tech &tech, int net);
 	~Wire();
 
-	// If this positive, then this indexes into Circuit::nets
-	// If this is negative, then flip(net) indexes into Circuit::stack to represent a stack.
+	// If this positive, then this indexes into Subckt::nets
+	// If this is negative, then flip(net) indexes into Subckt::stack to represent a stack.
 	int net;
 
-	// index into Circuit::stack
+	// index into Subckt::stack
 	// DESIGN(edward.bingham) We should always keep this array sorted based on
 	// horizontal location of the pin in the cell from left to right. This helps
 	// us pick pins to dogleg when breaking cycles. See CompareIndex
@@ -254,15 +254,15 @@ struct Wire {
 	int nOffset;
 
 	// This is used to detect cycles in the routing graph.
-	// index into Circuit::routes
+	// index into Subckt::routes
 	unordered_set<int> prevNodes;
 
-	void addPin(const Circuit *s, Index pin);
-	bool hasPin(const Circuit *s, Index pin, vector<Contact>::iterator *out = nullptr);
-	void resortPins(const Circuit *s);
+	void addPin(const Subckt *s, Index pin);
+	bool hasPin(const Subckt *s, Index pin, vector<Contact>::iterator *out = nullptr);
+	void resortPins(const Subckt *s);
 	int getLevel(int i) const;
 	bool hasPrev(int r) const;
-	bool hasGate(const Circuit *s) const;
+	bool hasGate(const Subckt *s) const;
 	vector<bool> pinTypes() const;
 };
 
@@ -279,17 +279,17 @@ struct Stack {
 	int type;
 	// The list of pins in this stack.
 	vector<Pin> pins;
-	// index into Circuit::routes. Which wire represents this stack in the
+	// index into Subckt::routes. Which wire represents this stack in the
 	// routing problem
 	int route;
 	
-	void push(const Circuit *ckt, int device, bool flip);
-	void draw(const Tech &tech, const Circuit *base, Layout &dst);
+	void push(const Subckt *ckt, int device, bool flip);
+	void draw(const Tech &tech, const Subckt *base, Layout &dst);
 };
 
-struct Circuit {
-	Circuit(const Tech &tech);
-	~Circuit();
+struct Subckt {
+	Subckt(const Tech &tech);
+	~Subckt();
 
 	const Tech &tech;
 

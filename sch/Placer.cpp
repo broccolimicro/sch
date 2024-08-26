@@ -14,7 +14,7 @@ Placement::Placement() {
 	w = 0;
 }
 
-Placement::Placement(const Circuit *base, int b, int l, int w, int g, std::default_random_engine &rand) {
+Placement::Placement(const Subckt *base, int b, int l, int w, int g, std::default_random_engine &rand) {
 	this->base = base;
 	this->b = b;
 	this->l = l;
@@ -124,7 +124,7 @@ int Placement::score() {
 	return b*B*B + l*L + w*W*W + g*G;
 }
 
-void Placement::solve(const Tech &tech, Circuit *base, int starts, int b, int l, int w, int g, float step, float rate) {
+void Placement::solve(const Tech &tech, Subckt *base, int starts, int b, int l, int w, int g, float step, float rate) {
 	if (base->mos.size() == 0) {
 		return;
 	}
@@ -193,7 +193,7 @@ void Placement::solve(const Tech &tech, Circuit *base, int starts, int b, int l,
 	}
 	printf("Placement complete after %d iterations\n", starts);
 
-	// Save the resulting placement to the Circuit
+	// Save the resulting placement to the Subckt
 	array<Stack, 2> result;
 	for (int type = 0; type < 2; type++) {
 		result[type].type = type;

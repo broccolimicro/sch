@@ -162,7 +162,7 @@ void drawViaStack(const Tech &tech, Layout &dst, int net, int downLevel, int upL
 	}
 }
 
-void drawWire(const Tech &tech, Layout &dst, const Circuit *ckt, const Wire &wire, vec2i pos, vec2i dir) {
+void drawWire(const Tech &tech, Layout &dst, const Subckt *ckt, const Wire &wire, vec2i pos, vec2i dir) {
 	// [via level][pin]
 	vector<vector<int> > posArr;
 	posArr.resize(tech.vias.size());
@@ -265,7 +265,7 @@ void drawWire(const Tech &tech, Layout &dst, const Circuit *ckt, const Wire &wir
 	}
 }
 
-void drawPin(const Tech &tech, Layout &dst, const Circuit *ckt, const Stack &stack, int pinID, vec2i pos, vec2i dir) {
+void drawPin(const Tech &tech, Layout &dst, const Subckt *ckt, const Stack &stack, int pinID, vec2i pos, vec2i dir) {
 	pos[0] += stack.pins[pinID].pos;
 	if (stack.pins[pinID].isContact()) {
 		int model = -1;

@@ -1,5 +1,5 @@
 NAME          = sch
-DEPEND        = interpret_rect interpret_phy phy pgen
+DEPEND        = phy pgen
 
 SRCDIR        = $(NAME)
 TESTDIR       = tests

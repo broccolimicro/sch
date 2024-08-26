@@ -1,4 +1,4 @@
-#include "Circuit.h"
+#include "Subckt.h"
 #include "Draw.h"
 #include <limits>
 #include <algorithm>
@@ -173,7 +173,7 @@ bool operator!=(const Contact &c0, const Contact &c1) {
 	return c0.idx != c1.idx;
 }
 
-CompareIndex::CompareIndex(const Circuit *s, bool orderIndex) {
+CompareIndex::CompareIndex(const Subckt *s, bool orderIndex) {
 	this->s = s;
 	this->orderIndex = orderIndex;
 }
@@ -219,7 +219,7 @@ Wire::Wire(const Tech &tech, int net) : layout(tech) {
 Wire::~Wire() {
 }
 
-void Wire::addPin(const Circuit *s, Index pin) {
+void Wire::addPin(const Subckt *s, Index pin) {
 	auto pos = lower_bound(pins.begin(), pins.end(), pin, CompareIndex(s));
 	pins.insert(pos, Contact(s->tech, pin));
 	if (left < 0 or s->stack[pin.type].pins[pin.pin].pos < left) {
@@ -230,7 +230,7 @@ void Wire::addPin(const Circuit *s, Index pin) {
 	}
 }
 
-bool Wire::hasPin(const Circuit *s, Index pin, vector<Contact>::iterator *out) {
+bool Wire::hasPin(const Subckt *s, Index pin, vector<Contact>::iterator *out) {
 	auto pos = lower_bound(pins.begin(), pins.end(), pin, CompareIndex(s));
 	if (out != nullptr) {
 		*out = pos;
@@ -238,7 +238,7 @@ bool Wire::hasPin(const Circuit *s, Index pin, vector<Contact>::iterator *out) {
 	return pos != pins.end() and pos->idx == pin;
 }
 
-void Wire::resortPins(const Circuit *s) {
+void Wire::resortPins(const Subckt *s) {
 	sort(pins.begin(), pins.end(), CompareIndex(s));
 }
 
@@ -262,7 +262,7 @@ bool Wire::hasPrev(int r) const {
 	return prevNodes.find(r) != prevNodes.end();
 }
 
-bool Wire::hasGate(const Circuit *s) const {
+bool Wire::hasGate(const Subckt *s) const {
 	for (int i = 0; i < (int)pins.size(); i++) {
 		if (s->pin(pins[i].idx).device >= 0) {
 			return true;
@@ -291,7 +291,7 @@ Stack::~Stack() {
 }
 
 // index into Placement::dangling
-void Stack::push(const Circuit *ckt, int device, bool flip) {
+void Stack::push(const Subckt *ckt, int device, bool flip) {
 	int fromNet = -1;
 	int toNet = -1;
 	int gateNet = -1;
@@ -329,7 +329,7 @@ void Stack::push(const Circuit *ckt, int device, bool flip) {
 	}
 }
 
-void Stack::draw(const Tech &tech, const Circuit *base, Layout &dst) {
+void Stack::draw(const Tech &tech, const Subckt *base, Layout &dst) {
 	dst.clear();
 	// Draw the stacks
 	for (int i = 0; i < (int)pins.size(); i++) {
@@ -349,17 +349,17 @@ void Stack::draw(const Tech &tech, const Circuit *base, Layout &dst) {
 	}
 }
 
-Circuit::Circuit(const Tech &tech) : tech(tech) {
+Subckt::Subckt(const Tech &tech) : tech(tech) {
 	cellHeight = 0;
 	for (int type = 0; type < (int)stack.size(); type++) {
 		stack[type].type = type;
 	}
 }
 
-Circuit::~Circuit() {
+Subckt::~Subckt() {
 }
 
-int Circuit::findNet(string name, bool create) {
+int Subckt::findNet(string name, bool create) {
 	for (int i = 0; i < (int)nets.size(); i++) {
 		if (nets[i].name == name) {
 			return i;
@@ -373,7 +373,7 @@ int Circuit::findNet(string name, bool create) {
 	return -1;
 }
 
-string Circuit::netName(int net) const {
+string Subckt::netName(int net) const {
 	if (net < 0) {
 		return "_";
 	}
@@ -381,16 +381,16 @@ string Circuit::netName(int net) const {
 	return nets[net].name;
 }
 
-Pin &Circuit::pin(Index i) {
+Pin &Subckt::pin(Index i) {
 	return stack[i.type].pins[i.pin];
 }
 
-const Pin &Circuit::pin(Index i) const {
+const Pin &Subckt::pin(Index i) const {
 	return stack[i.type].pins[i.pin];
 }
 
 // horizontal size of pin
-int Circuit::pinWidth(Index p) const {
+int Subckt::pinWidth(Index p) const {
 	int device = pin(p).device;
 	if (device >= 0) {
 		// this pin is a transistor, use length of transistor
@@ -402,7 +402,7 @@ int Circuit::pinWidth(Index p) const {
 }
 
 // vertical size of pin
-int Circuit::pinHeight(Index p) const {
+int Subckt::pinHeight(Index p) const {
 	int device = pin(p).device;
 	if (device >= 0) {
 		// this pin is a transistor, use width of transistor
@@ -439,7 +439,7 @@ int Circuit::pinHeight(Index p) const {
 	return result;
 }
 
-void Circuit::draw(Layout &dst) {
+void Subckt::draw(Layout &dst) {
 	vec2i dir(1,-1);
 	dst.name = name;
 

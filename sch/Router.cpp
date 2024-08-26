@@ -67,7 +67,7 @@ Router::Router() {
 	cost = 0;
 }
 
-Router::Router(Circuit *base) {
+Router::Router(Subckt *base) {
 	this->base = base;
 	this->cycleCount = 0;
 	this->cellHeight = 0;
@@ -761,7 +761,7 @@ void Router::findAndBreakViaCycles() {
 		}
 	}
 	
-	// <index into Circuit::stack[via->type], index into Router::viaConstraints>
+	// <index into Subckt::stack[via->type], index into Router::viaConstraints>
 	vector<vector<ViaConstraint>::iterator> active;
 	for (auto via = viaConstraints.begin(); via != viaConstraints.end(); via++) {
 		for (auto s0p = via->side[0].begin(); s0p != via->side[0].end(); s0p++) {
@@ -818,14 +818,14 @@ void Router::findAndBreakViaCycles() {
 
 struct Alignment {
 	Alignment() {}
-	Alignment(const Circuit *base, int pmos, int nmos) {
+	Alignment(const Subckt *base, int pmos, int nmos) {
 		this->base = base;
 		this->pin[Model::PMOS] = pmos;
 		this->pin[Model::NMOS] = nmos;
 	}
 	~Alignment() {}
 
-	const Circuit *base;
+	const Subckt *base;
 	array<int, 2> pin;
 
 	int dist() const {

@@ -1,13 +1,13 @@
 #pragma once
 
-#include "Circuit.h"
+#include "Subckt.h"
 #include <random>
 
 struct Placer;
 
 // This represents a single transistor placement in the stack
 struct Device {
-	// index into Circuit::mos
+	// index into Subckt::mos
 	// if negative, then this represents a "dummy transistor," which is an
 	// empty slot in the transistor stack (also a diffusion break)
 	int device;
@@ -37,11 +37,11 @@ struct Device {
 // [a b c][c d e][e f g][g h i]
 struct Placement {
 	Placement();
-	Placement(const Circuit *base, int b, int l, int w, int g, std::default_random_engine &rand);
+	Placement(const Subckt *base, int b, int l, int w, int g, std::default_random_engine &rand);
 	~Placement();
 
 	// These are needed to be able to compute the cost of the ordering
-	const Circuit *base;
+	const Subckt *base;
 
 	// The cost function for the transistor stack ordering is:
 	//
@@ -93,6 +93,6 @@ struct Placement {
 
 	void move(vec4i choice);	
 	int score();
-	static void solve(const Tech &tech, Circuit *base, int starts=100, int b=12, int l=1, int w=1, int g=10, float step=2.0, float rate=0.02);
+	static void solve(const Tech &tech, Subckt *base, int starts=100, int b=12, int l=1, int w=1, int g=10, float step=2.0, float rate=0.02);
 };
 
