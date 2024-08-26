@@ -1,6 +1,7 @@
 #include "Circuit.h"
 #include "Draw.h"
 #include <limits>
+#include <algorithm>
 
 using namespace std;
 

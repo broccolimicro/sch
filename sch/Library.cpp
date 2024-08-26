@@ -4,6 +4,8 @@
 #include "Router.h"
 
 #include <ruler/Layout.h>
+#include <ruler/GDSFile.h>
+#include <ruler/RectFile.h>
 #include <vector>
 #include <set>
 #include <sys/stat.h>
@@ -42,7 +44,7 @@ void Library::emitGDS(string libname, string filename, set<string> cellNames) {
 		if (cellNames.empty() or cellNames.find(cells[i].name) != cellNames.end()) {
 			Layout layout(*tech);
 			cells[i].draw(layout);
-			layout.emitGDS(lib);
+			::emitGDS(lib, layout);
 		}
 	}
 	lib.write_gds(filename.c_str(), 0, NULL);
@@ -62,7 +64,7 @@ void Library::emitRect(const ActConfig &act, string path, set<string> cellNames)
 			FILE *fptr = fopen(fpath.c_str(), "w");
 			Layout layout(*tech);
 			cells[i].draw(layout);
-			layout.emitRect(act, fptr);
+			::emitRect(fptr, act, layout);
 			fclose(fptr);
 		}
 	}

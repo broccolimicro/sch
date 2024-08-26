@@ -5,6 +5,7 @@
 #include <set>
 #include <unordered_set>
 #include <vector>
+#include <algorithm>
 
 Placement::Placement() {
 	this->base = nullptr;
