@@ -1,14 +1,14 @@
 #pragma once
 
-#include <ruler/Tech.h>
-#include <ruler/Layout.h>
-#include <ruler/vector.h>
+#include <phy/Tech.h>
+#include <phy/Layout.h>
+#include <phy/vector.h>
 
 #include <iostream>
 
 #include "Circuit.h"
 
-using namespace ruler;
+using namespace phy;
 
 void drawDiffusion(const Tech &tech, Layout &dst, int model, int net, vec2i ll, vec2i ur, vec2i dir);
 void drawTransistor(const Tech &tech, Layout &dst, const Mos &mos, vec2i pos=vec2i(0,0), vec2i dir=vec2i(1,1)); 

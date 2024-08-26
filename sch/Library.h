@@ -2,8 +2,8 @@
 
 #include "Circuit.h"
 
-#include <ruler/Tech.h>
-#include <ruler/ActConfig.h>
+#include <phy/Tech.h>
+#include <interpret_rect/ActConfig.h>
 #include <set>
 #include <map>
 
@@ -23,6 +23,6 @@ struct Library {
 	void build(set<string> cellNames = set<string>());
 
 	void emitGDS(string libname, string filename, set<string> cellNames = set<string>());
-	void emitRect(const ActConfig &act, string path, set<string> cellNames = set<string>());
+	void emitRect(const act::ActConfig &act, string path, set<string> cellNames = set<string>());
 };
 

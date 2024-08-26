@@ -3,9 +3,9 @@
 #include "Placer.h"
 #include "Router.h"
 
-#include <ruler/Layout.h>
-#include <ruler/GDSFile.h>
-#include <ruler/RectFile.h>
+#include <phy/Layout.h>
+#include <interpret_phy/export.h>
+#include <interpret_rect/RectFile.h>
 #include <vector>
 #include <set>
 #include <sys/stat.h>
@@ -51,7 +51,7 @@ void Library::emitGDS(string libname, string filename, set<string> cellNames) {
 	lib.free_all();
 }
 
-void Library::emitRect(const ActConfig &act, string path, set<string> cellNames) {
+void Library::emitRect(const act::ActConfig &act, string path, set<string> cellNames) {
 	mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	for (int i = 0; i < (int)cells.size(); i++) {
 		if (cellNames.empty() or cellNames.find(cells[i].name) != cellNames.end()) {
