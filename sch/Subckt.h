@@ -12,6 +12,8 @@
 using namespace phy;
 using namespace std;
 
+namespace sch {
+
 struct Subckt;
 
 // This structure represents a single transistor (Metal Oxide Semiconductor (MOS)) in the cell.
@@ -324,3 +326,4 @@ struct Subckt {
 	void draw(Layout &dst);
 };
 
+}

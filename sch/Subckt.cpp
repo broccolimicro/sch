@@ -5,6 +5,8 @@
 
 using namespace std;
 
+namespace sch {
+
 Mos::Mos() {
 	model = -1;
 	type = -1;
@@ -493,4 +495,6 @@ void Subckt::draw(Layout &dst) {
 	}
 
 	dst.merge();
+}
+
 }

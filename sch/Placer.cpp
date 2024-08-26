@@ -7,6 +7,8 @@
 #include <vector>
 #include <algorithm>
 
+namespace sch {
+
 Placement::Placement() {
 	this->base = nullptr;
 	b = 0;
@@ -207,3 +209,4 @@ void Placement::solve(const Tech &tech, Subckt *base, int starts, int b, int l, 
 	}
 }
 
+}

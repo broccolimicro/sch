@@ -7,6 +7,8 @@
 
 using namespace std;
 
+namespace sch {
+
 struct Netlist {
 	Netlist();
 	Netlist(const Tech &tech);
@@ -16,8 +18,9 @@ struct Netlist {
 
 	string libPath;
 	
-	vector<Subckt> cells; 
+	vector<Subckt> subckts; 
 
 	void build(set<string> cellNames = set<string>());
 };
 
+}

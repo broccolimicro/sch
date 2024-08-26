@@ -6,6 +6,8 @@
 #include "Router.h"
 #include "Draw.h"
 
+namespace sch {
+
 PinConstraint::PinConstraint() {
 	from = -1;
 	to = -1;
@@ -2052,3 +2054,4 @@ void Router::print() {
 	printf("\n");
 }
 
+}

@@ -3,6 +3,8 @@
 
 using namespace std;
 
+namespace sch {
+
 int clamp(int value, int lo, int hi) {
 	return value < lo ? lo : (value > hi ? hi : value);
 }
@@ -301,3 +303,4 @@ void drawLayout(Layout &dst, const Layout &src, vec2i pos, vec2i dir) {
 	}
 }
 
+}

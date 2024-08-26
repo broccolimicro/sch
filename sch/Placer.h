@@ -3,6 +3,8 @@
 #include "Subckt.h"
 #include <random>
 
+namespace sch {
+
 struct Placer;
 
 // This represents a single transistor placement in the stack
@@ -96,3 +98,4 @@ struct Placement {
 	static void solve(const Tech &tech, Subckt *base, int starts=100, int b=12, int l=1, int w=1, int g=10, float step=2.0, float rate=0.02);
 };
 
+}

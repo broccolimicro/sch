@@ -10,6 +10,8 @@
 
 using namespace std;
 
+namespace sch {
+
 struct Router;
 
 // DESIGN(edward.bingham) Two opposing pins on the two stacks will
@@ -222,3 +224,5 @@ struct Router {
 	// Print the solution description
 	void print();
 };
+
+}
