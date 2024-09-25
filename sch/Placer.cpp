@@ -123,7 +123,7 @@ int Placement::score() {
 		G += (i->device >= 0 and j->device >= 0 and base->mos[i->device].gate != base->mos[j->device].gate);
 	}
 
-	return b*B*B + l*L + w*W*W + g*G;
+	return max(0, b*B*B + l*L + w*W*W + g*G);
 }
 
 void Placement::solve(const Tech &tech, Subckt *base, int starts, int b, int l, int w, int g, float step, float rate) {
@@ -167,8 +167,10 @@ void Placement::solve(const Tech &tech, Subckt *base, int starts, int b, int l, 
 			// Test all of the possible moves and pick the best one.
 			score = newScore;
 			for (auto choice = choices.begin(); choice != choices.end(); choice++) {
+				//printf("\r%06d/%06d  %f %f %06d<%06d", (int)(choice-choices.begin()), (int)choices.size(), currStep, rate, newScore, score);
+				//fflush(stdout);
 				curr.move(*choice);
-				
+
 				// Check if this move makes any improvement within the constraints of
 				// the annealing temperature
 				newScore = curr.score();
@@ -184,7 +186,11 @@ void Placement::solve(const Tech &tech, Subckt *base, int starts, int b, int l, 
 			shuffle(choices.begin(), choices.end(), rand);
 
 			// cool the annealing temperature
+			float prevStep = currStep;
 			currStep -= (currStep - 1.0)*rate;
+			if (currStep == prevStep) {
+				currStep = 1.0;
+			}
 			//printf("%f %f %d<%d\n", currStep, rate, newScore, score);
 		} while ((float)score*currStep - (float)newScore > 0.01);
 
