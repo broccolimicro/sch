@@ -81,19 +81,20 @@ int Placement::score() {
 	vector<vec2i> ext(base->nets.size(), vec2i(((int)stack[0].size()+1)*2, -1));
 	for (int type = 0; type < 2; type++) {
 		for (auto c = stack[type].begin(); c != stack[type].end(); c++) {
-			brk[type] += (c+1 != stack[type].end() and c->device >= 0 and (c+1)->device >= 0 and base->mos[c->device].ports[not c->flip] != base->mos[(c+1)->device].ports[(c+1)->flip]);
+			brk[type] += (c+1 != stack[type].end() and c->device >= 0 and (c+1)->device >= 0 and base->mos[c->device].right(c->flip) != base->mos[(c+1)->device].left((c+1)->flip));
 
 			if (c->device >= 0) {
 				int gate = base->mos[c->device].gate;
+				int source = base->mos[c->device].ports[0];
+				int drain = base->mos[c->device].ports[1];
 				int off = (c-stack[type].begin())<<1;
 
 				ext[gate][0] = min(ext[gate][0], off+1);
 				ext[gate][1] = max(ext[gate][1], off+1);
-				for (auto port = base->mos[c->device].ports.begin(); port != base->mos[c->device].ports.end(); port++) {
-					int i = port-base->mos[c->device].ports.begin();
-					ext[*port][0] = min(ext[*port][0], off+2*((int)c->flip==i));
-					ext[*port][1] = max(ext[*port][1], off+2*((int)c->flip==i));
-				}
+				ext[source][0] = min(ext[source][0], off+2*((int)(not c->flip)));
+				ext[source][1] = max(ext[source][1], off+2*((int)(not c->flip)));
+				ext[drain][0] = min(ext[drain][0], off+2*((int)c->flip));
+				ext[drain][1] = max(ext[drain][1], off+2*((int)c->flip));
 			}
 		}
 	}
@@ -107,8 +108,8 @@ int Placement::score() {
 
 	// compute G, keeping track of diffusion breaks
 	for (auto i = stack[0].begin(), j = stack[1].begin(); i != stack[0].end() and j != stack[1].end(); i++, j++) {
-		bool ibrk = (i != stack[0].begin() and (i-1)->device >= 0 and i->device >= 0 and base->mos[(i-1)->device].ports[not (i-1)->flip] != base->mos[i->device].ports[i->flip]);
-		bool jbrk = (j != stack[1].begin() and (j-1)->device >= 0 and j->device >= 0 and base->mos[(j-1)->device].ports[not (j-1)->flip] != base->mos[j->device].ports[j->flip]);
+		bool ibrk = (i != stack[0].begin() and (i-1)->device >= 0 and i->device >= 0 and base->mos[(i-1)->device].right((i-1)->flip) != base->mos[i->device].left(i->flip));
+		bool jbrk = (j != stack[1].begin() and (j-1)->device >= 0 and j->device >= 0 and base->mos[(j-1)->device].right((j-1)->flip) != base->mos[j->device].left(j->flip));
 
 		if (ibrk and not jbrk) {
 			j++;

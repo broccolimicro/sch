@@ -265,8 +265,8 @@ void Stack::push(const Tech &tech, const Subckt *ckt, int device, bool flip) {
 	int gateNet = -1;
 
 	if (device >= 0) {
-		fromNet = ckt->mos[device].ports[flip];
-		toNet = ckt->mos[device].ports[not flip];
+		fromNet = ckt->mos[device].left(flip);
+		toNet = ckt->mos[device].right(flip);
 		gateNet = ckt->mos[device].gate;
 	}
 

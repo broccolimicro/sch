@@ -22,6 +22,14 @@ Mos::Mos(int model, int type) {
 Mos::~Mos() {
 }
 
+int Mos::left(bool flip) const {
+	return flip ? ports[1] : ports[0];
+}
+
+int Mos::right(bool flip) const {
+	return flip ? ports[0] : ports[1];
+}
+
 Net::Net() {
 	ports[0] = 0;
 	ports[1] = 0;

@@ -41,6 +41,9 @@ struct Mos {
 	// name of parameter -> list of values for that parameter
 	map<string, vector<double> > params;
 	vec2i size; // [length, width] of the transistor
+
+	int left(bool flip = false) const;
+	int right(bool flip = false) const;
 };
 
 // This structure represents a single variable/net.
