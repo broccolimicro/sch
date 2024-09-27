@@ -95,7 +95,7 @@ struct Placement {
 
 	void move(vec4i choice);	
 	int score();
-	static void solve(const Tech &tech, Subckt *base, int starts=100, int b=12, int l=1, int w=1, int g=10, float step=2.0, float rate=0.02);
+	static Placement solve(const Tech &tech, Subckt *base, int starts=100, int b=12, int l=1, int w=1, int g=10, float step=2.0, float rate=0.02);
 };
 
 }

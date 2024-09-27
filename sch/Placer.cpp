@@ -126,9 +126,9 @@ int Placement::score() {
 	return max(0, b*B*B + l*L + w*W*W + g*G);
 }
 
-void Placement::solve(const Tech &tech, Subckt *base, int starts, int b, int l, int w, int g, float step, float rate) {
+Placement Placement::solve(const Tech &tech, Subckt *base, int starts, int b, int l, int w, int g, float step, float rate) {
 	if (base->mos.size() == 0) {
-		return;
+		return Placement();
 	}
 	std::default_random_engine rand(0/*std::random_device{}()*/);
 
@@ -201,18 +201,7 @@ void Placement::solve(const Tech &tech, Subckt *base, int starts, int b, int l, 
 	}
 	printf("Placement complete after %d iterations\n", starts);
 
-	// Save the resulting placement to the Subckt
-	array<Stack, 2> result;
-	for (int type = 0; type < 2; type++) {
-		result[type].type = type;
-		for (auto pin = best.stack[type].begin(); pin != best.stack[type].end(); pin++) {
-			result[type].push(base, pin->device, pin->flip);
-		}
-		if (best.stack[type].back().device >= 0) {
-			result[type].push(base, -1, false);
-		}
-		base->stack[type] = result[type];
-	}
+	return best;
 }
 
 }

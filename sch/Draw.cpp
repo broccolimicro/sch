@@ -164,7 +164,7 @@ void drawViaStack(const Tech &tech, Layout &dst, int net, int downLevel, int upL
 	}
 }
 
-void drawWire(const Tech &tech, Layout &dst, const Subckt *ckt, const Wire &wire, vec2i pos, vec2i dir) {
+void drawWire(const Tech &tech, Layout &dst, const Router *rt, const Wire &wire, vec2i pos, vec2i dir) {
 	// [via level][pin]
 	vector<vector<int> > posArr;
 	posArr.resize(tech.vias.size());
@@ -173,7 +173,7 @@ void drawWire(const Tech &tech, Layout &dst, const Subckt *ckt, const Wire &wire
 		posArr[i].reserve(wire.pins.size());
 
 		for (int j = 0; j < (int)wire.pins.size(); j++) {
-			const Pin &pin = ckt->pin(wire.pins[j].idx);
+			const Pin &pin = rt->pin(wire.pins[j].idx);
 
 			int pinLevel = pin.layer;
 			int prevLevel = wire.getLevel(j-1);
@@ -197,7 +197,7 @@ void drawWire(const Tech &tech, Layout &dst, const Subckt *ckt, const Wire &wire
 		vias.reserve(wire.pins.size());
 		int height = 0;
 		for (int j = 0; j < (int)wire.pins.size(); j++) {
-			const Pin &pin = ckt->pin(wire.pins[j].idx);
+			const Pin &pin = rt->pin(wire.pins[j].idx);
 			int pinLevel = pin.layer;
 			int prevLevel = wire.getLevel(j-1);
 			int nextLevel = wire.getLevel(j);

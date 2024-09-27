@@ -27,7 +27,7 @@ void Netlist::build(set<string> cellNames) {
 			printf("\rPlacing %s\n", ckt->name.c_str());
 			Placement::solve(*tech, &(*ckt));
 			printf("\rRouting %s\n", ckt->name.c_str());
-			Router router(&(*ckt));
+			Router router(*tech, &(*ckt));
 			router.solve(*tech);
 			//router.print();
 			printf("\rDone %s\n", ckt->name.c_str());
