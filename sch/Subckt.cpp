@@ -10,13 +10,32 @@ namespace sch {
 Mos::Mos() {
 	model = -1;
 	type = -1;
-	size = vec2i(0,0);
+	drain = -1;
+	gate = -1;
+	source = -1;
+	base = -1;
+	size = vec2i(1.0,1.0);
 }
 
 Mos::Mos(int model, int type) {
 	this->model = model;
 	this->type = type;
-	this->size = vec2i(0,0);
+	this->size = vec2i(1.0,1.0);
+	this->drain = -1;
+	this->gate = -1;
+	this->source = -1;
+	this->base = -1;
+}
+
+Mos::Mos(int model, int type, int drain, int gate, int source, int base, vec2i size) {
+	this->model = model;
+	this->type = type;
+	this->size = vec2i(1.0,1.0);
+	this->drain = drain;
+	this->gate = gate;
+	this->source = source;
+	this->base = base < 0 ? source : base;
+	this->size = size;
 }
 
 Mos::~Mos() {
@@ -88,6 +107,22 @@ string Subckt::netName(int net) const {
 	}
 
 	return nets[net].name;
+}
+
+int Subckt::pushNet(string name, bool isIO) {
+	int result = (int)nets.size();
+	nets.push_back(Net(name, isIO));
+	return result;
+}
+
+int Subckt::pushMos(int model, int type, int drain, int gate, int source, int base, vec2i size) {
+	int result = (int)mos.size();
+	nets[drain].drainOf[type].push_back(result);
+	nets[source].sourceOf[type].push_back(result);
+	nets[gate].gateOf[type].push_back(result);
+
+	mos.push_back(Mos(model, type, drain, gate, source, base, size));
+	return result;
 }
 
 }

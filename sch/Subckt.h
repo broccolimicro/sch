@@ -20,6 +20,7 @@ struct Subckt;
 struct Mos {
 	Mos();
 	Mos(int model, int type);
+	Mos(int model, int type, int drain, int gate, int source, int base=-1, vec2i size=vec2i(1.0,1.0));
 	~Mos();
 
 	// Technologies often have multiple NMOS or PMOS transistor models. This
@@ -36,7 +37,7 @@ struct Mos {
 	int gate;
 	int source;
 	int drain;
-	int bulk;
+	int base;
 
 	// loaded in from spice
 	// name of parameter -> list of values for that parameter
@@ -87,6 +88,9 @@ struct Subckt {
 
 	int findNet(string name, bool create=false);
 	string netName(int net) const;
+
+	int pushNet(string name, bool isIO=false);
+	int pushMos(int model, int type, int drain, int gate, int source, int base=-1, vec2i size=vec2i(1.0,1.0));
 };
 
 }

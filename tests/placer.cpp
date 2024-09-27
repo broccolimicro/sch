@@ -9,27 +9,15 @@ TEST(placer, solve)
 {
 	Subckt ckt;
 	ckt.name = "test";
-	int gnd = (int)ckt.nets.size();
-	ckt.nets.push_back(Net("GND"));
-	int vdd = (int)ckt.nets.size();
-	ckt.nets.push_back(Net("Vdd"));
-	int a = (int)ckt.nets.size();
-	ckt.nets.push_back(Net("a"));
-	int b = (int)ckt.nets.size();
-	ckt.nets.push_back(Net("b"));
-	ckt.mos.push_back(Mos(-1, Model::NMOS));
-	ckt.mos.back().gate = a;
-	ckt.mos.back().source = gnd;
-	ckt.mos.back().drain = b;
-	ckt.mos.back().bulk = gnd;
-	ckt.mos.back().size = vec2i(1.0, 1.0);
-	ckt.mos.push_back(Mos(-1, Model::PMOS));
-	ckt.mos.back().gate = a;
-	ckt.mos.back().source = vdd;
-	ckt.mos.back().drain = b;
-	ckt.mos.back().bulk = vdd;
-	ckt.mos.back().size = vec2i(1.0, 1.0);
+	// Create an inverter
+	int gnd = ckt.pushNet("GND", true);
+	int vdd = ckt.pushNet("Vdd", true);
+	int a = ckt.pushNet("a");
+	int b = ckt.pushNet("b");
+	ckt.pushMos(-1, Model::NMOS, b, a, gnd);
+	ckt.pushMos(-1, Model::PMOS, b, a, vdd);
 
+	// Run the placer
 	Placement result = Placement::solve(&ckt);
 }
 
