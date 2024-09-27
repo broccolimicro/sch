@@ -98,6 +98,8 @@ struct Mapping {
 
 	bool apply(const Mapping &m);
 	Instance instance() const;
+
+	bool overlapsWith(const Mapping &m) const;
 };
 
 struct Subckt {

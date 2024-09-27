@@ -143,6 +143,20 @@ Instance Mapping::instance() const {
 	return result;
 }
 
+bool Mapping::overlapsWith(const Mapping &m) const {
+	int i = 0, j = 0;
+	while (i < (int)devices.size() and j < (int)m.devices.size()) {
+		if (devices[i] == devices[j]) {
+			return true;
+		} else if (devices[i] < devices[j]) {
+			i++;
+		} else {
+			j++;
+		}
+	}
+	return false;
+}
+
 Subckt::Subckt() {
 	isCell = false;
 }
