@@ -164,7 +164,7 @@ void drawViaStack(const Tech &tech, Layout &dst, int net, int downLevel, int upL
 	}
 }
 
-void drawWire(const Tech &tech, Layout &dst, const Router *rt, const Wire &wire, vec2i pos, vec2i dir) {
+void drawWire(const Tech &tech, Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i dir) {
 	// [via level][pin]
 	vector<vector<int> > posArr;
 	posArr.resize(tech.vias.size());
@@ -173,7 +173,7 @@ void drawWire(const Tech &tech, Layout &dst, const Router *rt, const Wire &wire,
 		posArr[i].reserve(wire.pins.size());
 
 		for (int j = 0; j < (int)wire.pins.size(); j++) {
-			const Pin &pin = rt->pin(wire.pins[j].idx);
+			const Pin &pin = rt.pin(wire.pins[j].idx);
 
 			int pinLevel = pin.layer;
 			int prevLevel = wire.getLevel(j-1);
@@ -197,7 +197,7 @@ void drawWire(const Tech &tech, Layout &dst, const Router *rt, const Wire &wire,
 		vias.reserve(wire.pins.size());
 		int height = 0;
 		for (int j = 0; j < (int)wire.pins.size(); j++) {
-			const Pin &pin = rt->pin(wire.pins[j].idx);
+			const Pin &pin = rt.pin(wire.pins[j].idx);
 			int pinLevel = pin.layer;
 			int prevLevel = wire.getLevel(j-1);
 			int nextLevel = wire.getLevel(j);
@@ -267,19 +267,19 @@ void drawWire(const Tech &tech, Layout &dst, const Router *rt, const Wire &wire,
 	}
 }
 
-void drawPin(const Tech &tech, Layout &dst, const Subckt *ckt, const Stack &stack, int pinID, vec2i pos, vec2i dir) {
+void drawPin(const Tech &tech, Layout &dst, const Subckt &ckt, const Stack &stack, int pinID, vec2i pos, vec2i dir) {
 	pos[0] += stack.pins[pinID].pos;
 	if (stack.pins[pinID].isContact()) {
 		int model = -1;
 		for (int i = pinID-1; i >= 0 and model < 0; i--) {
 			if (stack.pins[i].isGate()) {
-				model = ckt->mos[stack.pins[i].device].model;
+				model = ckt.mos[stack.pins[i].device].model;
 			}
 		}
 
 		for (int i = pinID+1; i < (int)stack.pins.size() and model < 0; i++) {
 			if (stack.pins[i].isGate()) {
-				model = ckt->mos[stack.pins[i].device].model;
+				model = ckt.mos[stack.pins[i].device].model;
 			}
 		}
 
@@ -289,7 +289,7 @@ void drawPin(const Tech &tech, Layout &dst, const Subckt *ckt, const Stack &stac
 			printf("error: unable to identify transistor model for diffusion contact %d\n", pinID);
 		}
 	} else {
-		drawTransistor(tech, dst, ckt->mos[stack.pins[pinID].device], stack.pins[pinID].leftNet != ckt->mos[stack.pins[pinID].device].source, pos, dir);
+		drawTransistor(tech, dst, ckt.mos[stack.pins[pinID].device], stack.pins[pinID].leftNet != ckt.mos[stack.pins[pinID].device].source, pos, dir);
 	}
 }
 

@@ -259,15 +259,15 @@ Stack::~Stack() {
 }
 
 // index into Placement::dangling
-void Stack::push(const Tech &tech, const Subckt *ckt, int device, bool flip) {
+void Stack::push(const Tech &tech, const Subckt &ckt, int device, bool flip) {
 	int fromNet = -1;
 	int toNet = -1;
 	int gateNet = -1;
 
 	if (device >= 0) {
-		fromNet = ckt->mos[device].left(flip);
-		toNet = ckt->mos[device].right(flip);
-		gateNet = ckt->mos[device].gate;
+		fromNet = ckt.mos[device].left(flip);
+		toNet = ckt.mos[device].right(flip);
+		gateNet = ckt.mos[device].gate;
 	}
 
 	// Get information about the previous transistor on the stack. First if
@@ -284,7 +284,7 @@ void Stack::push(const Tech &tech, const Subckt *ckt, int device, bool flip) {
 		pins.push_back(Pin(tech, pins.back().rightNet));
 	}
 
-	if (fromNet >= 0 and (not link or pins.empty() or ckt->nets[fromNet].hasContact(type))) {
+	if (fromNet >= 0 and (not link or pins.empty() or ckt.nets[fromNet].hasContact(type))) {
 		// Add a contact for the first net or between two transistors.
 		pins.push_back(Pin(tech, fromNet));
 	}
@@ -294,7 +294,7 @@ void Stack::push(const Tech &tech, const Subckt *ckt, int device, bool flip) {
 	}
 }
 
-void Stack::draw(const Tech &tech, const Subckt *base, Layout &dst) {
+void Stack::draw(const Tech &tech, const Subckt &ckt, Layout &dst) {
 	dst.clear();
 	// Draw the stacks
 	for (int i = 0; i < (int)pins.size(); i++) {
@@ -304,9 +304,9 @@ void Stack::draw(const Tech &tech, const Subckt *base, Layout &dst) {
 			int height = min(pins[i].height, pins[i-1].height);
 			int model = -1;
 			if (pins[i].device >= 0) {
-				model = base->mos[pins[i].device].model;
+				model = ckt.mos[pins[i].device].model;
 			} else {
-				model = base->mos[pins[i-1].device].model;
+				model = ckt.mos[pins[i-1].device].model;
 			}
 
 			drawDiffusion(tech, dst, model, -1, vec2i(pins[i-1].pos, 0), vec2i(pins[i].pos, height)*dir, dir);
@@ -369,8 +369,7 @@ RouteGroupConstraint::RouteGroupConstraint(int wire, Index pin) {
 RouteGroupConstraint::~RouteGroupConstraint() {
 }
 
-Router::Router(const Tech &tech) : tech(tech) {
-	base = nullptr;
+Router::Router(const Tech &tech, const Subckt &ckt) : tech(tech), ckt(ckt) {
 	cycleCount = 0;
 	cellHeight = 0;
 	cost = 0;
@@ -379,8 +378,7 @@ Router::Router(const Tech &tech) : tech(tech) {
 	}
 }
 
-Router::Router(const Tech &tech, const Placement &place) : tech(tech) {
-	this->base = &place.ckt;
+Router::Router(const Tech &tech, const Placement &place) : tech(tech), ckt(place.ckt) {
 	this->cycleCount = 0;
 	this->cellHeight = 0;
 	this->cost = 0;
@@ -407,7 +405,7 @@ int Router::pinWidth(Index p) const {
 	if (device >= 0) {
 		// this pin is a transistor, use length of transistor
 		return tech.paint[tech.wires[0].draw].minWidth;
-		//return base->mos[device].size[0];
+		//return ckt.mos[device].size[0];
 	}
 	// this pin is a contact
 	return tech.paint[tech.wires[1].draw].minWidth;
@@ -418,20 +416,20 @@ int Router::pinHeight(Index p) const {
 	int device = pin(p).device;
 	if (device >= 0) {
 		// this pin is a transistor, use width of transistor
-		return base->mos[device].size[1];
+		return ckt.mos[device].size[1];
 	}
 	// this is a contact, height should be min of transistor widths on either side.
 	int result = -1;
 	if (p.pin-1 >= 0) {
 		int leftDevice = stack[p.type].pins[p.pin-1].device;
-		if (leftDevice >= 0 and (result < 0 or base->mos[leftDevice].size[1] < result)) {
-			result = base->mos[leftDevice].size[1];
+		if (leftDevice >= 0 and (result < 0 or ckt.mos[leftDevice].size[1] < result)) {
+			result = ckt.mos[leftDevice].size[1];
 		}
 	}
 	for (int i = p.pin+1; i < (int)stack[p.type].pins.size(); i++) {
 		int rightDevice = stack[p.type].pins[i].device;
-		if (rightDevice >= 0 and (result < 0 or base->mos[rightDevice].size[1] < result)) {
-			result = base->mos[rightDevice].size[1];
+		if (rightDevice >= 0 and (result < 0 or ckt.mos[rightDevice].size[1] < result)) {
+			result = ckt.mos[rightDevice].size[1];
 			break;
 		} else if (result >= 0) {
 			break;
@@ -439,8 +437,8 @@ int Router::pinHeight(Index p) const {
 	}
 	for (int i = p.pin-1; result < 0 and i >= 0; i--) {
 		int leftDevice = stack[p.type].pins[i].device;
-		if (leftDevice >= 0 and (result < 0 or base->mos[leftDevice].size[1] < result)) {
-			result = base->mos[leftDevice].size[1];
+		if (leftDevice >= 0 and (result < 0 or ckt.mos[leftDevice].size[1] < result)) {
+			result = ckt.mos[leftDevice].size[1];
 		}
 	}
 	if (result < 0) {
@@ -452,15 +450,14 @@ int Router::pinHeight(Index p) const {
 }
 
 void Router::load(const Placement &place) {
-	base = &place.ckt;
 	// Save the resulting placement to the Subckt
 	for (int type = 0; type < 2; type++) {
 		stack[type].type = type;
 		for (auto pin = place.stack[type].begin(); pin != place.stack[type].end(); pin++) {
-			stack[type].push(tech, base, pin->device, pin->flip);
+			stack[type].push(tech, ckt, pin->device, pin->flip);
 		}
 		if (place.stack[type].back().device >= 0) {
-			stack[type].push(tech, base, -1, false);
+			stack[type].push(tech, ckt, -1, false);
 		}
 	}
 }
@@ -551,13 +548,13 @@ void Router::buildRoutes() {
 	routes.clear();
 
 	// Create initial routes
-	routes.reserve(base->nets.size()+2);
-	for (int i = 0; i < (int)base->nets.size(); i++) {
+	routes.reserve(ckt.nets.size()+2);
+	for (int i = 0; i < (int)ckt.nets.size(); i++) {
 		routes.push_back(Wire(tech, i));
 	}
 	for (int type = 0; type < (int)this->stack.size(); type++) {
 		for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
-			if (this->stack[type].pins[i].outNet < (int)base->nets.size()) {
+			if (this->stack[type].pins[i].outNet < (int)ckt.nets.size()) {
 				routes[this->stack[type].pins[i].outNet].addPin(this, Index(type, i));
 			} else {
 				printf("outNet is out of bounds\n");
@@ -565,7 +562,7 @@ void Router::buildRoutes() {
 		}
 	}
 	for (int i = (int)routes.size()-1; i >= 0; i--) {
-		if (routes[i].pins.size() < 2 and not base->nets[routes[i].net].isIO) {
+		if (routes[i].pins.size() < 2 and not ckt.nets[routes[i].net].isIO) {
 			delRoute(i);
 		}
 	}
@@ -1265,8 +1262,8 @@ void Router::alignVirtualPins() {
 }
 
 void Router::addIOPins() {
-	for (int i = 0; i < (int)base->nets.size(); i++) {
-		if (base->nets[i].isIO) {
+	for (int i = 0; i < (int)ckt.nets.size(); i++) {
+		if (ckt.nets[i].isIO) {
 			/*bool found = false;
 			for (int j = 0; not found and j < (int)this->stack.size(); j++) {
 				for (int k = 0; not found and k < (int)this->stack[j].pins.size(); k++) {
@@ -1291,7 +1288,7 @@ void Router::buildPins(const Tech &tech) {
 			pin.height = this->pinHeight(Index(type, i));
 
 			pin.layout.clear();
-			drawPin(tech, pin.layout, base, this->stack[type], i);
+			drawPin(tech, pin.layout, ckt, this->stack[type], i);
 		}
 	}
 }
@@ -1525,8 +1522,8 @@ int Router::alignPins(int maxDist) {
 
 	vector<Alignment> align;
 	if (routes.empty()) {
-		for (int i = 0; i < (int)base->nets.size(); i++) {
-			if (base->nets[i].isPairedGate()) {
+		for (int i = 0; i < (int)ckt.nets.size(); i++) {
+			if (ckt.nets[i].isPairedGate()) {
 				array<int, 2> ports;
 				for (int type = 0; type < 2; type++) {
 					for (ports[type] = 0; ports[type] < (int)this->stack[type].pins.size() and (this->stack[type].pins[ports[type]].isContact() or this->stack[type].pins[ports[type]].outNet != i); ports[type]++);
@@ -1537,7 +1534,7 @@ int Router::alignPins(int maxDist) {
 				}
 			}
 
-			if (base->nets[i].isPairedDriver()) {
+			if (ckt.nets[i].isPairedDriver()) {
 				array<int, 2> ports;
 				for (int type = 0; type < 2; type++) {
 					for (ports[type] = 0; ports[type] < (int)this->stack[type].pins.size() and (this->stack[type].pins[ports[type]].isGate() or this->stack[type].pins[ports[type]].outNet != i); ports[type]++);
@@ -1619,9 +1616,9 @@ void Router::drawRoutes(const Tech &tech) {
 	// Draw the routes
 	for (int i = 0; i < (int)routes.size(); i++) {
 		if (routes[i].net >= 0) {
-			drawWire(tech, routes[i].layout, this, routes[i]);
+			drawWire(tech, routes[i].layout, *this, routes[i]);
 		} else {
-			this->stack[flip(routes[i].net)].draw(tech, base, routes[i].layout);
+			this->stack[flip(routes[i].net)].draw(tech, ckt, routes[i].layout);
 		}
 	}
 }
@@ -2372,11 +2369,11 @@ int Router::solve(const Tech &tech) {
 
 void Router::draw(Layout &dst) {
 	vec2i dir(1,-1);
-	dst.name = base->name;
+	dst.name = ckt.name;
 
-	dst.nets.reserve(base->nets.size());
-	for (int i = 0; i < (int)base->nets.size(); i++) {
-		dst.nets.push_back(base->nets[i].name);
+	dst.nets.reserve(ckt.nets.size());
+	for (int i = 0; i < (int)ckt.nets.size(); i++) {
+		dst.nets.push_back(ckt.nets[i].name);
 	}
 
 	for (int i = 0; i < (int)routes.size(); i++) {
@@ -2431,18 +2428,18 @@ void Router::print() {
 	printf("NMOS\n");
 	for (int i = 0; i < (int)this->stack[0].pins.size(); i++) {
 		const Pin &pin = this->stack[0].pins[i];
-		printf("pin[%d] dev=%d nets=%s(%d) -> %s(%d) -> %s(%d) size=%dx%d pos=%d align=%d lo=%d hi=%d\n", i, pin.device, base->netName(pin.leftNet).c_str(), pin.leftNet, base->netName(pin.outNet).c_str(), pin.outNet, base->netName(pin.rightNet).c_str(), pin.rightNet, pin.width, pin.height, pin.pos, pin.align, pin.lo, pin.hi);
+		printf("pin[%d] dev=%d nets=%s(%d) -> %s(%d) -> %s(%d) size=%dx%d pos=%d align=%d lo=%d hi=%d\n", i, pin.device, ckt.netName(pin.leftNet).c_str(), pin.leftNet, ckt.netName(pin.outNet).c_str(), pin.outNet, ckt.netName(pin.rightNet).c_str(), pin.rightNet, pin.width, pin.height, pin.pos, pin.align, pin.lo, pin.hi);
 	}
 
 	printf("\nPMOS\n");
 	for (int i = 0; i < (int)this->stack[1].pins.size(); i++) {
 		const Pin &pin = this->stack[1].pins[i];
-		printf("pin[%d] dev=%d nets=%s(%d) -> %s(%d) -> %s(%d) size=%dx%d pos=%d align=%d lo=%d hi=%d\n", i, pin.device, base->netName(pin.leftNet).c_str(), pin.leftNet, base->netName(pin.outNet).c_str(), pin.outNet, base->netName(pin.rightNet).c_str(), pin.rightNet, pin.width, pin.height, pin.pos, pin.align, pin.lo, pin.hi);
+		printf("pin[%d] dev=%d nets=%s(%d) -> %s(%d) -> %s(%d) size=%dx%d pos=%d align=%d lo=%d hi=%d\n", i, pin.device, ckt.netName(pin.leftNet).c_str(), pin.leftNet, ckt.netName(pin.outNet).c_str(), pin.outNet, ckt.netName(pin.rightNet).c_str(), pin.rightNet, pin.width, pin.height, pin.pos, pin.align, pin.lo, pin.hi);
 	}
 
 	printf("\nRoutes\n");
 	for (int i = 0; i < (int)routes.size(); i++) {
-		printf("wire[%d] %s(%d) %d->%d in:%d out:%d: ", i, (routes[i].net >= 0 and routes[i].net < (int)base->nets.size() ? base->nets[routes[i].net].name.c_str() : ""), routes[i].net, routes[i].left, routes[i].right, routes[i].pOffset, routes[i].nOffset);
+		printf("wire[%d] %s(%d) %d->%d in:%d out:%d: ", i, (routes[i].net >= 0 and routes[i].net < (int)ckt.nets.size() ? ckt.nets[routes[i].net].name.c_str() : ""), routes[i].net, routes[i].left, routes[i].right, routes[i].pOffset, routes[i].nOffset);
 		for (int j = 0; j < (int)routes[i].pins.size(); j++) {
 			printf("(%d,%d) ", routes[i].pins[j].idx.type, routes[i].pins[j].idx.pin);
 		}

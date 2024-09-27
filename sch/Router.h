@@ -237,8 +237,8 @@ struct Stack {
 	// routing problem
 	int route;
 	
-	void push(const Tech &tech, const Subckt *ckt, int device, bool flip);
-	void draw(const Tech &tech, const Subckt *base, Layout &dst);
+	void push(const Tech &tech, const Subckt &ckt, int device, bool flip);
+	void draw(const Tech &tech, const Subckt &ckt, Layout &dst);
 };
 
 
@@ -393,12 +393,12 @@ struct RouteGroupConstraint {
 };
 
 struct Router {
-	Router(const Tech &tech);
+	Router(const Tech &tech, const Subckt &ckt);
 	Router(const Tech &tech, const Placement &place);
 	~Router();
 
-	const Subckt *base;
 	const Tech &tech;
+	const Subckt &ckt;
 
 	// Computed by the placement system
 	// stack[0] is Model::NMOS
