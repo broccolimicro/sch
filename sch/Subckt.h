@@ -34,7 +34,8 @@ struct Mos {
 	// A transistor is a four terminal device. These integers reference specific
 	// nets, index into Subckt::nets.
 	int gate;
-	vector<int> ports; // source, drain
+	int source;
+	int drain;
 	int bulk;
 
 	// loaded in from spice

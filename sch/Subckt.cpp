@@ -23,11 +23,11 @@ Mos::~Mos() {
 }
 
 int Mos::left(bool flip) const {
-	return flip ? ports[1] : ports[0];
+	return flip ? drain : source;
 }
 
 int Mos::right(bool flip) const {
-	return flip ? ports[0] : ports[1];
+	return flip ? source : drain;
 }
 
 Net::Net() {

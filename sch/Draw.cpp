@@ -289,7 +289,7 @@ void drawPin(const Tech &tech, Layout &dst, const Subckt *ckt, const Stack &stac
 			printf("error: unable to identify transistor model for diffusion contact %d\n", pinID);
 		}
 	} else {
-		drawTransistor(tech, dst, ckt->mos[stack.pins[pinID].device], stack.pins[pinID].leftNet != ckt->mos[stack.pins[pinID].device].ports[0], pos, dir);
+		drawTransistor(tech, dst, ckt->mos[stack.pins[pinID].device], stack.pins[pinID].leftNet != ckt->mos[stack.pins[pinID].device].source, pos, dir);
 	}
 }
 

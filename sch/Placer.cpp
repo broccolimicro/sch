@@ -85,8 +85,8 @@ int Placement::score() {
 
 			if (c->device >= 0) {
 				int gate = base->mos[c->device].gate;
-				int source = base->mos[c->device].ports[0];
-				int drain = base->mos[c->device].ports[1];
+				int source = base->mos[c->device].source;
+				int drain = base->mos[c->device].drain;
 				int off = (c-stack[type].begin())<<1;
 
 				ext[gate][0] = min(ext[gate][0], off+1);
