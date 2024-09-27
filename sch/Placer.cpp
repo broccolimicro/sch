@@ -126,7 +126,7 @@ int Placement::score() {
 	return max(0, b*B*B + l*L + w*W*W + g*G);
 }
 
-Placement Placement::solve(const Tech &tech, Subckt *base, int starts, int b, int l, int w, int g, float step, float rate) {
+Placement Placement::solve(Subckt *base, int starts, int b, int l, int w, int g, float step, float rate) {
 	if (base->mos.size() == 0) {
 		return Placement();
 	}
