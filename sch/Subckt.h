@@ -66,6 +66,9 @@ struct Net {
 	array<vector<int>, 2> sourceOf;
 	array<vector<int>, 2> drainOf;
 
+	// index into Subckt::inst
+	vector<int> portOf;
+
 	// Is this net an input or output to the cell? If it is, then we need to draw
 	// an IO pin and hook it up to the rest of the net.
 	bool isIO;
@@ -75,6 +78,8 @@ struct Net {
 	bool hasContact(int type) const;
 	bool isPairedGate() const;
 	bool isPairedDriver() const;
+
+	bool dangling(bool remIO=false) const;
 };
 
 struct Instance {
@@ -83,9 +88,16 @@ struct Instance {
 };
 
 struct Mapping {
-	int cell;
+	Mapping(const Subckt &cell, int index);
+	~Mapping();
+
+	int index;
+	const Subckt *cell;
 	vector<int> cellToThis; // nets
 	vector<int> devices; // devs in this
+
+	bool apply(const Mapping &m);
+	Instance instance() const;
 };
 
 struct Subckt {
@@ -95,6 +107,8 @@ struct Subckt {
 	// Name of this cell
 	string name;
 	bool isCell;
+
+	vector<int> ports;
 
 	// These are loaded directly from the spice file It's the list of nets and
 	// their connections to transistors.
@@ -106,9 +120,13 @@ struct Subckt {
 	string netName(int net) const;
 
 	int pushNet(string name, bool isIO=false);
+	void popNet(int index);
 	int pushMos(int model, int type, int drain, int gate, int source, int base=-1, vec2i size=vec2i(1.0,1.0));
+	void popMos(int index);
 
 	vector<Mapping> find(const Subckt &cell, int index);
+	void apply(const Mapping &m);
+	void cleanDangling(bool remIO=false);
 };
 
 }

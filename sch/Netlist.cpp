@@ -37,7 +37,7 @@ bool Netlist::mapCells(Subckt &ckt) {
 	// Now we have a set of possible mappings. Those mappings may overlap. We
 	// want to find a selection of mappings that minimizes the total number of
 	// cells used to cover the maximum possible number of devices in this subckt
-
+	
 	
 	
 

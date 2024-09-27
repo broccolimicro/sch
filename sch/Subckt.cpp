@@ -95,6 +95,54 @@ bool Net::isPairedDriver() const {
 	return ports(0) == 1 and ports(1) == 1;
 }
 
+bool Net::dangling(bool remIO) const {
+	return (remIO or not isIO)
+		and gateOf[0].empty()
+		and gateOf[1].empty()
+		and sourceOf[0].empty()
+		and sourceOf[1].empty()
+		and drainOf[0].empty()
+		and drainOf[1].empty()
+		and portOf.empty();
+}
+
+Mapping::Mapping(const Subckt &cell, int index) {
+	this->index = index;
+	this->cell = &cell;
+	this->cellToThis.resize(cell.nets.size(), -1);
+}
+
+Mapping::~Mapping() {
+}
+
+bool Mapping::apply(const Mapping &m) {
+	bool success = true;
+	int j = (int)m.devices.size()-1;
+	for (int i = (int)devices.size()-1; i >= 0; i--) {
+		while (devices[i] < m.devices[j]) {
+			j--;
+		}
+
+		if (devices[i] == m.devices[j]) {
+			success = false;
+			devices.erase(devices.begin() + i);
+		} else {
+			devices[i] -= (j+1);
+		}
+	}
+
+	return success;
+}
+
+Instance Mapping::instance() const {
+	Instance result;
+	result.subckt = index;
+	for (auto p = cell->ports.begin(); p != cell->ports.end(); p++) {
+		result.ports.push_back(cellToThis[*p]);
+	}
+	return result;
+}
+
 Subckt::Subckt() {
 	isCell = false;
 }
@@ -109,9 +157,7 @@ int Subckt::findNet(string name, bool create) {
 		}
 	}
 	if (create) {
-		int index = (int)nets.size();
-		nets.push_back(Net(name));
-		return index;
+		return pushNet(name);
 	}
 	return -1;
 }
@@ -130,6 +176,44 @@ int Subckt::pushNet(string name, bool isIO) {
 	return result;
 }
 
+void Subckt::popNet(int index) {
+	nets.erase(nets.begin()+index);
+
+	for (int i = (int)ports.size()-1; i >= 0; i--) {
+		if (ports[i] > index) {
+			ports[i]--;
+		} else if (ports[i] == index) {
+			ports.erase(ports.begin()+i);
+		}
+	}
+
+	for (auto d = mos.begin(); d != mos.end(); d++) {
+		if (d->gate > index) {
+			d->gate--;
+		} else if (d->gate == index) {
+			d->gate = -1;
+		}
+
+		if (d->source > index) {
+			d->source--;
+		} else if (d->source == index) {
+			d->source = -1;
+		}
+
+		if (d->drain > index) {
+			d->drain--;
+		} else if (d->drain == index) {
+			d->drain = -1;
+		}
+
+		if (d->base > index) {
+			d->base--;
+		} else if (d->base == index) {
+			d->base = -1;
+		}
+	}
+}
+
 int Subckt::pushMos(int model, int type, int drain, int gate, int source, int base, vec2i size) {
 	int result = (int)mos.size();
 	nets[drain].drainOf[type].push_back(result);
@@ -140,20 +224,52 @@ int Subckt::pushMos(int model, int type, int drain, int gate, int source, int ba
 	return result;
 }
 
+void Subckt::popMos(int index) {
+	mos.erase(mos.begin() + index);
+
+	for (auto n = nets.begin(); n != nets.end(); n++) {
+		for (int type = 0; type < 2; type++) {
+			for (int j = (int)n->gateOf[type].size()-1; j >= 0; j--) {
+				if (n->gateOf[type][j] > index) {
+					n->gateOf[type][j]--;
+				} else if (n->gateOf[type][j] == index) {
+					n->gateOf[type].erase(n->gateOf[type].begin()+j);
+				}
+			}
+			for (int j = (int)n->sourceOf[type].size()-1; j >= 0; j--) {
+				if (n->sourceOf[type][j] > index) {
+					n->sourceOf[type][j]--;
+				} else if (n->sourceOf[type][j] == index) {
+					n->sourceOf[type].erase(n->sourceOf[type].begin()+j);
+				}
+			}
+			for (int j = (int)n->drainOf[type].size()-1; j >= 0; j--) {
+				if (n->drainOf[type][j] > index) {
+					n->drainOf[type][j]--;
+				} else if (n->drainOf[type][j] == index) {
+					n->drainOf[type].erase(n->drainOf[type].begin()+j);
+				}
+			}
+		}
+	}
+}
+
 vector<Mapping> Subckt::find(const Subckt &cell, int index) {
 	struct frame {
+		frame(const Subckt &cell, int index) : m(cell, index) {
+			todo.reserve(cell.mos.size());
+			for (int i = 0; i < (int)cell.mos.size(); i++) {
+				todo.push_back(i);
+			}
+		}
+		~frame() {}
+
 		Mapping m;
 		vector<int> todo;  // devs in cell
 	};
 
 	vector<Mapping> result;
-	vector<frame> frames;
-	frames.push_back(frame());
-	frames.back().m.cell = index;
-	for (int i = 0; i < (int)cell.mos.size(); i++) {
-		frames.back().todo.push_back(i);
-		frames.back().m.cellToThis.resize(cell.nets.size(), -1);
-	}
+	vector<frame> frames(1, frame(cell, index));
 	while (not frames.empty()) {
 		auto curr = frames.back();
 		frames.pop_back();
@@ -254,6 +370,26 @@ vector<Mapping> Subckt::find(const Subckt &cell, int index) {
 	}
 
 	return result;
+}
+
+void Subckt::apply(const Mapping &m) {
+	int index = (int)inst.size();
+	inst.push_back(m.instance());
+	for (auto p = inst.back().ports.begin(); p != inst.back().ports.end(); p++) {
+		nets[*p].portOf.push_back(index);
+	} 
+
+	for (int i = (int)m.devices.size()-1; i >= 0; i--) {
+		popMos(m.devices[i]);
+	}
+}
+
+void Subckt::cleanDangling(bool remIO) {
+	for (int i = (int)nets.size()-1; i >= 0; i--) {
+		if (nets[i].dangling(remIO)) {
+			popNet(i);
+		}
+	}
 }
 
 }
