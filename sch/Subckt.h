@@ -48,6 +48,9 @@ struct Mos {
 	int right(bool flip = false) const;
 };
 
+bool operator==(const Mos &m0, const Mos &m1);
+bool operator!=(const Mos &m0, const Mos &m1);
+
 // This structure represents a single variable/net.
 struct Net {
 	Net();
@@ -79,6 +82,12 @@ struct Instance {
 	vector<int> ports;
 };
 
+struct Mapping {
+	int cell;
+	vector<int> cellToThis; // nets
+	vector<int> devices; // devs in this
+};
+
 struct Subckt {
 	Subckt();
 	~Subckt();
@@ -99,7 +108,7 @@ struct Subckt {
 	int pushNet(string name, bool isIO=false);
 	int pushMos(int model, int type, int drain, int gate, int source, int base=-1, vec2i size=vec2i(1.0,1.0));
 
-	void findAndReplace(const Subckt &cell);
+	vector<Mapping> find(const Subckt &cell, int index);
 };
 
 }
