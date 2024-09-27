@@ -9,15 +9,7 @@
 
 namespace sch {
 
-Placement::Placement() {
-	this->base = nullptr;
-	b = 0;
-	l = 0;
-	w = 0;
-}
-
-Placement::Placement(const Subckt *base, int b, int l, int w, int g, std::default_random_engine &rand) {
-	this->base = base;
+Placement::Placement(const Subckt &ckt, int b, int l, int w, int g, std::default_random_engine &rand) : ckt(ckt) {
 	this->b = b;
 	this->l = l;
 	this->w = w;
@@ -25,8 +17,8 @@ Placement::Placement(const Subckt *base, int b, int l, int w, int g, std::defaul
 
 	// fill stacks with devices that have random orientiations
 	static std::bernoulli_distribution distribution(0.5);
-	for (int i = 0; i < (int)base->mos.size(); i++) {
-		stack[base->mos[i].type].push_back(Device{i, distribution(rand)});
+	for (int i = 0; i < (int)ckt.mos.size(); i++) {
+		stack[ckt.mos[i].type].push_back(Device{i, distribution(rand)});
 	}
 	// cache stack size differences
 	this->d[0] = max(0, (int)stack[0].size()-(int)stack[1].size());
@@ -36,8 +28,8 @@ Placement::Placement(const Subckt *base, int b, int l, int w, int g, std::defaul
 	array<int, 2> D;
 	for (int type = 0; type < 2; type++) {
 		D[type] = -2;
-		for (int i = 0; i < (int)base->nets.size(); i++) {
-			D[type] += (base->nets[i].ports(type)&1);
+		for (int i = 0; i < (int)ckt.nets.size(); i++) {
+			D[type] += (ckt.nets[i].ports(type)&1);
 		}
 		D[type] >>= 1;
 	}
@@ -54,6 +46,17 @@ Placement::Placement(const Subckt *base, int b, int l, int w, int g, std::defaul
 }
 
 Placement::~Placement() {
+}
+
+Placement &Placement::operator=(const Placement &p) {
+	this->b = p.b;
+	this->l = p.l;
+	this->w = p.w;
+	this->g = p.g;
+	this->Wmin = p.Wmin;
+	this->d = p.d;
+	this->stack = p.stack;
+	return *this;
 }
 
 void Placement::move(vec4i choice) {
@@ -78,15 +81,15 @@ int Placement::score() {
 	// compute intermediate values
 	// brk[] counts the number of diffusion breaks in this placement for each stack
 	// ext[] finds the first and last index of each net
-	vector<vec2i> ext(base->nets.size(), vec2i(((int)stack[0].size()+1)*2, -1));
+	vector<vec2i> ext(ckt.nets.size(), vec2i(((int)stack[0].size()+1)*2, -1));
 	for (int type = 0; type < 2; type++) {
 		for (auto c = stack[type].begin(); c != stack[type].end(); c++) {
-			brk[type] += (c+1 != stack[type].end() and c->device >= 0 and (c+1)->device >= 0 and base->mos[c->device].right(c->flip) != base->mos[(c+1)->device].left((c+1)->flip));
+			brk[type] += (c+1 != stack[type].end() and c->device >= 0 and (c+1)->device >= 0 and ckt.mos[c->device].right(c->flip) != ckt.mos[(c+1)->device].left((c+1)->flip));
 
 			if (c->device >= 0) {
-				int gate = base->mos[c->device].gate;
-				int source = base->mos[c->device].source;
-				int drain = base->mos[c->device].drain;
+				int gate = ckt.mos[c->device].gate;
+				int source = ckt.mos[c->device].source;
+				int drain = ckt.mos[c->device].drain;
 				int off = (c-stack[type].begin())<<1;
 
 				ext[gate][0] = min(ext[gate][0], off+1);
@@ -108,8 +111,8 @@ int Placement::score() {
 
 	// compute G, keeping track of diffusion breaks
 	for (auto i = stack[0].begin(), j = stack[1].begin(); i != stack[0].end() and j != stack[1].end(); i++, j++) {
-		bool ibrk = (i != stack[0].begin() and (i-1)->device >= 0 and i->device >= 0 and base->mos[(i-1)->device].right((i-1)->flip) != base->mos[i->device].left(i->flip));
-		bool jbrk = (j != stack[1].begin() and (j-1)->device >= 0 and j->device >= 0 and base->mos[(j-1)->device].right((j-1)->flip) != base->mos[j->device].left(j->flip));
+		bool ibrk = (i != stack[0].begin() and (i-1)->device >= 0 and i->device >= 0 and ckt.mos[(i-1)->device].right((i-1)->flip) != ckt.mos[i->device].left(i->flip));
+		bool jbrk = (j != stack[1].begin() and (j-1)->device >= 0 and j->device >= 0 and ckt.mos[(j-1)->device].right((j-1)->flip) != ckt.mos[j->device].left(j->flip));
 
 		if (ibrk and not jbrk) {
 			j++;
@@ -121,26 +124,26 @@ int Placement::score() {
 			break;
 		}
 
-		G += (i->device >= 0 and j->device >= 0 and base->mos[i->device].gate != base->mos[j->device].gate);
+		G += (i->device >= 0 and j->device >= 0 and ckt.mos[i->device].gate != ckt.mos[j->device].gate);
 	}
 
 	return max(0, b*B*B + l*L + w*W*W + g*G);
 }
 
-Placement Placement::solve(Subckt *base, int starts, int b, int l, int w, int g, float step, float rate) {
-	if (base->mos.size() == 0) {
-		return Placement();
-	}
+Placement Placement::solve(const Subckt &ckt, int starts, int b, int l, int w, int g, float step, float rate) {
 	std::default_random_engine rand(0/*std::random_device{}()*/);
+	if (ckt.mos.size() == 0) {
+		return Placement(ckt, b, l, w, g, rand);
+	}
 
 	// TODO(edward.bingham) It might speed things up to scale the number of
 	// starts based upon the cell complexity. Though, given that it would really
 	// only reduce computation time for smaller cells and the larger cells
 	// account for the majority of the computation time, I'm not sure that this
 	// would really do that much to help.
-	//starts = 50*(int)base->mos.size();
+	//starts = 50*(int)ckt.mos.size();
 
-	Placement best(base, b, l, w, g, rand);
+	Placement best(ckt, b, l, w, g, rand);
 	int bestScore = best.score();
 
 	// Precache the list of all possible moves. These will get reshuffled each time.
@@ -160,7 +163,7 @@ Placement Placement::solve(Subckt *base, int starts, int b, int l, int w, int g,
 		fflush(stdout);
 
 		// Run simulated annealing to find closest minimum
-		Placement curr(base, b, l, w, g, rand);
+		Placement curr(ckt, b, l, w, g, rand);
 		int score = 0;
 		int newScore = curr.score();
 		float currStep = step;

@@ -21,15 +21,22 @@ Netlist::Netlist(const Tech &tech) {
 Netlist::~Netlist() {
 }
 
+void Netlist::mapCells() {
+}
+
+void Netlist::generateCells() {
+	
+}
+
 void Netlist::build(set<string> cellNames) {
 	for (auto ckt = subckts.begin(); ckt != subckts.end(); ckt++) {
 		if (cellNames.empty() or cellNames.find(ckt->name) != cellNames.end()) {
 			printf("\rPlacing %s\n", ckt->name.c_str());
-			Placement::solve(&(*ckt));
+			Placement pl = Placement::solve(*ckt);
 			printf("\rRouting %s\n", ckt->name.c_str());
-			Router router(*tech, &(*ckt));
-			router.solve(*tech);
-			//router.print();
+			Router rt(*tech, pl);
+			rt.solve(*tech);
+			//rt.print();
 			printf("\rDone %s\n", ckt->name.c_str());
 		}
 	}

@@ -82,6 +82,7 @@ bool Net::isPairedDriver() const {
 }
 
 Subckt::Subckt() {
+	isCell = false;
 }
 
 Subckt::~Subckt() {

@@ -394,7 +394,7 @@ struct RouteGroupConstraint {
 
 struct Router {
 	Router(const Tech &tech);
-	Router(const Tech &tech, const Subckt *base);
+	Router(const Tech &tech, const Placement &place);
 	~Router();
 
 	const Subckt *base;

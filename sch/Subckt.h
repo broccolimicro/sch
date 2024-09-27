@@ -74,17 +74,24 @@ struct Net {
 	bool isPairedDriver() const;
 };
 
+struct Instance {
+	int subckt;
+	vector<int> ports;
+};
+
 struct Subckt {
 	Subckt();
 	~Subckt();
 
 	// Name of this cell
 	string name;
+	bool isCell;
 
 	// These are loaded directly from the spice file It's the list of nets and
 	// their connections to transistors.
 	vector<Net> nets;
 	vector<Mos> mos;
+	vector<Instance> inst;
 
 	int findNet(string name, bool create=false);
 	string netName(int net) const;

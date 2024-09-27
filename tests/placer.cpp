@@ -18,7 +18,7 @@ TEST(placer, solve)
 	ckt.pushMos(-1, Model::PMOS, b, a, vdd);
 
 	// Run the placer
-	Placement result = Placement::solve(&ckt);
+	Placement result = Placement::solve(ckt);
 }
 
 

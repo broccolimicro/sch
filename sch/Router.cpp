@@ -379,14 +379,15 @@ Router::Router(const Tech &tech) : tech(tech) {
 	}
 }
 
-Router::Router(const Tech &tech, const Subckt *base) : tech(tech) {
-	this->base = base;
+Router::Router(const Tech &tech, const Placement &place) : tech(tech) {
+	this->base = &place.ckt;
 	this->cycleCount = 0;
 	this->cellHeight = 0;
 	this->cost = 0;
 	for (int type = 0; type < (int)this->stack.size(); type++) {
 		this->stack[type].type = type;
 	}
+	this->load(place);
 }
 
 Router::~Router() {
@@ -451,7 +452,7 @@ int Router::pinHeight(Index p) const {
 }
 
 void Router::load(const Placement &place) {
-	base = place.base;
+	base = &place.ckt;
 	// Save the resulting placement to the Subckt
 	for (int type = 0; type < 2; type++) {
 		stack[type].type = type;
