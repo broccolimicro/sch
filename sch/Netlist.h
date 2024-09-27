@@ -20,8 +20,9 @@ struct Netlist {
 	
 	vector<Subckt> subckts; 
 
+	bool mapCells(Subckt &ckt);
+	void generateCells(Subckt &ckt);
 	void mapCells();
-	void generateCells();
 	void build(set<string> cellNames = set<string>());
 };
 

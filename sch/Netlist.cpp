@@ -21,16 +21,36 @@ Netlist::Netlist(const Tech &tech) {
 Netlist::~Netlist() {
 }
 
-void Netlist::mapCells() {
+bool Netlist::mapCells(Subckt &ckt) {
+	for (auto cell = subckts.begin(); cell != subckts.end(); cell++) {
+		if (cell->isCell) {
+			ckt.findAndReplace(*cell);
+		}
+	}
+	return ckt.mos.empty();
 }
 
-void Netlist::generateCells() {
+void Netlist::generateCells(Subckt &ckt) {
 	
+}
+
+void Netlist::mapCells() {
+	for (auto ckt = subckts.begin(); ckt != subckts.end(); ckt++) {
+		if (not ckt->isCell or ckt->mos.empty()) {
+			continue;
+		}
+
+		if (mapCells(*ckt)) {
+			continue;
+		}
+
+		generateCells(*ckt);
+	}
 }
 
 void Netlist::build(set<string> cellNames) {
 	for (auto ckt = subckts.begin(); ckt != subckts.end(); ckt++) {
-		if (cellNames.empty() or cellNames.find(ckt->name) != cellNames.end()) {
+		if (ckt->isCell and (cellNames.empty() or cellNames.find(ckt->name) != cellNames.end())) {
 			printf("\rPlacing %s\n", ckt->name.c_str());
 			Placement pl = Placement::solve(*ckt);
 			printf("\rRouting %s\n", ckt->name.c_str());

@@ -98,6 +98,8 @@ struct Subckt {
 
 	int pushNet(string name, bool isIO=false);
 	int pushMos(int model, int type, int drain, int gate, int source, int base=-1, vec2i size=vec2i(1.0,1.0));
+
+	void findAndReplace(const Subckt &cell);
 };
 
 }

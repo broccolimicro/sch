@@ -126,4 +126,8 @@ int Subckt::pushMos(int model, int type, int drain, int gate, int source, int ba
 	return result;
 }
 
+void Subckt::findAndReplace(const Subckt &cell) {
+	
+}
+
 }
