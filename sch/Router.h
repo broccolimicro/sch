@@ -422,8 +422,6 @@ struct Router {
 
 	int pinWidth(Index i) const;
 	int pinHeight(Index i) const;
-
-	void load(const Placement &place);
 	
 	// Finish building the constraint graph, filling out vcon and hcon.
 	void delRoute(int route);
@@ -461,6 +459,7 @@ struct Router {
 	int computeCost();
 
 	// Solve the constraint and circuit graph, filling out layers and constraints
+	void load(const Placement &place);
 	int solve(const Tech &tech);
 	void draw(Layout &dst);
 

@@ -449,19 +449,6 @@ int Router::pinHeight(Index p) const {
 	return result;
 }
 
-void Router::load(const Placement &place) {
-	// Save the resulting placement to the Subckt
-	for (int type = 0; type < 2; type++) {
-		stack[type].type = type;
-		for (auto pin = place.stack[type].begin(); pin != place.stack[type].end(); pin++) {
-			stack[type].push(tech, ckt, pin->device, pin->flip);
-		}
-		if (place.stack[type].back().device >= 0) {
-			stack[type].push(tech, ckt, -1, false);
-		}
-	}
-}
-
 void Router::delRoute(int route) {
 	for (int i = (int)routeConstraints.size()-1; i >= 0; i--) {
 		if (routeConstraints[i].wires[0] == route or routeConstraints[i].wires[1] == route) {
@@ -2273,6 +2260,19 @@ int Router::computeCost() {
 	//int cellHeightOverhead = 10;
 	cost = cellHeight;//(cellHeightOverhead+right-left)*cellHeight*(int)(1+aStar.size());
 	return cost;
+}
+
+void Router::load(const Placement &place) {
+	// Save the resulting placement to the Subckt
+	for (int type = 0; type < 2; type++) {
+		stack[type].type = type;
+		for (auto pin = place.stack[type].begin(); pin != place.stack[type].end(); pin++) {
+			stack[type].push(tech, ckt, pin->device, pin->flip);
+		}
+		if (place.stack[type].back().device >= 0) {
+			stack[type].push(tech, ckt, -1, false);
+		}
+	}
 }
 
 int Router::solve(const Tech &tech) {

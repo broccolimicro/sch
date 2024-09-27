@@ -67,8 +67,8 @@ build/$(SRCDIR)/%.o: $(SRCDIR)/%.cpp
 	@$(CXX) $(CXXFLAGS) $(LDFLAGS) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ -c $<
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -c -o $@ $<
 
-$(TEST_TARGET): $(TEST_OBJECTS)
-	$(CXX) $(CXXFLAGS) $(GTEST_L) $^ -pthread -l$(NAME) -lgtest -o $(TEST_TARGET)
+$(TEST_TARGET): $(TEST_OBJECTS) $(TARGET)
+	$(CXX) $(CXXFLAGS) $(GTEST_L) $(TEST_OBJECTS) -pthread -l$(NAME) -lgtest -o $(TEST_TARGET)
 
 build/$(TESTDIR)/%.o: $(TESTDIR)/%.cpp
 	@mkdir -p $(dir $@)
