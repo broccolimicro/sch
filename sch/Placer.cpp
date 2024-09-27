@@ -37,7 +37,7 @@ Placement::Placement(const Subckt *base, int b, int l, int w, int g, std::defaul
 	for (int type = 0; type < 2; type++) {
 		D[type] = -2;
 		for (int i = 0; i < (int)base->nets.size(); i++) {
-			D[type] += (base->nets[i].ports[type]&1);
+			D[type] += (base->nets[i].ports(type)&1);
 		}
 		D[type] >>= 1;
 	}

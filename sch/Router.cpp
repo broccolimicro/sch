@@ -284,12 +284,9 @@ void Stack::push(const Tech &tech, const Subckt *ckt, int device, bool flip) {
 		pins.push_back(Pin(tech, pins.back().rightNet));
 	}
 
-	if (fromNet >= 0) {
-		bool hasContact = (ckt->nets[fromNet].ports[type] > 2 or ckt->nets[fromNet].ports[1-type] > 0 or ckt->nets[fromNet].gates[0] > 0 or ckt->nets[fromNet].gates[1] > 0);
-		if (fromNet >= 0 and (not link or pins.empty() or hasContact or ckt->nets[fromNet].isIO)) {
-			// Add a contact for the first net or between two transistors.
-			pins.push_back(Pin(tech, fromNet));
-		}
+	if (fromNet >= 0 and (not link or pins.empty() or ckt->nets[fromNet].hasContact(type))) {
+		// Add a contact for the first net or between two transistors.
+		pins.push_back(Pin(tech, fromNet));
 	}
 
 	if (device >= 0) {
@@ -1528,7 +1525,7 @@ int Router::alignPins(int maxDist) {
 	vector<Alignment> align;
 	if (routes.empty()) {
 		for (int i = 0; i < (int)base->nets.size(); i++) {
-			if (base->nets[i].gates[0] == 1 and base->nets[i].gates[1] == 1) {
+			if (base->nets[i].isPairedGate()) {
 				array<int, 2> ports;
 				for (int type = 0; type < 2; type++) {
 					for (ports[type] = 0; ports[type] < (int)this->stack[type].pins.size() and (this->stack[type].pins[ports[type]].isContact() or this->stack[type].pins[ports[type]].outNet != i); ports[type]++);
@@ -1538,7 +1535,8 @@ int Router::alignPins(int maxDist) {
 					align.push_back(Alignment(this, ports[Model::PMOS], ports[Model::NMOS]));
 				}
 			}
-			if (base->nets[i].ports[0] == 1 and base->nets[i].ports[1] == 1) {
+
+			if (base->nets[i].isPairedDriver()) {
 				array<int, 2> ports;
 				for (int type = 0; type < 2; type++) {
 					for (ports[type] = 0; ports[type] < (int)this->stack[type].pins.size() and (this->stack[type].pins[ports[type]].isGate() or this->stack[type].pins[ports[type]].outNet != i); ports[type]++);

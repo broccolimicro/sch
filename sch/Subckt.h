@@ -56,14 +56,21 @@ struct Net {
 	string name;
 
 	// Number of [NMOS, PMOS] gates that this net is connected to
-	array<int, 2> gates;
+	array<vector<int>, 2> gateOf;
 
 	// Number of [NMOS, PMOS] sources or drains that this net is connected to
-	array<int, 2> ports;
+	array<vector<int>, 2> sourceOf;
+	array<vector<int>, 2> drainOf;
 
 	// Is this net an input or output to the cell? If it is, then we need to draw
 	// an IO pin and hook it up to the rest of the net.
 	bool isIO;
+
+	int ports(int type) const;
+
+	bool hasContact(int type) const;
+	bool isPairedGate() const;
+	bool isPairedDriver() const;
 };
 
 struct Subckt {
