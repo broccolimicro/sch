@@ -45,6 +45,8 @@ bool Netlist::mapCells(Subckt &ckt) {
 	// problem and we are solving it using the Bron–Kerbosch algorithm.
 	int covered = 0;
 	vector<int> result;
+
+	// TODO(edward.bingham) maybe want to cache the results of the overlapsWith computation
 	
 	struct BronKerboschFrame {
 		vector<int> R, P, X;
@@ -108,10 +110,6 @@ bool Netlist::mapCells(Subckt &ckt) {
 	return ckt.mos.empty();
 }
 
-void Netlist::generateCells(Subckt &ckt) {
-	
-}
-
 void Netlist::mapCells() {
 	// TODO(edward.bingham) create a Trie using the device graphs of the cells.
 	// Identify common sub-patterns to inform the structure of the trie. Then
@@ -119,6 +117,16 @@ void Netlist::mapCells() {
 	// to dramatically accelerate cell mapping for excessively large cell
 	// databases. However, this will take a while to generate, so if it doesn't
 	// already exist then we should fall back to the base cell mapping algorthms.
+
+	// TODO(edward.bingham) create a method to canonicalize a transistor network
+	// based on structure or compute the eigen values of the adjacency matrix.
+	// Use either of those to create a hash of a given cell that is invariant to
+	// net ids. Then instead of mapping cells, just generate the cells directly
+	// from the subckt and then it up in the cell library to see if we already
+	// have that layout. This assumes that the cells in the cell library use the
+	// same structured approach to determine how to pick what goes into a cell as
+	// our cell-generation engine. We could identify cells that don't follow this
+	// structured approach and then fall back to one of our other methods.
 
 	for (auto ckt = subckts.begin(); ckt != subckts.end(); ckt++) {
 		if (not ckt->isCell or ckt->mos.empty()) {
@@ -129,7 +137,8 @@ void Netlist::mapCells() {
 			continue;
 		}
 
-		generateCells(*ckt);
+		auto cells = ckt->generateCells((int)subckts.size());
+		subckts.insert(subckts.end(), cells.begin(), cells.end());
 	}
 }
 

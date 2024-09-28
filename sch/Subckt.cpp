@@ -2,6 +2,7 @@
 #include "Draw.h"
 #include <limits>
 #include <algorithm>
+#include <string>
 
 using namespace std;
 
@@ -106,13 +107,91 @@ bool Net::dangling(bool remIO) const {
 		and portOf.empty();
 }
 
-Mapping::Mapping(const Subckt &cell, int index) {
+bool Net::isAnonymous() const {
+	if (name.empty()) {
+		return true;
+	}
+
+	if (name[0] != '#' and name[0] != '_') {
+		return false;
+	}
+
+	for (int i = 1; i < (int)name.size(); i++) {
+		if (name[i] < '0' or name[i] > '9') {
+			return false;
+		}
+	}
+	return true;
+}
+
+Mapping::Mapping() {
+	this->index = -1;
+	this->cell = nullptr;
+}
+
+Mapping::Mapping(const Subckt *cell, int index) {
 	this->index = index;
-	this->cell = &cell;
-	this->cellToThis.resize(cell.nets.size(), -1);
+	this->cell = cell;
+	this->cellToThis.resize(cell->nets.size(), -1);
 }
 
 Mapping::~Mapping() {
+}
+
+Subckt Mapping::generate(const Subckt &main) {
+	Subckt cell;	
+	cell.name = "cell_" + to_string(index);
+	cell.isCell = true;
+
+	for (auto i = cellToThis.begin(); i != cellToThis.end(); i++) {
+		auto n = main.nets.begin()+*i;
+		int net = cell.pushNet(n->name, n->isIO);
+
+		bool isIO = n->isIO or not n->portOf.empty();
+		for (int type = 0; type < 2 and not isIO; type++) {
+			for (auto j = n->gateOf[type].begin(); j != n->gateOf[type].end() and not isIO; j++) {
+				auto pos = lower_bound(devices.begin(), devices.end(), *j);
+				isIO = (pos != devices.end() and *pos == *j);
+			}
+			for (auto j = n->sourceOf[type].begin(); j != n->sourceOf[type].end() and not isIO; j++) {
+				auto pos = lower_bound(devices.begin(), devices.end(), *j);
+				isIO = (pos != devices.end() and *pos == *j);
+			}
+			for (auto j = n->drainOf[type].begin(); j != n->drainOf[type].end() and not isIO; j++) {
+				auto pos = lower_bound(devices.begin(), devices.end(), *j);
+				isIO = (pos != devices.end() and *pos == *j);
+			}
+		}
+
+		if (isIO) {
+			cell.nets.back().isIO = true;
+			cell.ports.push_back(net);
+		}
+	}
+
+	for (auto i = devices.begin(); i != devices.end(); i++) {
+		auto d = main.mos.begin()+*i;
+		int gate = -1, source = -1, drain = -1, base = -1;
+		for (int j = 0; j < (int)cellToThis.size(); j++) {
+			if (d->gate == cellToThis[j]) {
+				gate = j;
+			}
+			if (d->source == cellToThis[j]) {
+				source = j;
+			}
+			if (d->drain == cellToThis[j]) {
+				drain = j;
+			}
+			if (d->base == cellToThis[j]) {
+				base = j;
+			}
+		}
+
+		cell.pushMos(d->model, d->type, drain, gate, source, base, d->size);
+		cell.mos.back().params = d->params;
+	}
+
+	return cell;
 }
 
 bool Mapping::apply(const Mapping &m) {
@@ -270,7 +349,7 @@ void Subckt::popMos(int index) {
 
 vector<Mapping> Subckt::find(const Subckt &cell, int index) {
 	struct frame {
-		frame(const Subckt &cell, int index) : m(cell, index) {
+		frame(const Subckt &cell, int index) : m(&cell, index) {
 			todo.reserve(cell.mos.size());
 			for (int i = 0; i < (int)cell.mos.size(); i++) {
 				todo.push_back(i);
@@ -404,6 +483,70 @@ void Subckt::cleanDangling(bool remIO) {
 			popNet(i);
 		}
 	}
+}
+
+Mapping Subckt::segment(int net) {
+	// TODO(edward.bingham) Generate a cell based on the following constraints:
+	// 1. Follow the graph from drain to source starting from "net"
+	// 2. Stop whenever we hit a power rail
+	// 3. Stop whenever we hit a "named net" at the source. Anonymous nets
+	//    follow the pattern "_0" or "#0" where '0' is any integer value.
+	// 4. Stop if this net is not the drain of anything.
+	// 5. Stop whenever we hit a net at the source that is not in the same
+	//    isochronic region as the gate or a net at the gate that is not in the
+	//    same isochronic region as the drain.
+
+	Mapping result;
+
+	vector<int> stack(1, net);
+	while (not stack.empty()) {
+		int curr = stack.back();
+		stack.pop_back();
+
+		for (int type = 0; type < 2; type++) {
+			for (auto i = nets[curr].drainOf[type].begin(); i != nets[curr].drainOf[type].end(); i++) {
+				int source = mos[*i].source;
+				if (not nets[source].isAnonymous()) {
+					stack.push_back(source);
+				}
+			}
+		}
+	}
+
+	return result;
+}
+
+vector<Subckt> Subckt::generateCells(int start) {
+	vector<Mapping> segments;
+	for (int i = 0; i < (int)nets.size(); i++) {
+		if (not nets[i].isAnonymous()) {
+			segments.push_back(segment(i));
+		}
+	}
+	
+	// TODO(edward.bingham) Merge cells based on the following constraints:
+	// 1. Identify all cross-coupled (the output of each cell is an input
+	//    to the other) or overlapping cells.
+	// 2. merge all disjoint maximal cliques while the size of the cell is less
+	//    than some threshold. Make the threshold configurable.
+	// 3. If there are still cells with room within the threshold and they are
+	//    given by pass transistor logic at their source, then selectively merge
+	//    the drivers into the cell as long as they are within the same isochronic
+	//    region.
+
+	vector<Subckt> cells;
+	cells.reserve(segments.size());
+	for (int i = 0; i < (int)segments.size(); i++) {
+		segments[i].index = start + (int)cells.size();
+		cells.push_back(segments[i].generate(*this));
+		segments[i].cell = &cells.back();
+		apply(segments[i]);
+		for (int j = i+1; j < (int)segments.size(); j++) {
+			segments[j].apply(segments[i]);
+		}
+	}
+
+	return cells;
 }
 
 }

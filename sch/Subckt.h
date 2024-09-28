@@ -80,6 +80,7 @@ struct Net {
 	bool isPairedDriver() const;
 
 	bool dangling(bool remIO=false) const;
+	bool isAnonymous() const;
 };
 
 struct Instance {
@@ -88,13 +89,16 @@ struct Instance {
 };
 
 struct Mapping {
-	Mapping(const Subckt &cell, int index);
+	Mapping();
+	Mapping(const Subckt *cell, int index);
 	~Mapping();
 
 	int index;
 	const Subckt *cell;
 	vector<int> cellToThis; // nets
 	vector<int> devices; // devs in this
+
+	Subckt generate(const Subckt &main);
 
 	bool apply(const Mapping &m);
 	Instance instance() const;
@@ -129,6 +133,9 @@ struct Subckt {
 	vector<Mapping> find(const Subckt &cell, int index);
 	void apply(const Mapping &m);
 	void cleanDangling(bool remIO=false);
+
+	Mapping segment(int net);
+	vector<Subckt> generateCells(int start);
 };
 
 }
