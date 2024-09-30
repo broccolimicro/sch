@@ -2269,7 +2269,7 @@ void Router::load(const Placement &place) {
 		for (auto pin = place.stack[type].begin(); pin != place.stack[type].end(); pin++) {
 			stack[type].push(tech, ckt, pin->device, pin->flip);
 		}
-		if (place.stack[type].back().device >= 0) {
+		if (not place.stack[type].empty() and place.stack[type].back().device >= 0) {
 			stack[type].push(tech, ckt, -1, false);
 		}
 	}

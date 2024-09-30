@@ -78,6 +78,8 @@ struct Net {
 	bool hasContact(int type) const;
 	bool isPairedGate() const;
 	bool isPairedDriver() const;
+	bool isOutput() const;
+	bool isInput() const;
 
 	bool dangling(bool remIO=false) const;
 	bool isAnonymous() const;
@@ -101,9 +103,15 @@ struct Mapping {
 	Subckt generate(const Subckt &main);
 
 	bool apply(const Mapping &m);
+	void merge(const Mapping &m);
 	Instance instance() const;
 
 	bool overlapsWith(const Mapping &m) const;
+	bool coupledWith(const Subckt &main, const Mapping &m) const;
+
+	int pushNet(int net);
+
+	void print() const;
 };
 
 struct Subckt {
@@ -136,6 +144,10 @@ struct Subckt {
 
 	Mapping segment(int net);
 	vector<Subckt> generateCells(int start);
+
+	bool isomorphicTo(const Subckt &ckt, Mapping *m = nullptr) const;
+
+	void print() const;
 };
 
 }

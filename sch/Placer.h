@@ -39,6 +39,7 @@ struct Device {
 // [a b c][c d e][e f g][g h i]
 struct Placement {
 	Placement(const Subckt &ckt, int b, int l, int w, int g, std::default_random_engine &rand);
+	Placement(const Placement &p);
 	~Placement();
 
 	// These are needed to be able to compute the cost of the ordering
@@ -92,11 +93,11 @@ struct Placement {
 	// index into the placement.
 	array<vector<Device>, 2> stack;
 
-	Placement &operator=(const Placement &p);
-
 	void move(vec4i choice);	
 	int score();
 	static Placement solve(const Subckt &ckt, int starts=100, int b=12, int l=1, int w=1, int g=10, float step=2.0, float rate=0.02);
+
+	Placement &operator=(const Placement &p);
 };
 
 }

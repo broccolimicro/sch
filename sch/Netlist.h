@@ -3,6 +3,7 @@
 #include "Subckt.h"
 
 #include <phy/Tech.h>
+#include <phy/Library.h>
 #include <set>
 
 using namespace std;
@@ -21,9 +22,8 @@ struct Netlist {
 	vector<Subckt> subckts; 
 
 	bool mapCells(Subckt &ckt);
-	void generateCells(Subckt &ckt);
 	void mapCells();
-	void build(set<string> cellNames = set<string>());
+	void build(phy::Library &lib, set<string> cellNames = set<string>());
 };
 
 }

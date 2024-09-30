@@ -3,6 +3,7 @@
 #include <limits>
 #include <algorithm>
 #include <string>
+#include <set>
 
 using namespace std;
 
@@ -96,6 +97,14 @@ bool Net::isPairedDriver() const {
 	return ports(0) == 1 and ports(1) == 1;
 }
 
+bool Net::isOutput() const {
+	return not drainOf[0].empty() or not drainOf[1].empty();
+}
+
+bool Net::isInput() const {
+	return (gateOf[0].size()+gateOf[1].size()) > (sourceOf[0].size()+sourceOf[1].size());
+}
+
 bool Net::dangling(bool remIO) const {
 	return (remIO or not isIO)
 		and gateOf[0].empty()
@@ -145,7 +154,6 @@ Subckt Mapping::generate(const Subckt &main) {
 
 	for (auto i = cellToThis.begin(); i != cellToThis.end(); i++) {
 		auto n = main.nets.begin()+*i;
-		int net = cell.pushNet(n->name, n->isIO);
 
 		bool isIO = n->isIO or not n->portOf.empty();
 		for (int type = 0; type < 2 and not isIO; type++) {
@@ -163,10 +171,7 @@ Subckt Mapping::generate(const Subckt &main) {
 			}
 		}
 
-		if (isIO) {
-			cell.nets.back().isIO = true;
-			cell.ports.push_back(net);
-		}
+		cell.pushNet(n->name, isIO);
 	}
 
 	for (auto i = devices.begin(); i != devices.end(); i++) {
@@ -187,14 +192,32 @@ Subckt Mapping::generate(const Subckt &main) {
 			}
 		}
 
+		if (gate < 0 or source < 0 or drain < 0 or base < 0) {
+			printf("internal %s:%d: cell net map missing nets\n", __FILE__, __LINE__);
+		}
+
 		cell.pushMos(d->model, d->type, drain, gate, source, base, d->size);
 		cell.mos.back().params = d->params;
+	}
+
+	for (auto i = cell.nets.begin(); i != cell.nets.end(); i++) {
+		if (i->isIO and i->isOutput()) {
+			i->name = "o" + to_string(i-cell.nets.begin());
+		} else if (i->isIO and i->isInput()) {
+			i->name = "i" + to_string(i-cell.nets.begin());
+		} else if (not i->isIO) {
+			i->name = "_" + to_string(i-cell.nets.begin());
+		}
 	}
 
 	return cell;
 }
 
 bool Mapping::apply(const Mapping &m) {
+	printf("applying mapping to this\n");
+	m.print();
+	print();
+
 	bool success = true;
 	int j = (int)m.devices.size()-1;
 	for (int i = (int)devices.size()-1; i >= 0; i--) {
@@ -210,7 +233,26 @@ bool Mapping::apply(const Mapping &m) {
 		}
 	}
 
+	printf("done %d\n", success);
+	print();
+
 	return success;
+}
+
+void Mapping::merge(const Mapping &m) {
+	for (auto i = m.cellToThis.begin(); i != m.cellToThis.end(); i++) {
+		bool found = false;
+		for (auto j = cellToThis.begin(); j != cellToThis.end() and not found; j++) {
+			found = found or (*i == *j);
+		}
+		if (not found) {
+			cellToThis.push_back(*i);
+		}
+	}
+
+	devices.insert(devices.end(), m.devices.begin(), m.devices.end());
+	sort(devices.begin(), devices.end());
+	devices.erase(unique(devices.begin(), devices.end()), devices.end());
 }
 
 Instance Mapping::instance() const {
@@ -225,15 +267,67 @@ Instance Mapping::instance() const {
 bool Mapping::overlapsWith(const Mapping &m) const {
 	int i = 0, j = 0;
 	while (i < (int)devices.size() and j < (int)m.devices.size()) {
-		if (devices[i] == devices[j]) {
+		if (devices[i] == m.devices[j]) {
 			return true;
-		} else if (devices[i] < devices[j]) {
+		} else if (devices[i] < m.devices[j]) {
 			i++;
 		} else {
 			j++;
 		}
 	}
 	return false;
+}
+
+bool Mapping::coupledWith(const Subckt &main, const Mapping &m) const {
+	std::set<int> fromA, toA, fromB, toB;
+	for (auto d = devices.begin(); d != devices.end(); d++) {
+		fromA.insert(main.mos[*d].drain);
+		toA.insert(main.mos[*d].gate);
+		toA.insert(main.mos[*d].source);
+		toA.insert(main.mos[*d].base);
+	}
+	for (auto d = m.devices.begin(); d != m.devices.end(); d++) {
+		fromB.insert(main.mos[*d].drain);
+		toB.insert(main.mos[*d].gate);
+		toB.insert(main.mos[*d].source);
+		toB.insert(main.mos[*d].base);
+	}
+	bool hasAtoB = false, hasBtoA = false;
+	for (auto a = fromA.begin(); a != fromA.end() and not hasAtoB; a++) {
+		hasAtoB = (toB.find(*a) != toB.end());
+	}
+	for (auto b = fromB.begin(); b != fromB.end() and not hasBtoA; b++) {
+		hasBtoA = (toA.find(*b) != toA.end());
+	}
+	return (hasAtoB and hasBtoA);
+}
+
+int Mapping::pushNet(int net) {
+	for (int i = 0; i < (int)cellToThis.size(); i++) {
+		if (cellToThis[i] == net) {
+			return i;
+		}
+	}
+
+	int result = cellToThis.size();
+	cellToThis.push_back(net);
+	return result;
+}
+
+void Mapping::print() const {
+	printf("mapping %d\n", index);
+	printf("\tcell -> this\n");
+	for (int i = 0; i < (int)cellToThis.size(); i++) {
+		printf("\t%d -> %d\n", i, cellToThis[i]);
+	}
+	printf("{");
+	for (int i = 0; i < (int)devices.size(); i++) {
+		if (i != 0) {
+			printf(", ");
+		}
+		printf("%d", devices[i]);
+	}
+	printf("}\n\n");
 }
 
 Subckt::Subckt() {
@@ -266,6 +360,9 @@ string Subckt::netName(int net) const {
 int Subckt::pushNet(string name, bool isIO) {
 	int result = (int)nets.size();
 	nets.push_back(Net(name, isIO));
+	if (isIO) {
+		ports.push_back(result);
+	}
 	return result;
 }
 
@@ -309,9 +406,11 @@ void Subckt::popNet(int index) {
 
 int Subckt::pushMos(int model, int type, int drain, int gate, int source, int base, vec2i size) {
 	int result = (int)mos.size();
+	printf("adding to net d=%d g=%d s=%d nets.size=%d device=%d\n", drain, gate, source, (int)nets.size(), result);
 	nets[drain].drainOf[type].push_back(result);
 	nets[source].sourceOf[type].push_back(result);
 	nets[gate].gateOf[type].push_back(result);
+	
 
 	mos.push_back(Mos(model, type, drain, gate, source, base, size));
 	return result;
@@ -496,6 +595,7 @@ Mapping Subckt::segment(int net) {
 	//    isochronic region as the gate or a net at the gate that is not in the
 	//    same isochronic region as the drain.
 
+	printf("generating gate for %d\n", net);
 	Mapping result;
 
 	vector<int> stack(1, net);
@@ -503,24 +603,58 @@ Mapping Subckt::segment(int net) {
 		int curr = stack.back();
 		stack.pop_back();
 
+		printf("current net %d\n", curr);
+
+		printf("drainOf = {%d, %d}\n", (int)nets[curr].drainOf[0].size(), (int)nets[curr].drainOf[1].size());
 		for (int type = 0; type < 2; type++) {
 			for (auto i = nets[curr].drainOf[type].begin(); i != nets[curr].drainOf[type].end(); i++) {
+				result.devices.push_back(*i);
+				result.pushNet(mos[*i].drain);
+				result.pushNet(mos[*i].gate);
+				result.pushNet(mos[*i].source);
+				result.pushNet(mos[*i].base);
+				
 				int source = mos[*i].source;
-				if (not nets[source].isAnonymous()) {
+				if (nets[source].isAnonymous()) {
+					printf("anon %d\n", source);
 					stack.push_back(source);
+				} else {
+					printf("not anon %d\n", source);
 				}
 			}
 		}
 	}
 
+	sort(result.devices.begin(), result.devices.end());
 	return result;
 }
 
 vector<Subckt> Subckt::generateCells(int start) {
+	print();
 	vector<Mapping> segments;
 	for (int i = 0; i < (int)nets.size(); i++) {
-		if (not nets[i].isAnonymous()) {
-			segments.push_back(segment(i));
+		if (not nets[i].isAnonymous() and (not nets[i].drainOf[0].empty() or not nets[i].drainOf[1].empty())) {
+			auto seg = segment(i);
+			if (not seg.devices.empty()) {
+				segments.push_back(seg);
+				segments.back().print();
+			} else {
+				printf("found empty segment\n");
+				seg.print();
+			}
+		}
+	}
+
+	// TODO(edward.bingham) only do this merge if the signals crossing the bounds don't switch. How do I figure that out?
+	for (int i = 0; i < (int)segments.size(); i++) {
+		for (int j = (int)segments.size()-1; j > i; j--) {
+			if (segments[j].overlapsWith(segments[i])) {
+				segments[i].merge(segments[j]);
+				segments.erase(segments.begin() + j);
+			} else if (segments[j].coupledWith(*this, segments[i])) {
+				segments[i].merge(segments[j]);
+				segments.erase(segments.begin() + j);
+			}
 		}
 	}
 	
@@ -541,12 +675,85 @@ vector<Subckt> Subckt::generateCells(int start) {
 		cells.push_back(segments[i].generate(*this));
 		segments[i].cell = &cells.back();
 		apply(segments[i]);
-		for (int j = i+1; j < (int)segments.size(); j++) {
-			segments[j].apply(segments[i]);
+		print();
+		for (int j = (int)segments.size()-1; j > i; j--) {
+			// DESIGN(edward.bingham) if two segments overlap, then we just remove
+			// the extra devices from one of the segments. It's only ok to have those
+			// devices in a different cell if the signals connecting them don't
+			// switch (for example, shared weak ground). Otherwise it's an isochronic
+			// fork assumption violation.
+
+			if (not segments[j].apply(segments[i])) {
+				printf("internal %s:%d: overlapping cells found\n", __FILE__, __LINE__);
+			}
+			segments[j].print();
 		}
 	}
 
 	return cells;
+}
+
+bool Subckt::isomorphicTo(const Subckt &ckt, Mapping *m) const {
+	// B.D. McKay: Computing automorphisms and canonical labellings of
+	// graphs. International Conference on Combinatorial Mathematics,
+	// Canberra (1977), Lecture Notes in Mathematics 686, Springer-
+	// Verlag, 223-232.	
+}
+
+
+void Subckt::print() const {
+	printf("nets\n");
+	for (int i = 0; i < (int)nets.size(); i++) {
+		printf("%s(%d)%s gateOf=", nets[i].name.c_str(), i, (nets[i].isIO ? " io" : ""));
+		for (int type = 0; type < 2; type++) {
+			printf("{");
+			for (int j = 0; j < (int)nets[i].gateOf[type].size(); j++) {
+				if (j != 0) {
+					printf(", ");
+				}
+				printf("%d", nets[i].gateOf[type][j]);
+			}
+			printf("}");
+		}
+
+		printf(" sourceOf=");
+		for (int type = 0; type < 2; type++) {
+			printf("{");
+			for (int j = 0; j < (int)nets[i].sourceOf[type].size(); j++) {
+				if (j != 0) {
+					printf(", ");
+				}
+				printf("%d", nets[i].sourceOf[type][j]);
+			}
+			printf("}");
+		}
+
+		printf(" drainOf=");
+		for (int type = 0; type < 2; type++) {
+			printf("{");
+			for (int j = 0; j < (int)nets[i].drainOf[type].size(); j++) {
+				if (j != 0) {
+					printf(", ");
+				}
+				printf("%d", nets[i].drainOf[type][j]);
+			}
+			printf("}");
+		}
+
+		printf(" portOf={");
+		for (int j = 0; j < (int)nets[i].portOf.size(); j++) {
+			if (j != 0) {
+				printf(", ");
+			}
+			printf("%d", nets[i].portOf[j]);
+		}
+		printf("}\n");
+	}
+	printf("\nmos\n");
+	for (int i = 0; i < (int)mos.size(); i++) {
+		printf("%s(%d) d=%s(%d) g=%s(%d) s=%s(%d) b=%s(%d)\n", (mos[i].type == 0 ? "nmos" : "pmos"), i, nets[mos[i].drain].name.c_str(), mos[i].drain, nets[mos[i].gate].name.c_str(), mos[i].gate, nets[mos[i].source].name.c_str(), mos[i].source, nets[mos[i].base].name.c_str(), mos[i].base);
+	}
+	printf("\n");
 }
 
 }

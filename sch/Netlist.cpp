@@ -128,28 +128,30 @@ void Netlist::mapCells() {
 	// our cell-generation engine. We could identify cells that don't follow this
 	// structured approach and then fall back to one of our other methods.
 
-	for (auto ckt = subckts.begin(); ckt != subckts.end(); ckt++) {
-		if (not ckt->isCell or ckt->mos.empty()) {
+	for (int i = (int)subckts.size()-1; i >= 0; i--) {
+		if (subckts[i].isCell or subckts[i].mos.empty()) {
 			continue;
 		}
 
-		if (mapCells(*ckt)) {
+		/*if (mapCells(*ckt)) {
 			continue;
-		}
+		}*/
 
-		auto cells = ckt->generateCells((int)subckts.size());
+		auto cells = subckts[i].generateCells((int)subckts.size());
 		subckts.insert(subckts.end(), cells.begin(), cells.end());
 	}
 }
 
-void Netlist::build(set<string> cellNames) {
+void Netlist::build(phy::Library &lib, set<string> cellNames) {
 	for (auto ckt = subckts.begin(); ckt != subckts.end(); ckt++) {
-		if (ckt->isCell and (cellNames.empty() or cellNames.find(ckt->name) != cellNames.end())) {
+		if (cellNames.empty() or cellNames.find(ckt->name) != cellNames.end()) {
 			printf("\rPlacing %s\n", ckt->name.c_str());
 			Placement pl = Placement::solve(*ckt);
 			printf("\rRouting %s\n", ckt->name.c_str());
 			Router rt(*tech, pl);
 			rt.solve(*tech);
+			lib.cells.push_back(phy::Layout(*tech));
+			rt.draw(lib.cells.back());
 			//rt.print();
 			printf("\rDone %s\n", ckt->name.c_str());
 		}

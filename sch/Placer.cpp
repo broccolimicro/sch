@@ -48,7 +48,7 @@ Placement::Placement(const Subckt &ckt, int b, int l, int w, int g, std::default
 Placement::~Placement() {
 }
 
-Placement &Placement::operator=(const Placement &p) {
+Placement::Placement(const Placement &p) : ckt(p.ckt) {
 	this->b = p.b;
 	this->l = p.l;
 	this->w = p.w;
@@ -56,7 +56,6 @@ Placement &Placement::operator=(const Placement &p) {
 	this->Wmin = p.Wmin;
 	this->d = p.d;
 	this->stack = p.stack;
-	return *this;
 }
 
 void Placement::move(vec4i choice) {
@@ -206,6 +205,17 @@ Placement Placement::solve(const Subckt &ckt, int starts, int b, int l, int w, i
 	printf("Placement complete after %d iterations\n", starts);
 
 	return best;
+}
+
+Placement &Placement::operator=(const Placement &p) {
+	this->b = p.b;
+	this->l = p.l;
+	this->w = p.w;
+	this->g = p.g;
+	this->Wmin = p.Wmin;
+	this->d = p.d;
+	this->stack = p.stack;
+	return *this;
 }
 
 }
