@@ -129,16 +129,17 @@ void Netlist::mapCells() {
 	// structured approach and then fall back to one of our other methods.
 
 	for (int i = (int)subckts.size()-1; i >= 0; i--) {
-		if (subckts[i].isCell or subckts[i].mos.empty()) {
+		subckts[i].print();
+		/*if (subckts[i].isCell or subckts[i].mos.empty()) {
 			continue;
-		}
+		}*/
 
 		/*if (mapCells(*ckt)) {
 			continue;
 		}*/
 
-		auto cells = subckts[i].generateCells((int)subckts.size());
-		subckts.insert(subckts.end(), cells.begin(), cells.end());
+		//auto cells = subckts[i].generateCells((int)subckts.size());
+		//subckts.insert(subckts.end(), cells.begin(), cells.end());
 	}
 }
 

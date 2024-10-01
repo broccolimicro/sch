@@ -693,6 +693,123 @@ vector<Subckt> Subckt::generateCells(int start) {
 	return cells;
 }
 
+bool operator<(const Subckt::partitionKey &k0, const Subckt::partitionKey &k1) {
+	if (k0.size() < k1.size()) {
+		return true;
+	} else if (k0.size() > k1.size()) {
+		return false;
+	}
+
+	for (int i = 0; i < (int)k0.size(); i++) {
+		for (int j = 0; j < (int)k0[i].size(); j++) {
+			if (k0[i][j] < k1[i][j]) {
+				return true;
+			} else if (k0[i][j] > k1[i][j]) {
+				return false;
+			}
+		}
+	}
+	return false;
+}
+
+bool operator==(const Subckt::partitionKey &k0, const Subckt::partitionKey &k1) {
+	if (k0.size() != k1.size()) {
+		return false;
+	}
+
+	for (int i = 0; i < (int)k0.size(); i++) {
+		for (int j = 0; j < (int)k0[i].size(); j++) {
+			if (k0[i][j] != k1[i][j]) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+Subckt::partitionKey Subckt::createPartitionKey(int v, const vector<vector<int> > &beta) const {
+	Subckt::partitionKey result;
+	for (auto c = beta.begin(); c != beta.end(); c++) {
+		Subckt::partitionKeyElem score({});
+		vector<int> ports({mos[v].drain, mos[v].source});
+
+		score[3*(int)ports.size() + 0] = mos[v].model;
+		score[3*(int)ports.size() + 1] = mos[v].size[0];
+		score[3*(int)ports.size() + 2] = mos[v].size[1];
+		for (int type = 0; type < 2; type++) {
+			for (int p = 0; p < (int)ports.size(); p++) {
+				for (auto i = nets[ports[p]].drainOf[type].begin(); i != nets[ports[p]].drainOf[type].end(); i++) {
+					score[0*(int)ports.size() + p] += (std::find(c->begin(), c->end(), *i) != c->end());
+				}
+				for (auto i = nets[ports[p]].sourceOf[type].begin(); i != nets[ports[p]].sourceOf[type].end(); i++) {
+					score[1*(int)ports.size() + p] += (std::find(c->begin(), c->end(), *i) != c->end());
+				}
+
+				score[2*(int)ports.size() + p] = score[2*(int)ports.size() + p] or not nets[ports[p]].gateOf[type].empty();
+			}
+		}
+		result.push_back(score);
+	}
+	return result;
+}
+
+vector<vector<int> > Subckt::partitionByConnectivity(const vector<int> &cell, const vector<vector<int> > &beta) const {
+	vector<vector<int> > result;
+	map<partitionKey, int> partitions;
+	for (auto v = cell.begin(); v != cell.end(); v++) {
+		auto pos = partitions.insert(pair<partitionKey, int>(createPartitionKey(*v, beta), (int)result.size()));
+		if (pos.second) {
+			result.push_back(vector<int>());
+		}
+		result[pos.first->second].push_back(*v);
+	}
+	return result;
+}
+
+bool Subckt::partitionIsDiscrete(const vector<vector<int> > &partition) const {
+	for (auto p = partition.begin(); p != partition.end(); p++) {
+		if (p->size() != 1) {
+			return false;
+		}
+	}
+	return true;
+}
+
+vector<vector<int> > Subckt::computePartitions(vector<vector<int> > partition, vector<vector<int> > alpha) const {
+	if (alpha.empty()) {
+		alpha.push_back(vector<int>());
+		for (int i = 0; i < (int)mos.size(); i++) {
+			alpha.back().push_back(i);
+		}
+	}
+
+	if (partition.empty()) {
+		partition.push_back(vector<int>());
+		for (int i = 0; i < (int)mos.size(); i++) {
+			partition.back().push_back(i);
+		}
+	}
+
+	vector<vector<int> > next;
+	while (not alpha.empty() and not partitionIsDiscrete(partition)) {
+		// choose arbitrary subset of alpha
+		// TODO(edward.bingham) figure out how to make this choice so as to speed up convergence.
+		vector<vector<int> > beta(1, alpha.back());
+		alpha.pop_back();
+
+		for (int i = 0; i < (int)partition.size(); i++) {
+			vector<vector<int> > refined = partitionByConnectivity(partition[i], beta);
+			next.insert(next.end(), refined.begin(), refined.end());
+			if (refined.size() > 1) {
+				alpha.insert(alpha.end(), refined.begin()+1, refined.end());
+			}
+		}
+		partition.swap(next);
+		next.clear();
+	}
+	return partition;
+}
+
 bool Subckt::isomorphicTo(const Subckt &ckt, Mapping *m) const {
 	// B.D. McKay: Computing automorphisms and canonical labellings of
 	// graphs. International Conference on Combinatorial Mathematics,
@@ -752,6 +869,16 @@ void Subckt::print() const {
 	printf("\nmos\n");
 	for (int i = 0; i < (int)mos.size(); i++) {
 		printf("%s(%d) d=%s(%d) g=%s(%d) s=%s(%d) b=%s(%d)\n", (mos[i].type == 0 ? "nmos" : "pmos"), i, nets[mos[i].drain].name.c_str(), mos[i].drain, nets[mos[i].gate].name.c_str(), mos[i].gate, nets[mos[i].source].name.c_str(), mos[i].source, nets[mos[i].base].name.c_str(), mos[i].base);
+	}
+	printf("\n");
+
+	printf("partitions\n");
+	auto parts = computePartitions();
+	for (int i = 0; i < (int)parts.size(); i++) {
+		for (int j = 0; j < (int)parts[i].size(); j++) {
+			printf("%s(%d) d=%s(%d) g=%s(%d) s=%s(%d) b=%s(%d)\n", (mos[parts[i][j]].type == 0 ? "nmos" : "pmos"), i, nets[mos[parts[i][j]].drain].name.c_str(), mos[parts[i][j]].drain, nets[mos[parts[i][j]].gate].name.c_str(), mos[parts[i][j]].gate, nets[mos[parts[i][j]].source].name.c_str(), mos[parts[i][j]].source, nets[mos[parts[i][j]].base].name.c_str(), mos[parts[i][j]].base);
+		}
+		printf("\n");
 	}
 	printf("\n");
 }

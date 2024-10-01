@@ -145,6 +145,13 @@ struct Subckt {
 	Mapping segment(int net);
 	vector<Subckt> generateCells(int start);
 
+	using partitionKeyElem = array<int, 9>;
+	using partitionKey = vector<partitionKeyElem>;
+	partitionKey createPartitionKey(int v, const vector<vector<int> > &beta) const;
+	vector<vector<int> > partitionByConnectivity(const vector<int> &cell, const vector<vector<int> > &beta) const;
+	bool partitionIsDiscrete(const vector<vector<int> > &partition) const;
+	vector<vector<int> > computePartitions(vector<vector<int> > initialPartition=vector<vector<int> >(), vector<vector<int> > subsetToRefine=vector<vector<int> >()) const;
+
 	bool isomorphicTo(const Subckt &ckt, Mapping *m = nullptr) const;
 
 	void print() const;
