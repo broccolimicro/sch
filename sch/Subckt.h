@@ -69,9 +69,12 @@ struct Net {
 	// index into Subckt::inst
 	vector<int> portOf;
 
+	vector<int> remote;
+
 	// Is this net an input or output to the cell? If it is, then we need to draw
 	// an IO pin and hook it up to the rest of the net.
 	bool isIO;
+	bool remoteIO;
 
 	int ports(int type) const;
 
@@ -80,6 +83,7 @@ struct Net {
 	bool isPairedDriver() const;
 	bool isOutput() const;
 	bool isInput() const;
+	bool connectedTo(int net);
 
 	bool dangling(bool remIO=false) const;
 	bool isAnonymous() const;
@@ -135,6 +139,7 @@ struct Subckt {
 
 	int pushNet(string name, bool isIO=false);
 	void popNet(int index);
+	void connectRemote(int n0, int n1);
 	int pushMos(int model, int type, int drain, int gate, int source, int base=-1, vec2i size=vec2i(1.0,1.0));
 	void popMos(int index);
 
@@ -145,15 +150,27 @@ struct Subckt {
 	Mapping segment(int net);
 	vector<Subckt> generateCells(int start);
 
-	using partitionKeyElem = array<int, 9>;
+	enum {
+		LOGICAL = 0,
+		DEVICE = 1,
+		NET = 2,
+	};
+
+	using partitionKeyElem = vector<int>;
 	using partitionKey = vector<partitionKeyElem>;
-	partitionKey createPartitionKey(int v, const vector<vector<int> > &beta) const;
-	vector<vector<int> > partitionByConnectivity(const vector<int> &cell, const vector<vector<int> > &beta) const;
+
+	int nextVertexInCell(const vector<int> &cell, int v = std::numeric_limits<int>::max());
+	vector<int> smallestNondiscreteCell(const vector<vector<int> > &partition) const;
+	partitionKey createPartitionKey(int kind, int v, const vector<vector<int> > &beta) const;
+	vector<vector<int> > partitionByConnectivity(int kind, const vector<int> &cell, const vector<vector<int> > &beta) const;
+	vector<vector<int> > discretePartition() const;
 	bool partitionIsDiscrete(const vector<vector<int> > &partition) const;
-	vector<vector<int> > computePartitions(vector<vector<int> > initialPartition=vector<vector<int> >(), vector<vector<int> > subsetToRefine=vector<vector<int> >()) const;
+	vector<vector<int> > computePartitions(int kind, vector<vector<int> > initialPartition=vector<vector<int> >(), vector<vector<int> > subsetToRefine=vector<vector<int> >()) const;
 
 	bool isomorphicTo(const Subckt &ckt, Mapping *m = nullptr) const;
 
+	void printNet(int i) const;
+	void printMos(int i) const;
 	void print() const;
 };
 

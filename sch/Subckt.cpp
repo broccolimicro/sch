@@ -72,6 +72,7 @@ Net::Net() {
 Net::Net(string name, bool isIO) {
 	this->name = name;
 	this->isIO = isIO;
+	this->remoteIO = isIO;
 }
 
 Net::~Net() {
@@ -82,7 +83,7 @@ int Net::ports(int type) const {
 } 
 
 bool Net::hasContact(int type) const {
-	return isIO
+	return remoteIO
 		or ports(type) > 2
 		or ports(1-type) != 0
 		or (gateOf[0].size()+gateOf[1].size()) != 0;
@@ -105,8 +106,12 @@ bool Net::isInput() const {
 	return (gateOf[0].size()+gateOf[1].size()) > (sourceOf[0].size()+sourceOf[1].size());
 }
 
+bool Net::connectedTo(int net) {
+	return find(remote.begin(), remote.end(), net) != remote.end();
+}
+
 bool Net::dangling(bool remIO) const {
-	return (remIO or not isIO)
+	return (remIO or not remoteIO)
 		and gateOf[0].empty()
 		and gateOf[1].empty()
 		and sourceOf[0].empty()
@@ -360,6 +365,7 @@ string Subckt::netName(int net) const {
 int Subckt::pushNet(string name, bool isIO) {
 	int result = (int)nets.size();
 	nets.push_back(Net(name, isIO));
+	nets.back().remote.push_back(result);
 	if (isIO) {
 		ports.push_back(result);
 	}
@@ -404,13 +410,47 @@ void Subckt::popNet(int index) {
 	}
 }
 
+void Subckt::connectRemote(int n0, int n1) {
+	nets[n0].remote.push_back(n1);
+	nets[n1].remote.push_back(n0);
+
+	for (int type = 0; type < 2; type++) {
+		nets[n0].gateOf[type].insert(nets[n0].gateOf[type].end(), nets[n1].gateOf[type].begin(), nets[n1].gateOf[type].end());
+		sort(nets[n0].gateOf[type].begin(), nets[n0].gateOf[type].end());
+		nets[n0].gateOf[type].erase(unique(nets[n0].gateOf[type].begin(), nets[n0].gateOf[type].end()), nets[n0].gateOf[type].end());
+		nets[n1].gateOf[type] = nets[n0].gateOf[type];
+
+		nets[n0].drainOf[type].insert(nets[n0].drainOf[type].end(), nets[n1].drainOf[type].begin(), nets[n1].drainOf[type].end());
+		sort(nets[n0].drainOf[type].begin(), nets[n0].drainOf[type].end());
+		nets[n0].drainOf[type].erase(unique(nets[n0].drainOf[type].begin(), nets[n0].drainOf[type].end()), nets[n0].drainOf[type].end());
+		nets[n1].drainOf[type] = nets[n0].drainOf[type];
+
+		nets[n0].sourceOf[type].insert(nets[n0].sourceOf[type].end(), nets[n1].sourceOf[type].begin(), nets[n1].sourceOf[type].end());
+		sort(nets[n0].sourceOf[type].begin(), nets[n0].sourceOf[type].end());
+		nets[n0].sourceOf[type].erase(unique(nets[n0].sourceOf[type].begin(), nets[n0].sourceOf[type].end()), nets[n0].sourceOf[type].end());
+		nets[n1].sourceOf[type] = nets[n0].sourceOf[type];
+	}
+	nets[n0].portOf.insert(nets[n0].portOf.end(), nets[n1].portOf.begin(), nets[n1].portOf.end());
+	sort(nets[n0].portOf.begin(), nets[n0].portOf.end());
+	nets[n0].portOf.erase(unique(nets[n0].portOf.begin(), nets[n0].portOf.end()), nets[n0].portOf.end());
+	nets[n1].portOf = nets[n0].portOf;
+
+	nets[n0].remoteIO = nets[n0].remoteIO or nets[n1].remoteIO;
+	nets[n1].remoteIO = nets[n0].remoteIO;
+}
+
 int Subckt::pushMos(int model, int type, int drain, int gate, int source, int base, vec2i size) {
 	int result = (int)mos.size();
 	printf("adding to net d=%d g=%d s=%d nets.size=%d device=%d\n", drain, gate, source, (int)nets.size(), result);
-	nets[drain].drainOf[type].push_back(result);
-	nets[source].sourceOf[type].push_back(result);
-	nets[gate].gateOf[type].push_back(result);
-	
+	for (auto i = nets[drain].remote.begin(); i != nets[drain].remote.end(); i++) {
+		nets[*i].drainOf[type].push_back(result);
+	}
+	for (auto i = nets[source].remote.begin(); i != nets[source].remote.end(); i++) {
+		nets[*i].sourceOf[type].push_back(result);
+	}
+	for (auto i = nets[gate].remote.begin(); i != nets[gate].remote.end(); i++) {
+		nets[*i].gateOf[type].push_back(result);
+	}
 
 	mos.push_back(Mos(model, type, drain, gate, source, base, size));
 	return result;
@@ -727,25 +767,77 @@ bool operator==(const Subckt::partitionKey &k0, const Subckt::partitionKey &k1) 
 	return true;
 }
 
-Subckt::partitionKey Subckt::createPartitionKey(int v, const vector<vector<int> > &beta) const {
+int Subckt::nextVertexInCell(const vector<int> &cell, int v) const {
+	int result = std::numeric_limits<int>::max();
+	for (auto v0 = cell.begin(); v0 != cell.end(); v0++) {
+		if (*v0 < result and *v0 > v) {
+			result = *v0;
+		}
+	}
+	return result;
+}
+
+bool vertexInCell(const vector<int> &cell, int v) {
+	for (auto v0 = cell.begin(); v0 != cell.end(); v0++) {
+		if (*v0 == v) {
+			return true;
+		}
+	}
+	return false;
+}
+
+int Subckt::smallestNondiscreteCell(const vector<vector<int> > &partition) const {
+	auto curr = partition.end();
+	for (auto i = partition.begin(); i != partition.end(); i++) {
+		if (i->size() == 2) {
+			return i-partition.begin();
+		} else if (i->size() > 1 and (curr == partition.end() or i->size() < curr->size())) {
+			curr = i;
+		}
+	}
+	return curr-partition.begin();
+}
+
+Subckt::partitionKey Subckt::createPartitionKey(int kind, int v, const vector<vector<int> > &beta) const {
 	Subckt::partitionKey result;
 	for (auto c = beta.begin(); c != beta.end(); c++) {
-		Subckt::partitionKeyElem score({});
-		vector<int> ports({mos[v].drain, mos[v].source});
+		Subckt::partitionKeyElem score;
 
-		score[3*(int)ports.size() + 0] = mos[v].model;
-		score[3*(int)ports.size() + 1] = mos[v].size[0];
-		score[3*(int)ports.size() + 2] = mos[v].size[1];
-		for (int type = 0; type < 2; type++) {
-			for (int p = 0; p < (int)ports.size(); p++) {
-				for (auto i = nets[ports[p]].drainOf[type].begin(); i != nets[ports[p]].drainOf[type].end(); i++) {
-					score[0*(int)ports.size() + p] += (std::find(c->begin(), c->end(), *i) != c->end());
-				}
-				for (auto i = nets[ports[p]].sourceOf[type].begin(); i != nets[ports[p]].sourceOf[type].end(); i++) {
-					score[1*(int)ports.size() + p] += (std::find(c->begin(), c->end(), *i) != c->end());
-				}
+		if (kind == LOGICAL or kind == DEVICE) {
+			vector<int> ports({mos[v].drain, mos[v].gate, mos[v].source});
+			int categories = 3;
+			score.resize(ports.size()*categories+3, 0);
 
-				score[2*(int)ports.size() + p] = score[2*(int)ports.size() + p] or not nets[ports[p]].gateOf[type].empty();
+			if (kind == LOGICAL) {
+				score[categories*(int)ports.size() + 0] = mos[v].type;
+			} else if (kind == DEVICE) {
+				score[categories*(int)ports.size() + 0] = mos[v].model;
+				score[categories*(int)ports.size() + 1] = mos[v].size[0];
+				score[categories*(int)ports.size() + 2] = mos[v].size[1];
+			}
+			for (int type = 0; type < 2; type++) {
+				for (int p = 0; p < (int)ports.size(); p++) {
+					for (auto i = nets[ports[p]].drainOf[type].begin(); i != nets[ports[p]].drainOf[type].end(); i++) {
+						score[0*(int)ports.size() + p] += (std::find(c->begin(), c->end(), *i) != c->end());
+					}
+					for (auto i = nets[ports[p]].sourceOf[type].begin(); i != nets[ports[p]].sourceOf[type].end(); i++) {
+						score[1*(int)ports.size() + p] += (std::find(c->begin(), c->end(), *i) != c->end());
+					}
+
+					score[2*(int)ports.size() + p] = score[2*(int)ports.size() + p] or not nets[ports[p]].gateOf[type].empty() or nets[ports[p]].isIO;
+				}
+			}
+		} else if (kind == NET) {
+			int categories = 2;
+			score.resize(categories*2+1, 0);
+			score[2*categories + 0] = nets[v].isIO or not nets[v].gateOf[0].empty() or not nets[v].gateOf[1].empty();
+			for (int type = 0; type < 2; type++) {
+				for (auto i = nets[v].drainOf[type].begin(); i != nets[v].drainOf[type].end(); i++) {
+					score[type*categories + 0] += (std::find(c->begin(), c->end(), mos[*i].source) != c->end());
+				}
+				for (auto i = nets[v].sourceOf[type].begin(); i != nets[v].sourceOf[type].end(); i++) {
+					score[type*categories + 1] += (std::find(c->begin(), c->end(), mos[*i].drain) != c->end());
+				}
 			}
 		}
 		result.push_back(score);
@@ -753,15 +845,33 @@ Subckt::partitionKey Subckt::createPartitionKey(int v, const vector<vector<int> 
 	return result;
 }
 
-vector<vector<int> > Subckt::partitionByConnectivity(const vector<int> &cell, const vector<vector<int> > &beta) const {
+vector<vector<int> > Subckt::partitionByConnectivity(int kind, const vector<int> &cell, const vector<vector<int> > &beta) const {
 	vector<vector<int> > result;
 	map<partitionKey, int> partitions;
 	for (auto v = cell.begin(); v != cell.end(); v++) {
-		auto pos = partitions.insert(pair<partitionKey, int>(createPartitionKey(*v, beta), (int)result.size()));
+		auto pos = partitions.insert(pair<partitionKey, int>(createPartitionKey(kind, *v, beta), (int)result.size()));
 		if (pos.second) {
 			result.push_back(vector<int>());
 		}
 		result[pos.first->second].push_back(*v);
+	}
+	return result;
+}
+
+vector<vector<int> > Subckt::discretePartition() const {
+	vector<vector<int> > theta;
+	for (int i = 0; i < (int)mos.size(); i++) {
+		theta.push_back(vector<int>(1, i));
+	}
+	return theta;
+}
+
+vector<vector<int> > Subckt::discreteCellsOf(const vector<vector<int> > &pi) const {
+	vector<vector<int> > result;
+	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
+		if (cell->size() == 1) {
+			result.push_back(*cell);
+		}
 	}
 	return result;
 }
@@ -775,17 +885,18 @@ bool Subckt::partitionIsDiscrete(const vector<vector<int> > &partition) const {
 	return true;
 }
 
-vector<vector<int> > Subckt::computePartitions(vector<vector<int> > partition, vector<vector<int> > alpha) const {
+vector<vector<int> > Subckt::computePartitions(int kind, vector<vector<int> > partition, vector<vector<int> > alpha) const {
+	int sz = (kind == NET ? nets.size() : mos.size());
 	if (alpha.empty()) {
 		alpha.push_back(vector<int>());
-		for (int i = 0; i < (int)mos.size(); i++) {
+		for (int i = 0; i < sz; i++) {
 			alpha.back().push_back(i);
 		}
 	}
 
 	if (partition.empty()) {
 		partition.push_back(vector<int>());
-		for (int i = 0; i < (int)mos.size(); i++) {
+		for (int i = 0; i < sz; i++) {
 			partition.back().push_back(i);
 		}
 	}
@@ -798,7 +909,7 @@ vector<vector<int> > Subckt::computePartitions(vector<vector<int> > partition, v
 		alpha.pop_back();
 
 		for (int i = 0; i < (int)partition.size(); i++) {
-			vector<vector<int> > refined = partitionByConnectivity(partition[i], beta);
+			vector<vector<int> > refined = partitionByConnectivity(kind, partition[i], beta);
 			next.insert(next.end(), refined.begin(), refined.end());
 			if (refined.size() > 1) {
 				alpha.insert(alpha.end(), refined.begin()+1, refined.end());
@@ -810,77 +921,389 @@ vector<vector<int> > Subckt::computePartitions(vector<vector<int> > partition, v
 	return partition;
 }
 
+
+int Subckt::lambda(int kind, vector<vector<int> > pi) {
+	int result = 0;
+	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
+		for (auto i = cell.begin(); i != cell.end(); i++) {
+			for (auto j = i+1; j != cell.end(); j++) {
+				if (kind == DEVICE) {
+					int n0 = mos[*i].source;
+					int n1 = mos[*i].drain;
+					int n2 = mos[*j].source;
+					int n3 = mos[*j].drain;
+					result += (
+						nets[n0].connectedTo(n2) +
+						nets[n0].connectedTo(n3) +
+						nets[n1].connectedTo(n2) +
+						nets[n1].connectedTo(n3) +
+					);
+				}
+			}
+		}
+	}
+	return result;
+}
+
+vector<int> Subckt::omega(vector<vector<int> > pi) {
+	vector<int> result;
+	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
+		result.push_back(nextVertexInCell(*cell);
+	}
+	return result;
+}
+
+
+bool Subckt::sameCell(int i, int j, vector<vector<int> > theta) {
+	for (auto t = theta.begin(); t != theta.end(); t++) {
+		if (find(t->begin(), t->end(), i) != t->end() and find(t->begin(), t->end(), j) != t->end()) {
+			return true;
+		}
+	}
+	return false;
+}
+
+int Subckt::compare(vector<vector<int> > pi0, vector<vector<int> > pi1) {
+	// implement G^pi0 <=> G^pi1
+	// The naive way would be to apply pi0 to G to create G0 and apply pi1 to G
+	// to create G1, then represent G0 and G1 as sorted adjacency lists and
+	// compare those lists lexographically. All of this can be done without
+	// directly applying the mappings and storing the whole graph.
+
+	// The goal is to iterate through each mapping in lexographic order to
+	// generate the relevant edges to compare. This would prevent us from
+	// applying the whole mapping if we can determine order sooner.
+
+	// TODO(edward.bingham)
+}
+
 bool Subckt::isomorphicTo(const Subckt &ckt, Mapping *m) const {
+	// Blame this guy for what follows...
+	
 	// B.D. McKay: Computing automorphisms and canonical labellings of
 	// graphs. International Conference on Combinatorial Mathematics,
 	// Canberra (1977), Lecture Notes in Mathematics 686, Springer-
 	// Verlag, 223-232.	
+
+	bool digraph = true;
+	bool lab = true;
+
+	vector<vector<vector<int> > > aut;
+	vector<pair<vector<vector<int> >, vector<int> > > stored;
+
+	// Step (1): Initialization
+step1:
+	int size = 1, index = 0;
+	vector<vector<int> > theta = discretePartition();
+	vector<vector<int> > pi = computePartitions(DEVICE);
+
+	int q = 1;
+	if (digraph or (int)mos.size() - (int)pi.size() >= 6) {
+		q = 2;
+	}
+
+	int c = smallestNondiscreteCell(pi);
+	int v = nextVertexInCell(pi[c]);
+	int w = v;
+	int x = std::numeric_limits<int>::max();
+
+	if (partitionIsDiscrete(pi)) {
+		goto step20;
+	} 
+	
+	int k = 0, h = 0, hx = 0;
+	int e = 0;
+
+	// Step (2): Main loop to process partitions
+step2:
+	k++;
+	pi.push_back(vector<int>(1, v));
+	pi[c].erase(find(pi[c].begin(), pi[c].end(), v));
+	pi = computePartitions(DEVICE, pi, pi.back());
+	z = lambda(DEVICE, pi);
+
+	if (not partitionIsDiscrete(pi)) {
+		e = 0;
+		int c = smallestNondiscreteCell(pi);
+	}
+
+	if (h == 0) {
+		goto step6;
+	}
+	if (hx == k-1 and z == x) {
+		hx = k;
+	}
+	if (not lab) {
+		goto step4;
+	}
+	if (hy != k-1) {
+		goto step3;
+	}
+	qy = z - y;
+	if (qy == 0) {
+		hy = k;
+	}
+
+step3:
+	if (qy > 0) {
+		y = z;
+	}
+
+step4:
+	if (hx == k or (lab and qy >= 0)) {
+		goto step5;
+	}
+	k = q-1;
+	goto step9;
+
+step5:
+	if (partitionIsDiscrete(pi)) {
+		goto step7;
+	}
+	v = nextVertexInCell(pi[c]);
+	if (h == 0) {
+		w = v;
+	}
+	if (digraph or (int)mos.size() - (int)pi.size() >= 6) {
+		q = k+1;
+	}
+	goto step2;
+
+step6:
+	if (lab) {
+		y = z;
+	}
+	x = z;
+	goto step5;
+
+step7:
+	if (h < q) {
+		goto 15;
+	}
+	vector<vector<int> > g = pi; // Compute the permutation g such that e^g = pi
+	// do this if we have enough space (optional)
+	// Suggests this is some sort of optimization
+	aut.push_back(g);
+	stored.push_back({discreteCellsOf(g), omega(g)});
+
+step8:
+	theta.push_back(g);
+	k = h;
+
+step9:
+	if (k == 0) {
+		return;
+	}
+	if (k > h) {
+		goto step13;
+	}
+	if (k < h) {
+		h = k;
+	}
+
+step10:
+	if (sameCell(v, w, theta)) {
+		index++;
+	}
+	v = nextVertexInCell(pi[k], v);
+	if (v == std::numeric_limits<int>::max()) {
+		goto step12;
+	}
+	if (not vertexInCell(omega(theta), v)) {
+		goto step10;
+	}
+
+step11:
+	if (k+1 < q) {
+		q = k+1;
+	}
+	if (k < hx) {
+		hx = k;
+	}
+	if (not lab) {
+		goto step12;
+	}
+	if (k < hb) {
+		hb = k;
+	}
+	if (hy < k) {
+		goto step2;
+	}
+	hy = k;
+	qy = 0;
+	goto step2;
+
+step12:
+	size *= index;
+	index = 0;
+	k--;
+	goto step9;
+
+step13:
+	if (e == 0) {
+		goto step14;
+	}
+	e = 1;
+	// This must be some kind of optimization
+	for (auto p = stored.begin(); p != stored.end(); p++) {
+		if ({v0, v1, v2, ..., vk-1} in p->first) {
+			C[k] = intersect(C[k], p->second);
+		}
+	}
+
+step14:
+	v = nextVertexInCell(pi[c], v);
+	if (v == std::numeric_limits<int>::max()) {
+		k--;
+		goto step9;
+	}
+	goto step11;
+
+step15:
+	if (h == 0) {
+		goto step20;
+	}
+	if (hx != k) {
+		goto step16;
+	}
+	g = pi; // Compute the permutation g such that e^g = pi
+	if (g in aut) {
+		goto step8;
+	}
+
+step16:
+	if (qy < 0 or not lab) {
+		goto step18;
+	}
+	if (qy > 0) {
+		goto step17;
+	}
+	int order = compare(B, pi);
+	if (order == 0) {
+		goto step19;
+	} else if (order == 1) {
+		goto step18;
+	}
+
+step17:
+	B = pi;
+	hy= k;
+	hb = k;
+	y = std::numeric_limits<int>::max();
+	qy = 0;
+
+step18:
+	k = q-1;
+	goto step9;
+
+step19:
+	k = hb;
+	if (k != h) {
+		goto step9;
+	}
+	g = ...;// compute the permutation g such that B^g = pi
+	goto step8;
+
+step20:
+	// Step (20): Final termination condition
+	h = k;
+	hx = k;
+	x = std::numeric_limits<int>::max();
+	// apply pi to epsilon
+	k++;
+	if (lab) {
+		beta = prevPi;
+		hy = k + 1;
+		hb = k + 1;
+		y = std::numeric_limits<int>::max();
+		qy = 0;
+	}
+	// Goto 9
+	goto step9;
 }
 
+void Subckt::printNet(int i) const {
+	printf("%s(%d)%s gateOf=", nets[i].name.c_str(), i, (nets[i].isIO ? " io" : ""));
+	for (int type = 0; type < 2; type++) {
+		printf("{");
+		for (int j = 0; j < (int)nets[i].gateOf[type].size(); j++) {
+			if (j != 0) {
+				printf(", ");
+			}
+			printf("%d", nets[i].gateOf[type][j]);
+		}
+		printf("}");
+	}
+
+	printf(" sourceOf=");
+	for (int type = 0; type < 2; type++) {
+		printf("{");
+		for (int j = 0; j < (int)nets[i].sourceOf[type].size(); j++) {
+			if (j != 0) {
+				printf(", ");
+			}
+			printf("%d", nets[i].sourceOf[type][j]);
+		}
+		printf("}");
+	}
+
+	printf(" drainOf=");
+	for (int type = 0; type < 2; type++) {
+		printf("{");
+		for (int j = 0; j < (int)nets[i].drainOf[type].size(); j++) {
+			if (j != 0) {
+				printf(", ");
+			}
+			printf("%d", nets[i].drainOf[type][j]);
+		}
+		printf("}");
+	}
+
+	printf(" portOf={");
+	for (int j = 0; j < (int)nets[i].portOf.size(); j++) {
+		if (j != 0) {
+			printf(", ");
+		}
+		printf("%d", nets[i].portOf[j]);
+	}
+	printf("}\n");
+}
+
+void Subckt::printMos(int i) const {
+	printf("%s(%d) d=%s(%d) g=%s(%d) s=%s(%d) b=%s(%d)\n", (mos[i].type == 0 ? "nmos" : "pmos"), i, nets[mos[i].drain].name.c_str(), mos[i].drain, nets[mos[i].gate].name.c_str(), mos[i].gate, nets[mos[i].source].name.c_str(), mos[i].source, nets[mos[i].base].name.c_str(), mos[i].base);
+}
 
 void Subckt::print() const {
 	printf("nets\n");
 	for (int i = 0; i < (int)nets.size(); i++) {
-		printf("%s(%d)%s gateOf=", nets[i].name.c_str(), i, (nets[i].isIO ? " io" : ""));
-		for (int type = 0; type < 2; type++) {
-			printf("{");
-			for (int j = 0; j < (int)nets[i].gateOf[type].size(); j++) {
-				if (j != 0) {
-					printf(", ");
-				}
-				printf("%d", nets[i].gateOf[type][j]);
-			}
-			printf("}");
-		}
-
-		printf(" sourceOf=");
-		for (int type = 0; type < 2; type++) {
-			printf("{");
-			for (int j = 0; j < (int)nets[i].sourceOf[type].size(); j++) {
-				if (j != 0) {
-					printf(", ");
-				}
-				printf("%d", nets[i].sourceOf[type][j]);
-			}
-			printf("}");
-		}
-
-		printf(" drainOf=");
-		for (int type = 0; type < 2; type++) {
-			printf("{");
-			for (int j = 0; j < (int)nets[i].drainOf[type].size(); j++) {
-				if (j != 0) {
-					printf(", ");
-				}
-				printf("%d", nets[i].drainOf[type][j]);
-			}
-			printf("}");
-		}
-
-		printf(" portOf={");
-		for (int j = 0; j < (int)nets[i].portOf.size(); j++) {
-			if (j != 0) {
-				printf(", ");
-			}
-			printf("%d", nets[i].portOf[j]);
-		}
-		printf("}\n");
+		printNet(i);
 	}
 	printf("\nmos\n");
 	for (int i = 0; i < (int)mos.size(); i++) {
-		printf("%s(%d) d=%s(%d) g=%s(%d) s=%s(%d) b=%s(%d)\n", (mos[i].type == 0 ? "nmos" : "pmos"), i, nets[mos[i].drain].name.c_str(), mos[i].drain, nets[mos[i].gate].name.c_str(), mos[i].gate, nets[mos[i].source].name.c_str(), mos[i].source, nets[mos[i].base].name.c_str(), mos[i].base);
+		printMos(i);
 	}
 	printf("\n");
 
-	printf("partitions\n");
-	auto parts = computePartitions();
+	printf("device partitions\n");
+	auto parts = computePartitions(Subckt::LOGICAL);
 	for (int i = 0; i < (int)parts.size(); i++) {
 		for (int j = 0; j < (int)parts[i].size(); j++) {
-			printf("%s(%d) d=%s(%d) g=%s(%d) s=%s(%d) b=%s(%d)\n", (mos[parts[i][j]].type == 0 ? "nmos" : "pmos"), i, nets[mos[parts[i][j]].drain].name.c_str(), mos[parts[i][j]].drain, nets[mos[parts[i][j]].gate].name.c_str(), mos[parts[i][j]].gate, nets[mos[parts[i][j]].source].name.c_str(), mos[parts[i][j]].source, nets[mos[parts[i][j]].base].name.c_str(), mos[parts[i][j]].base);
+			printMos(parts[i][j]);
 		}
 		printf("\n");
 	}
 	printf("\n");
+
+	printf("net partitions\n");
+	parts = computePartitions(Subckt::NET);
+	for (int i = 0; i < (int)parts.size(); i++) {
+		for (int j = 0; j < (int)parts[i].size(); j++) {
+			printNet(parts[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+
 }
 
 }
