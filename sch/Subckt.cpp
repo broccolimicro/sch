@@ -973,9 +973,15 @@ int Subckt::cellIndex(const vector<vector<int> > pi, int v) const {
 }
 
 int Subckt::comparePartitions(const vector<vector<int> > &pi0, const vector<vector<int> > &pi1) const {
-	if (not partitionIsDiscrete(pi0) or not partitionIsDiscrete(pi1) or pi0.size() != pi1.size()) {
-		printf("comparePartitions assumptions violated\n");
+	if (pi0.size() > pi1.size()) {
+		return 1;
+	} else if (pi0.size() < pi1.size()) {
+		return -1;
 	}
+
+	/*if (not partitionIsDiscrete(pi0) or not partitionIsDiscrete(pi1)) {
+		printf("comparePartitions assumptions violated\n");
+	}*/
 	// implement G^pi0 <=> G^pi1
 	// The naive way would be to apply pi0 to G to create G0 and apply pi1 to G
 	// to create G1, then represent G0 and G1 as sorted adjacency lists and
@@ -990,20 +996,28 @@ int Subckt::comparePartitions(const vector<vector<int> > &pi0, const vector<vect
 		auto n1 = nets.begin()+pi1[i].back();
 		
 		for (int type = 0; type < 2; type++) {
-			int m = min(n0->sourceOf[type].size(), n1->sourceOf[type].size());
+			vector<int> g0, g1;
+			for (auto j = n0->sourceOf[type].begin(); j != n0->sourceOf[type].end(); j++) {
+				g0.push_back(cellIndex(pi0, mos[*j].drain));
+			}
+			sort(g0.begin(), g0.end());
+			for (auto j = n1->sourceOf[type].begin(); j != n1->sourceOf[type].end(); j++) {
+				g1.push_back(cellIndex(pi1, mos[*j].drain));
+			}
+			sort(g1.begin(), g1.end());
+
+			int m = (int)min(g0.size(), g1.size());
 			for (int j = 0; j < m; j++) {
-				int d0 = cellIndex(pi0, mos[n0->sourceOf[type][j]].drain);
-				int d1 = cellIndex(pi1, mos[n1->sourceOf[type][j]].drain);
-				if (d0 < d1) {
+				if (g0[j] < g1[j]) {
 					return -1;
-				} else if (d0 > d1) {
+				} else if (g0[j] > g1[j]) {
 					return 1;
 				}
 			}
 
-			if (m < (int)n0->sourceOf[type].size()) {
+			if (m < (int)g0.size()) {
 				return -1;
-			} else if (m < (int)n1->sourceOf[type].size()) {
+			} else if (m < (int)g1.size()) {
 				return 1;
 			}
 		}
@@ -1042,37 +1056,63 @@ Mapping Subckt::canonicalLabeling() const {
 		int ci;
 	};
 
+	int autoCount = 0;
 	vector<vector<int> > best;
 	vector<frame> frames(1, frame(this));
+	if (partitionIsDiscrete(frames.back().part)) {
+		best.swap(frames.back().part);
+		frames.pop_back();
+	}
+
+	uint64_t count = 1;
+	for (auto c = frames.back().part.begin(); c != frames.back().part.end(); c++) {
+		for (uint64_t i = c->size(); i >= 1; i--) {
+			count *= i;
+		}
+	}
+	printf("exploring %lu labellings\n", count);
+
+	int explored = 0;
 	while (not frames.empty()) {
-		if (partitionIsDiscrete(frames.back().part)) {
-			// found terminal node in tree
-			if (best.empty() or comparePartitions(frames.back().part, best) > 0) {
-				best.swap(frames.back().part);
-			}
-			frames.pop_back();
-			continue;
-		} else if (frames.back().part[frames.back().ci].size() == 1) {
-			frames.back().ci = smallestNondiscreteCell(frames.back().part);
-			continue;
+		if ((explored&((1<<10)-1)) == 0) {
+			printf("%d\t%d\t%d\r", (int)frames.size(), explored, autoCount);
+			fflush(stdout);
 		}
 
 		auto curr = frames.back();
 		frames.pop_back();
-		for (auto p = curr.part.begin(); p != curr.part.end(); p++) {
+		/*for (auto p = curr.part.begin(); p != curr.part.end(); p++) {
 			if (not is_sorted(p->begin(), p->end())) {
 				printf("violation of sorting assumption\n");
 			}
-		}
+		}*/
 
 		for (int v = 0; v < (int)curr.part[curr.ci].size(); v++) {
 			auto next = curr;
 			next.part.push_back(vector<int>(1, next.part[next.ci][v]));
 			next.part[next.ci].erase(next.part[next.ci].begin()+v);
 			next.part = computePartitions(NET, next.part, vector<vector<int> >(1, next.part.back()));
-			frames.push_back(next);
+
+			if (partitionIsDiscrete(next.part)) {
+				explored++;
+				// found terminal node in tree
+				int cmp = comparePartitions(next.part, best);
+				if (cmp == 1) {
+					best.swap(next.part);
+				} else if (cmp == 0) {
+					autoCount++;
+				}
+			} else {
+				if (next.part[next.ci].size() == 1) {
+					next.ci = smallestNondiscreteCell(next.part);
+				}
+				
+				frames.push_back(next);
+			}
 		}
 	}
+
+	printf("%d automorphisms found\n", autoCount);
 
 	Mapping result;
 	for (int i = 0; i < (int)mos.size(); i++) {
