@@ -767,24 +767,15 @@ bool operator==(const Subckt::partitionKey &k0, const Subckt::partitionKey &k1) 
 	return true;
 }
 
-int Subckt::nextVertexInCell(const vector<int> &cell, int v) const {
+/*int Subckt::nextVertexInCell(const vector<int> &cell, int v) const {
 	int result = std::numeric_limits<int>::max();
-	for (auto v0 = cell.begin(); v0 != cell.end(); v0++) {
+	for (int i = 0; i < (int)cell.size(); i++) {
 		if (*v0 < result and *v0 > v) {
 			result = *v0;
 		}
 	}
 	return result;
-}
-
-bool vertexInCell(const vector<int> &cell, int v) {
-	for (auto v0 = cell.begin(); v0 != cell.end(); v0++) {
-		if (*v0 == v) {
-			return true;
-		}
-	}
-	return false;
-}
+}*/
 
 int Subckt::smallestNondiscreteCell(const vector<vector<int> > &partition) const {
 	auto curr = partition.end();
@@ -858,7 +849,7 @@ vector<vector<int> > Subckt::partitionByConnectivity(int kind, const vector<int>
 	return result;
 }
 
-vector<vector<int> > Subckt::discretePartition() const {
+/*vector<vector<int> > Subckt::discretePartition() const {
 	vector<vector<int> > theta;
 	for (int i = 0; i < (int)mos.size(); i++) {
 		theta.push_back(vector<int>(1, i));
@@ -874,7 +865,7 @@ vector<vector<int> > Subckt::discreteCellsOf(const vector<vector<int> > &pi) con
 		}
 	}
 	return result;
-}
+}*/
 
 bool Subckt::partitionIsDiscrete(const vector<vector<int> > &partition) const {
 	for (auto p = partition.begin(); p != partition.end(); p++) {
@@ -922,7 +913,7 @@ vector<vector<int> > Subckt::computePartitions(int kind, vector<vector<int> > pa
 }
 
 
-int Subckt::lambda(int kind, vector<vector<int> > pi) {
+/*int Subckt::lambda(int kind, vector<vector<int> > pi) {
 	int result = 0;
 	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
 		for (auto i = cell.begin(); i != cell.end(); i++) {
@@ -961,9 +952,30 @@ bool Subckt::sameCell(int i, int j, vector<vector<int> > theta) {
 		}
 	}
 	return false;
+}*/
+
+bool Subckt::vertexInCell(const vector<int> &cell, int v) const {
+	for (auto v0 = cell.begin(); v0 != cell.end(); v0++) {
+		if (*v0 == v) {
+			return true;
+		}
+	}
+	return false;
 }
 
-int Subckt::compare(vector<vector<int> > pi0, vector<vector<int> > pi1) {
+int Subckt::cellIndex(const vector<vector<int> > pi, int v) const {
+	for (int i = 0; i < (int)pi.size(); i++) {
+		if (vertexInCell(pi[i], v)) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+int Subckt::comparePartitions(const vector<vector<int> > &pi0, const vector<vector<int> > &pi1) const {
+	if (not partitionIsDiscrete(pi0) or not partitionIsDiscrete(pi1) or pi0.size() != pi1.size()) {
+		printf("comparePartitions assumptions violated\n");
+	}
 	// implement G^pi0 <=> G^pi1
 	// The naive way would be to apply pi0 to G to create G0 and apply pi1 to G
 	// to create G1, then represent G0 and G1 as sorted adjacency lists and
@@ -973,253 +985,103 @@ int Subckt::compare(vector<vector<int> > pi0, vector<vector<int> > pi1) {
 	// The goal is to iterate through each mapping in lexographic order to
 	// generate the relevant edges to compare. This would prevent us from
 	// applying the whole mapping if we can determine order sooner.
+	for (int i = 0; i < (int)nets.size(); i++) {
+		auto n0 = nets.begin()+pi0[i].back();
+		auto n1 = nets.begin()+pi1[i].back();
+		
+		for (int type = 0; type < 2; type++) {
+			int m = min(n0->sourceOf[type].size(), n1->sourceOf[type].size());
+			for (int j = 0; j < m; j++) {
+				int d0 = cellIndex(pi0, mos[n0->sourceOf[type][j]].drain);
+				int d1 = cellIndex(pi1, mos[n1->sourceOf[type][j]].drain);
+				if (d0 < d1) {
+					return -1;
+				} else if (d0 > d1) {
+					return 1;
+				}
+			}
 
-	// TODO(edward.bingham)
+			if (m < (int)n0->sourceOf[type].size()) {
+				return -1;
+			} else if (m < (int)n1->sourceOf[type].size()) {
+				return 1;
+			}
+		}
+	}
+	return 0;
 }
 
-bool Subckt::isomorphicTo(const Subckt &ckt, Mapping *m) const {
-	// Blame this guy for what follows...
-	
-	// B.D. McKay: Computing automorphisms and canonical labellings of
-	// graphs. International Conference on Combinatorial Mathematics,
-	// Canberra (1977), Lecture Notes in Mathematics 686, Springer-
-	// Verlag, 223-232.	
 
-	bool digraph = true;
-	bool lab = true;
+// This function will be derived from Nauty, Bliss, and DviCL
+//
+// B.D. McKay: Computing automorphisms and canonical labellings of
+// graphs. International Conference on Combinatorial Mathematics,
+// Canberra (1977), Lecture Notes in Mathematics 686, Springer-
+// Verlag, 223-232.
+//
+// Junttila, Tommi, and Petteri Kaski. "Engineering an efficient canonical
+// labeling tool for large and sparse graphs." 2007 Proceedings of the Ninth
+// Workshop on Algorithm Engineering and Experiments (ALENEX). Society for
+// Industrial and Applied Mathematics, 2007.
+//
+// Lu, Can, et al. "Graph ISO/auto-morphism: a divide-&-conquer approach."
+// Proceedings of the 2021 International Conference on Management of Data.
+// 2021.
+//
+// TODO(edward.bingham) implement optimizations from nauty, bliss, and dvicl
+Mapping Subckt::canonicalLabeling() const {	
+	struct frame {
+		frame() {}
+		frame(const Subckt *ckt) {
+			part = ckt->computePartitions(NET);
+			ci = ckt->smallestNondiscreteCell(part);
+		}
+		~frame() {}
 
-	vector<vector<vector<int> > > aut;
-	vector<pair<vector<vector<int> >, vector<int> > > stored;
+		vector<vector<int> > part;
+		int ci;
+	};
 
-	// Step (1): Initialization
-step1:
-	int size = 1, index = 0;
-	vector<vector<int> > theta = discretePartition();
-	vector<vector<int> > pi = computePartitions(DEVICE);
+	vector<vector<int> > best;
+	vector<frame> frames(1, frame(this));
+	while (not frames.empty()) {
+		if (partitionIsDiscrete(frames.back().part)) {
+			// found terminal node in tree
+			if (best.empty() or comparePartitions(frames.back().part, best) > 0) {
+				best.swap(frames.back().part);
+			}
+			frames.pop_back();
+			continue;
+		} else if (frames.back().part[frames.back().ci].size() == 1) {
+			frames.back().ci = smallestNondiscreteCell(frames.back().part);
+			continue;
+		}
 
-	int q = 1;
-	if (digraph or (int)mos.size() - (int)pi.size() >= 6) {
-		q = 2;
-	}
+		auto curr = frames.back();
+		frames.pop_back();
+		for (auto p = curr.part.begin(); p != curr.part.end(); p++) {
+			if (not is_sorted(p->begin(), p->end())) {
+				printf("violation of sorting assumption\n");
+			}
+		}
 
-	int c = smallestNondiscreteCell(pi);
-	int v = nextVertexInCell(pi[c]);
-	int w = v;
-	int x = std::numeric_limits<int>::max();
-
-	if (partitionIsDiscrete(pi)) {
-		goto step20;
-	} 
-	
-	int k = 0, h = 0, hx = 0;
-	int e = 0;
-
-	// Step (2): Main loop to process partitions
-step2:
-	k++;
-	pi.push_back(vector<int>(1, v));
-	pi[c].erase(find(pi[c].begin(), pi[c].end(), v));
-	pi = computePartitions(DEVICE, pi, pi.back());
-	z = lambda(DEVICE, pi);
-
-	if (not partitionIsDiscrete(pi)) {
-		e = 0;
-		int c = smallestNondiscreteCell(pi);
-	}
-
-	if (h == 0) {
-		goto step6;
-	}
-	if (hx == k-1 and z == x) {
-		hx = k;
-	}
-	if (not lab) {
-		goto step4;
-	}
-	if (hy != k-1) {
-		goto step3;
-	}
-	qy = z - y;
-	if (qy == 0) {
-		hy = k;
-	}
-
-step3:
-	if (qy > 0) {
-		y = z;
-	}
-
-step4:
-	if (hx == k or (lab and qy >= 0)) {
-		goto step5;
-	}
-	k = q-1;
-	goto step9;
-
-step5:
-	if (partitionIsDiscrete(pi)) {
-		goto step7;
-	}
-	v = nextVertexInCell(pi[c]);
-	if (h == 0) {
-		w = v;
-	}
-	if (digraph or (int)mos.size() - (int)pi.size() >= 6) {
-		q = k+1;
-	}
-	goto step2;
-
-step6:
-	if (lab) {
-		y = z;
-	}
-	x = z;
-	goto step5;
-
-step7:
-	if (h < q) {
-		goto 15;
-	}
-	vector<vector<int> > g = pi; // Compute the permutation g such that e^g = pi
-	// do this if we have enough space (optional)
-	// Suggests this is some sort of optimization
-	aut.push_back(g);
-	stored.push_back({discreteCellsOf(g), omega(g)});
-
-step8:
-	theta.push_back(g);
-	k = h;
-
-step9:
-	if (k == 0) {
-		return;
-	}
-	if (k > h) {
-		goto step13;
-	}
-	if (k < h) {
-		h = k;
-	}
-
-step10:
-	if (sameCell(v, w, theta)) {
-		index++;
-	}
-	v = nextVertexInCell(pi[k], v);
-	if (v == std::numeric_limits<int>::max()) {
-		goto step12;
-	}
-	if (not vertexInCell(omega(theta), v)) {
-		goto step10;
-	}
-
-step11:
-	if (k+1 < q) {
-		q = k+1;
-	}
-	if (k < hx) {
-		hx = k;
-	}
-	if (not lab) {
-		goto step12;
-	}
-	if (k < hb) {
-		hb = k;
-	}
-	if (hy < k) {
-		goto step2;
-	}
-	hy = k;
-	qy = 0;
-	goto step2;
-
-step12:
-	size *= index;
-	index = 0;
-	k--;
-	goto step9;
-
-step13:
-	if (e == 0) {
-		goto step14;
-	}
-	e = 1;
-	// This must be some kind of optimization
-	for (auto p = stored.begin(); p != stored.end(); p++) {
-		if ({v0, v1, v2, ..., vk-1} in p->first) {
-			C[k] = intersect(C[k], p->second);
+		for (int v = 0; v < (int)curr.part[curr.ci].size(); v++) {
+			auto next = curr;
+			next.part.push_back(vector<int>(1, next.part[next.ci][v]));
+			next.part[next.ci].erase(next.part[next.ci].begin()+v);
+			next.part = computePartitions(NET, next.part, vector<vector<int> >(1, next.part.back()));
+			frames.push_back(next);
 		}
 	}
 
-step14:
-	v = nextVertexInCell(pi[c], v);
-	if (v == std::numeric_limits<int>::max()) {
-		k--;
-		goto step9;
+	Mapping result;
+	for (int i = 0; i < (int)mos.size(); i++) {
+		result.devices.push_back(i);
 	}
-	goto step11;
-
-step15:
-	if (h == 0) {
-		goto step20;
+	for (auto cell = best.begin(); cell != best.end(); cell++) {
+		result.cellToThis.push_back(cell->back());
 	}
-	if (hx != k) {
-		goto step16;
-	}
-	g = pi; // Compute the permutation g such that e^g = pi
-	if (g in aut) {
-		goto step8;
-	}
-
-step16:
-	if (qy < 0 or not lab) {
-		goto step18;
-	}
-	if (qy > 0) {
-		goto step17;
-	}
-	int order = compare(B, pi);
-	if (order == 0) {
-		goto step19;
-	} else if (order == 1) {
-		goto step18;
-	}
-
-step17:
-	B = pi;
-	hy= k;
-	hb = k;
-	y = std::numeric_limits<int>::max();
-	qy = 0;
-
-step18:
-	k = q-1;
-	goto step9;
-
-step19:
-	k = hb;
-	if (k != h) {
-		goto step9;
-	}
-	g = ...;// compute the permutation g such that B^g = pi
-	goto step8;
-
-step20:
-	// Step (20): Final termination condition
-	h = k;
-	hx = k;
-	x = std::numeric_limits<int>::max();
-	// apply pi to epsilon
-	k++;
-	if (lab) {
-		beta = prevPi;
-		hy = k + 1;
-		hb = k + 1;
-		y = std::numeric_limits<int>::max();
-		qy = 0;
-	}
-	// Goto 9
-	goto step9;
+	return result;
 }
 
 void Subckt::printNet(int i) const {
@@ -1284,7 +1146,7 @@ void Subckt::print() const {
 	}
 	printf("\n");
 
-	printf("device partitions\n");
+	/*printf("device partitions\n");
 	auto parts = computePartitions(Subckt::LOGICAL);
 	for (int i = 0; i < (int)parts.size(); i++) {
 		for (int j = 0; j < (int)parts[i].size(); j++) {
@@ -1292,10 +1154,10 @@ void Subckt::print() const {
 		}
 		printf("\n");
 	}
-	printf("\n");
+	printf("\n");*/
 
 	printf("net partitions\n");
-	parts = computePartitions(Subckt::NET);
+	auto parts = computePartitions(Subckt::NET);
 	for (int i = 0; i < (int)parts.size(); i++) {
 		for (int j = 0; j < (int)parts[i].size(); j++) {
 			printNet(parts[i][j]);
@@ -1304,6 +1166,9 @@ void Subckt::print() const {
 	}
 	printf("\n");
 
+	printf("canonical labels\n");
+	auto lbl = canonicalLabeling();
+	lbl.print();
 }
 
 }

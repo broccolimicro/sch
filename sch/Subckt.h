@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <unordered_set>
+#include <limits>
 
 #include <phy/Tech.h>
 #include <phy/Layout.h>
@@ -159,15 +160,16 @@ struct Subckt {
 	using partitionKeyElem = vector<int>;
 	using partitionKey = vector<partitionKeyElem>;
 
-	int nextVertexInCell(const vector<int> &cell, int v = std::numeric_limits<int>::max());
-	vector<int> smallestNondiscreteCell(const vector<vector<int> > &partition) const;
+	int smallestNondiscreteCell(const vector<vector<int> > &partition) const;
 	partitionKey createPartitionKey(int kind, int v, const vector<vector<int> > &beta) const;
 	vector<vector<int> > partitionByConnectivity(int kind, const vector<int> &cell, const vector<vector<int> > &beta) const;
-	vector<vector<int> > discretePartition() const;
 	bool partitionIsDiscrete(const vector<vector<int> > &partition) const;
 	vector<vector<int> > computePartitions(int kind, vector<vector<int> > initialPartition=vector<vector<int> >(), vector<vector<int> > subsetToRefine=vector<vector<int> >()) const;
 
-	bool isomorphicTo(const Subckt &ckt, Mapping *m = nullptr) const;
+	bool vertexInCell(const vector<int> &cell, int v) const;
+	int cellIndex(const vector<vector<int> > pi, int v) const;
+	int comparePartitions(const vector<vector<int> > &pi0, const vector<vector<int> > &pi1) const;
+	Mapping canonicalLabeling() const;
 
 	void printNet(int i) const;
 	void printMos(int i) const;
