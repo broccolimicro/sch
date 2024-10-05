@@ -778,15 +778,15 @@ bool operator==(const Subckt::partitionKey &k0, const Subckt::partitionKey &k1) 
 }*/
 
 int Subckt::smallestNondiscreteCell(const vector<vector<int> > &partition) const {
-	auto curr = partition.end();
-	for (auto i = partition.begin(); i != partition.end(); i++) {
-		if (i->size() == 2) {
-			return i-partition.begin();
-		} else if (i->size() > 1 and (curr == partition.end() or i->size() < curr->size())) {
+	int curr = -1;
+	for (int i = 0; i < (int)partition.size(); i++) {
+		if (partition[i].size() == 2) {
+			return i;
+		} else if (partition[i].size() > 2 and (curr < 0 or partition[i].size() < partition[curr].size())) {
 			curr = i;
 		}
 	}
-	return curr-partition.begin();
+	return curr;
 }
 
 Subckt::partitionKey Subckt::createPartitionKey(int kind, int v, const vector<vector<int> > &beta) const {
@@ -876,10 +876,13 @@ bool Subckt::partitionIsDiscrete(const vector<vector<int> > &partition) const {
 	return true;
 }
 
-vector<vector<int> > Subckt::computePartitions(int kind, vector<vector<int> > partition, vector<vector<int> > alpha) const {
+bool Subckt::computePartitions(int kind, vector<vector<int> > &partition, vector<vector<int> > alpha) const {
+	bool change = false;	
+
 	int sz = (kind == NET ? nets.size() : mos.size());
 	if (alpha.empty()) {
 		alpha.push_back(vector<int>());
+		alpha.back().reserve(sz);
 		for (int i = 0; i < sz; i++) {
 			alpha.back().push_back(i);
 		}
@@ -887,9 +890,11 @@ vector<vector<int> > Subckt::computePartitions(int kind, vector<vector<int> > pa
 
 	if (partition.empty()) {
 		partition.push_back(vector<int>());
+		partition.back().reserve(sz);
 		for (int i = 0; i < sz; i++) {
 			partition.back().push_back(i);
 		}
+		change = true;
 	}
 
 	vector<vector<int> > next;
@@ -904,12 +909,13 @@ vector<vector<int> > Subckt::computePartitions(int kind, vector<vector<int> > pa
 			next.insert(next.end(), refined.begin(), refined.end());
 			if (refined.size() > 1) {
 				alpha.insert(alpha.end(), refined.begin()+1, refined.end());
+				change = true;
 			}
 		}
 		partition.swap(next);
 		next.clear();
 	}
-	return partition;
+	return change;
 }
 
 
@@ -1047,13 +1053,25 @@ Mapping Subckt::canonicalLabeling() const {
 	struct frame {
 		frame() {}
 		frame(const Subckt *ckt) {
-			part = ckt->computePartitions(NET);
+			ckt->computePartitions(NET, part);
 			ci = ckt->smallestNondiscreteCell(part);
+			vi = 0;
 		}
 		~frame() {}
 
 		vector<vector<int> > part;
 		int ci;
+		int vi;
+
+		bool inc() {
+			return (++vi < (int)part[ci].size());
+		}
+
+		void pop() {
+			part.push_back(vector<int>(1, part[ci][vi]));
+			part[ci].erase(part[ci].begin()+vi);
+			vi = 0;
+		}
 	};
 
 	int autoCount = 0;
@@ -1079,40 +1097,39 @@ Mapping Subckt::canonicalLabeling() const {
 			fflush(stdout);
 		}
 
-		auto curr = frames.back();
-		frames.pop_back();
 		/*for (auto p = curr.part.begin(); p != curr.part.end(); p++) {
 			if (not is_sorted(p->begin(), p->end())) {
 				printf("violation of sorting assumption\n");
 			}
 		}*/
 
-		for (int v = 0; v < (int)curr.part[curr.ci].size(); v++) {
-			auto next = curr;
-			next.part.push_back(vector<int>(1, next.part[next.ci][v]));
-			next.part[next.ci].erase(next.part[next.ci].begin()+v);
-			next.part = computePartitions(NET, next.part, vector<vector<int> >(1, next.part.back()));
+		frame next = frames.back();
+		if (not frames.back().inc()) {
+			frames.pop_back();
+		}
+		next.pop();
+		
+		bool refined = computePartitions(NET, next.part, vector<vector<int> >(1, next.part.back()));
 
-			if (partitionIsDiscrete(next.part)) {
-				explored++;
-				// found terminal node in tree
-				int cmp = comparePartitions(next.part, best);
-				if (cmp == 1) {
-					best.swap(next.part);
-				} else if (cmp == 0) {
-					autoCount++;
-				}
-			} else {
-				if (next.part[next.ci].size() == 1) {
-					next.ci = smallestNondiscreteCell(next.part);
-				}
-				
-				frames.push_back(next);
+		if (partitionIsDiscrete(next.part)) {
+			explored++;
+			// found terminal node in tree
+			int cmp = comparePartitions(next.part, best);
+			if (cmp == 1) {
+				best.swap(next.part);
+			} else if (cmp == 0) {
+				autoCount++;
 			}
+		} else {
+			if (refined or next.part[next.ci].size() == 1) {
+				next.ci = smallestNondiscreteCell(next.part);
+			}
+			
+			frames.push_back(next);
 		}
 	}
 
-	printf("%d automorphisms found\n", autoCount);
+	printf("%d/%d automorphisms found\n", autoCount, explored);
 
 	Mapping result;
 	for (int i = 0; i < (int)mos.size(); i++) {
@@ -1197,7 +1214,8 @@ void Subckt::print() const {
 	printf("\n");*/
 
 	printf("net partitions\n");
-	auto parts = computePartitions(Subckt::NET);
+	vector<vector<int> > parts;
+	computePartitions(NET, parts);
 	for (int i = 0; i < (int)parts.size(); i++) {
 		for (int j = 0; j < (int)parts[i].size(); j++) {
 			printNet(parts[i][j]);

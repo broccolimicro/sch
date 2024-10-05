@@ -164,7 +164,7 @@ struct Subckt {
 	partitionKey createPartitionKey(int kind, int v, const vector<vector<int> > &beta) const;
 	vector<vector<int> > partitionByConnectivity(int kind, const vector<int> &cell, const vector<vector<int> > &beta) const;
 	bool partitionIsDiscrete(const vector<vector<int> > &partition) const;
-	vector<vector<int> > computePartitions(int kind, vector<vector<int> > initialPartition=vector<vector<int> >(), vector<vector<int> > subsetToRefine=vector<vector<int> >()) const;
+	bool computePartitions(int kind, vector<vector<int> > &initialPartition, vector<vector<int> > subsetToRefine=vector<vector<int> >()) const;
 
 	bool vertexInCell(const vector<int> &cell, int v) const;
 	int cellIndex(const vector<vector<int> > pi, int v) const;
