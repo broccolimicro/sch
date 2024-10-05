@@ -106,7 +106,7 @@ bool Net::isInput() const {
 	return (gateOf[0].size()+gateOf[1].size()) > (sourceOf[0].size()+sourceOf[1].size());
 }
 
-bool Net::connectedTo(int net) {
+bool Net::connectedTo(int net) const {
 	return find(remote.begin(), remote.end(), net) != remote.end();
 }
 
@@ -767,16 +767,6 @@ bool operator==(const Subckt::partitionKey &k0, const Subckt::partitionKey &k1) 
 	return true;
 }
 
-/*int Subckt::nextVertexInCell(const vector<int> &cell, int v) const {
-	int result = std::numeric_limits<int>::max();
-	for (int i = 0; i < (int)cell.size(); i++) {
-		if (*v0 < result and *v0 > v) {
-			result = *v0;
-		}
-	}
-	return result;
-}*/
-
 int Subckt::smallestNondiscreteCell(const vector<vector<int> > &partition) const {
 	int curr = -1;
 	for (int i = 0; i < (int)partition.size(); i++) {
@@ -789,46 +779,20 @@ int Subckt::smallestNondiscreteCell(const vector<vector<int> > &partition) const
 	return curr;
 }
 
-Subckt::partitionKey Subckt::createPartitionKey(int kind, int v, const vector<vector<int> > &beta) const {
+Subckt::partitionKey Subckt::createPartitionKey(int v, const vector<vector<int> > &beta) const {
 	Subckt::partitionKey result;
 	for (auto c = beta.begin(); c != beta.end(); c++) {
 		Subckt::partitionKeyElem score;
+		int categories = 2;
 
-		if (kind == LOGICAL or kind == DEVICE) {
-			vector<int> ports({mos[v].drain, mos[v].gate, mos[v].source});
-			int categories = 3;
-			score.resize(ports.size()*categories+3, 0);
-
-			if (kind == LOGICAL) {
-				score[categories*(int)ports.size() + 0] = mos[v].type;
-			} else if (kind == DEVICE) {
-				score[categories*(int)ports.size() + 0] = mos[v].model;
-				score[categories*(int)ports.size() + 1] = mos[v].size[0];
-				score[categories*(int)ports.size() + 2] = mos[v].size[1];
+		score.resize(categories*2+1, 0);
+		score[2*categories + 0] = nets[v].isIO or not nets[v].gateOf[0].empty() or not nets[v].gateOf[1].empty();
+		for (int type = 0; type < 2; type++) {
+			for (auto i = nets[v].drainOf[type].begin(); i != nets[v].drainOf[type].end(); i++) {
+				score[type*categories + 0] += (std::find(c->begin(), c->end(), mos[*i].source) != c->end());
 			}
-			for (int type = 0; type < 2; type++) {
-				for (int p = 0; p < (int)ports.size(); p++) {
-					for (auto i = nets[ports[p]].drainOf[type].begin(); i != nets[ports[p]].drainOf[type].end(); i++) {
-						score[0*(int)ports.size() + p] += (std::find(c->begin(), c->end(), *i) != c->end());
-					}
-					for (auto i = nets[ports[p]].sourceOf[type].begin(); i != nets[ports[p]].sourceOf[type].end(); i++) {
-						score[1*(int)ports.size() + p] += (std::find(c->begin(), c->end(), *i) != c->end());
-					}
-
-					score[2*(int)ports.size() + p] = score[2*(int)ports.size() + p] or not nets[ports[p]].gateOf[type].empty() or nets[ports[p]].isIO;
-				}
-			}
-		} else if (kind == NET) {
-			int categories = 2;
-			score.resize(categories*2+1, 0);
-			score[2*categories + 0] = nets[v].isIO or not nets[v].gateOf[0].empty() or not nets[v].gateOf[1].empty();
-			for (int type = 0; type < 2; type++) {
-				for (auto i = nets[v].drainOf[type].begin(); i != nets[v].drainOf[type].end(); i++) {
-					score[type*categories + 0] += (std::find(c->begin(), c->end(), mos[*i].source) != c->end());
-				}
-				for (auto i = nets[v].sourceOf[type].begin(); i != nets[v].sourceOf[type].end(); i++) {
-					score[type*categories + 1] += (std::find(c->begin(), c->end(), mos[*i].drain) != c->end());
-				}
+			for (auto i = nets[v].sourceOf[type].begin(); i != nets[v].sourceOf[type].end(); i++) {
+				score[type*categories + 1] += (std::find(c->begin(), c->end(), mos[*i].drain) != c->end());
 			}
 		}
 		result.push_back(score);
@@ -836,11 +800,33 @@ Subckt::partitionKey Subckt::createPartitionKey(int kind, int v, const vector<ve
 	return result;
 }
 
-vector<vector<int> > Subckt::partitionByConnectivity(int kind, const vector<int> &cell, const vector<vector<int> > &beta) const {
+int Subckt::lambda(const vector<vector<int> > &pi) const {
+	int result = 0;
+	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
+		for (auto i = cell->begin(); i != cell->end(); i++) {
+			for (auto j = i+1; j != cell->end(); j++) {
+				auto n0 = nets.begin()+*i;
+				auto n1 = nets.begin()+*j;
+
+				for (int type = 0; type < 2; type++) {
+					for (auto k = n0->sourceOf[type].begin(); k != n0->sourceOf[type].end(); k++) {
+						result += n1->connectedTo(mos[*k].drain);
+					}
+					for (auto k = n1->sourceOf[type].begin(); k != n1->sourceOf[type].end(); k++) {
+						result += n0->connectedTo(mos[*k].drain);
+					}
+				}
+			}
+		}
+	}
+	return result;
+}
+
+vector<vector<int> > Subckt::partitionByConnectivity(const vector<int> &cell, const vector<vector<int> > &beta) const {
 	vector<vector<int> > result;
 	map<partitionKey, int> partitions;
 	for (auto v = cell.begin(); v != cell.end(); v++) {
-		auto pos = partitions.insert(pair<partitionKey, int>(createPartitionKey(kind, *v, beta), (int)result.size()));
+		auto pos = partitions.insert(pair<partitionKey, int>(createPartitionKey(*v, beta), (int)result.size()));
 		if (pos.second) {
 			result.push_back(vector<int>());
 		}
@@ -876,22 +862,20 @@ bool Subckt::partitionIsDiscrete(const vector<vector<int> > &partition) const {
 	return true;
 }
 
-bool Subckt::computePartitions(int kind, vector<vector<int> > &partition, vector<vector<int> > alpha) const {
+bool Subckt::computePartitions(vector<vector<int> > &partition, vector<vector<int> > alpha) const {
 	bool change = false;	
-
-	int sz = (kind == NET ? nets.size() : mos.size());
 	if (alpha.empty()) {
 		alpha.push_back(vector<int>());
-		alpha.back().reserve(sz);
-		for (int i = 0; i < sz; i++) {
+		alpha.back().reserve(nets.size());
+		for (int i = 0; i < (int)nets.size(); i++) {
 			alpha.back().push_back(i);
 		}
 	}
 
 	if (partition.empty()) {
 		partition.push_back(vector<int>());
-		partition.back().reserve(sz);
-		for (int i = 0; i < sz; i++) {
+		partition.back().reserve(nets.size());
+		for (int i = 0; i < (int)nets.size(); i++) {
 			partition.back().push_back(i);
 		}
 		change = true;
@@ -905,7 +889,7 @@ bool Subckt::computePartitions(int kind, vector<vector<int> > &partition, vector
 		alpha.pop_back();
 
 		for (int i = 0; i < (int)partition.size(); i++) {
-			vector<vector<int> > refined = partitionByConnectivity(kind, partition[i], beta);
+			vector<vector<int> > refined = partitionByConnectivity(partition[i], beta);
 			next.insert(next.end(), refined.begin(), refined.end());
 			if (refined.size() > 1) {
 				alpha.insert(alpha.end(), refined.begin()+1, refined.end());
@@ -919,33 +903,11 @@ bool Subckt::computePartitions(int kind, vector<vector<int> > &partition, vector
 }
 
 
-/*int Subckt::lambda(int kind, vector<vector<int> > pi) {
-	int result = 0;
-	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
-		for (auto i = cell.begin(); i != cell.end(); i++) {
-			for (auto j = i+1; j != cell.end(); j++) {
-				if (kind == DEVICE) {
-					int n0 = mos[*i].source;
-					int n1 = mos[*i].drain;
-					int n2 = mos[*j].source;
-					int n3 = mos[*j].drain;
-					result += (
-						nets[n0].connectedTo(n2) +
-						nets[n0].connectedTo(n3) +
-						nets[n1].connectedTo(n2) +
-						nets[n1].connectedTo(n3) +
-					);
-				}
-			}
-		}
-	}
-	return result;
-}
-
+/*
 vector<int> Subckt::omega(vector<vector<int> > pi) {
 	vector<int> result;
 	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
-		result.push_back(nextVertexInCell(*cell);
+		result.push_back((*cell)[0]);
 	}
 	return result;
 }
@@ -985,9 +947,9 @@ int Subckt::comparePartitions(const vector<vector<int> > &pi0, const vector<vect
 		return -1;
 	}
 
-	/*if (not partitionIsDiscrete(pi0) or not partitionIsDiscrete(pi1)) {
+	if (not partitionIsDiscrete(pi0) or not partitionIsDiscrete(pi1)) {
 		printf("comparePartitions assumptions violated\n");
-	}*/
+	}
 	// implement G^pi0 <=> G^pi1
 	// The naive way would be to apply pi0 to G to create G0 and apply pi1 to G
 	// to create G1, then represent G0 and G1 as sorted adjacency lists and
@@ -1031,7 +993,6 @@ int Subckt::comparePartitions(const vector<vector<int> > &pi0, const vector<vect
 	return 0;
 }
 
-
 // This function will be derived from Nauty, Bliss, and DviCL
 //
 // B.D. McKay: Computing automorphisms and canonical labellings of
@@ -1053,7 +1014,7 @@ Mapping Subckt::canonicalLabeling() const {
 	struct frame {
 		frame() {}
 		frame(const Subckt *ckt) {
-			ckt->computePartitions(NET, part);
+			ckt->computePartitions(part);
 			ci = ckt->smallestNondiscreteCell(part);
 			vi = 0;
 		}
@@ -1067,10 +1028,14 @@ Mapping Subckt::canonicalLabeling() const {
 			return (++vi < (int)part[ci].size());
 		}
 
-		void pop() {
+		bool pop(const Subckt *ckt) {
 			part.push_back(vector<int>(1, part[ci][vi]));
 			part[ci].erase(part[ci].begin()+vi);
 			vi = 0;
+			if (ckt->computePartitions(part, vector<vector<int> >(1, part.back())) or (int)part[ci].size() == 1) {
+				ci = ckt->smallestNondiscreteCell(part);
+			}
+			return ci < 0;
 		}
 	};
 
@@ -1093,25 +1058,23 @@ Mapping Subckt::canonicalLabeling() const {
 	int explored = 0;
 	while (not frames.empty()) {
 		if ((explored&((1<<10)-1)) == 0) {
-			printf("%d\t%d\t%d\r", (int)frames.size(), explored, autoCount);
+			printf("%03d\t%d\t%d\r", (int)frames.size(), explored, autoCount);
 			fflush(stdout);
 		}
-
-		/*for (auto p = curr.part.begin(); p != curr.part.end(); p++) {
-			if (not is_sorted(p->begin(), p->end())) {
-				printf("violation of sorting assumption\n");
-			}
-		}*/
 
 		frame next = frames.back();
 		if (not frames.back().inc()) {
 			frames.pop_back();
 		}
-		next.pop();
-		
-		bool refined = computePartitions(NET, next.part, vector<vector<int> >(1, next.part.back()));
 
-		if (partitionIsDiscrete(next.part)) {
+		for (auto p = next.part.begin(); p != next.part.end(); p++) {
+			if (not is_sorted(p->begin(), p->end())) {
+				printf("violation of sorting assumption\n");
+			}
+		}
+
+		if (next.pop(this)) {
+			// found a discrete partition
 			explored++;
 			// found terminal node in tree
 			int cmp = comparePartitions(next.part, best);
@@ -1121,10 +1084,6 @@ Mapping Subckt::canonicalLabeling() const {
 				autoCount++;
 			}
 		} else {
-			if (refined or next.part[next.ci].size() == 1) {
-				next.ci = smallestNondiscreteCell(next.part);
-			}
-			
 			frames.push_back(next);
 		}
 	}
@@ -1203,19 +1162,9 @@ void Subckt::print() const {
 	}
 	printf("\n");
 
-	/*printf("device partitions\n");
-	auto parts = computePartitions(Subckt::LOGICAL);
-	for (int i = 0; i < (int)parts.size(); i++) {
-		for (int j = 0; j < (int)parts[i].size(); j++) {
-			printMos(parts[i][j]);
-		}
-		printf("\n");
-	}
-	printf("\n");*/
-
 	printf("net partitions\n");
 	vector<vector<int> > parts;
-	computePartitions(NET, parts);
+	computePartitions(parts);
 	for (int i = 0; i < (int)parts.size(); i++) {
 		for (int j = 0; j < (int)parts[i].size(); j++) {
 			printNet(parts[i][j]);

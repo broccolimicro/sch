@@ -84,7 +84,7 @@ struct Net {
 	bool isPairedDriver() const;
 	bool isOutput() const;
 	bool isInput() const;
-	bool connectedTo(int net);
+	bool connectedTo(int net) const;
 
 	bool dangling(bool remIO=false) const;
 	bool isAnonymous() const;
@@ -151,20 +151,15 @@ struct Subckt {
 	Mapping segment(int net);
 	vector<Subckt> generateCells(int start);
 
-	enum {
-		LOGICAL = 0,
-		DEVICE = 1,
-		NET = 2,
-	};
-
 	using partitionKeyElem = vector<int>;
 	using partitionKey = vector<partitionKeyElem>;
 
 	int smallestNondiscreteCell(const vector<vector<int> > &partition) const;
-	partitionKey createPartitionKey(int kind, int v, const vector<vector<int> > &beta) const;
-	vector<vector<int> > partitionByConnectivity(int kind, const vector<int> &cell, const vector<vector<int> > &beta) const;
+	partitionKey createPartitionKey(int v, const vector<vector<int> > &beta) const;
+	int lambda(const vector<vector<int> > &pi) const;
+	vector<vector<int> > partitionByConnectivity(const vector<int> &cell, const vector<vector<int> > &beta) const;
 	bool partitionIsDiscrete(const vector<vector<int> > &partition) const;
-	bool computePartitions(int kind, vector<vector<int> > &initialPartition, vector<vector<int> > subsetToRefine=vector<vector<int> >()) const;
+	bool computePartitions(vector<vector<int> > &initialPartition, vector<vector<int> > subsetToRefine=vector<vector<int> >()) const;
 
 	bool vertexInCell(const vector<int> &cell, int v) const;
 	int cellIndex(const vector<vector<int> > pi, int v) const;
