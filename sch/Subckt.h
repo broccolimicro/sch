@@ -151,11 +151,9 @@ struct Subckt {
 	Mapping segment(int net);
 	vector<Subckt> generateCells(int start);
 
-	using partitionKeyElem = vector<int>;
-	using partitionKey = vector<partitionKeyElem>;
 
 	int smallestNondiscreteCell(const vector<vector<int> > &partition) const;
-	partitionKey createPartitionKey(int v, const vector<vector<int> > &beta) const;
+	vector<vector<int> > createPartitionKey(int v, const vector<vector<int> > &beta) const;
 	array<int, 4> lambda(const vector<int> &c0, const vector<int> &c1) const;
 	vector<array<int, 4> > lambda(vector<vector<int> > pi) const;
 	vector<vector<int> > partitionByConnectivity(const vector<int> &cell, const vector<vector<int> > &beta) const;
