@@ -107,7 +107,8 @@ struct Mapping {
 
 	Subckt generate(const Subckt &main);
 
-	bool apply(const Mapping &m);
+	bool extract(const Mapping &m);
+	void apply(const Mapping &m);
 	void merge(const Mapping &m);
 	Instance instance() const;
 
@@ -145,7 +146,7 @@ struct Subckt {
 	void popMos(int index);
 
 	vector<Mapping> find(const Subckt &cell, int index);
-	void apply(const Mapping &m);
+	void extract(const Mapping &m);
 	void cleanDangling(bool remIO=false);
 
 	Mapping segment(int net);

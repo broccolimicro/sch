@@ -101,9 +101,9 @@ bool Netlist::mapCells(Subckt &ckt) {
 
 	// Now we have the best cell mapping. We need to apply it.
 	for (int i = 0; i < (int)result.size(); i++) {
-		ckt.apply(options[result[i]]);
+		ckt.extract(options[result[i]]);
 		for (int j = i+1; j < (int)result.size(); j++) {
-			options[result[j]].apply(options[result[i]]);
+			options[result[j]].extract(options[result[i]]);
 		}
 	}
 
@@ -129,7 +129,6 @@ void Netlist::mapCells() {
 	// structured approach and then fall back to one of our other methods.
 
 	for (int i = (int)subckts.size()-1; i >= 0; i--) {
-		subckts[i].print();
 		/*if (subckts[i].isCell or subckts[i].mos.empty()) {
 			continue;
 		}*/
@@ -138,8 +137,8 @@ void Netlist::mapCells() {
 			continue;
 		}*/
 
-		//auto cells = subckts[i].generateCells((int)subckts.size());
-		//subckts.insert(subckts.end(), cells.begin(), cells.end());
+		auto cells = subckts[i].generateCells((int)subckts.size());
+		subckts.insert(subckts.end(), cells.begin(), cells.end());
 	}
 }
 

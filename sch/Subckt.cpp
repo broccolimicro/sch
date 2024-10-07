@@ -218,8 +218,8 @@ Subckt Mapping::generate(const Subckt &main) {
 	return cell;
 }
 
-bool Mapping::apply(const Mapping &m) {
-	printf("applying mapping to this\n");
+bool Mapping::extract(const Mapping &m) {
+	printf("extracting mapping from main\n");
 	m.print();
 	print();
 
@@ -242,6 +242,19 @@ bool Mapping::apply(const Mapping &m) {
 	print();
 
 	return success;
+}
+
+void Mapping::apply(const Mapping &m) {
+	// this: cell -> main
+	// m: canon -> cell
+	// want: canon -> main
+
+	vector<int> nets;
+	nets.reserve(cellToThis.size());
+	for (int i = 0; i < (int)m.cellToThis.size(); i++) {
+		nets.push_back(cellToThis[m.cellToThis[i]]);
+	}
+	cellToThis = nets;
 }
 
 void Mapping::merge(const Mapping &m) {
@@ -603,14 +616,14 @@ vector<Mapping> Subckt::find(const Subckt &cell, int index) {
 	return result;
 }
 
-void Subckt::apply(const Mapping &m) {
-	int index = (int)inst.size();
+void Subckt::extract(const Mapping &m) {
 	if (m.index >= 0 and m.cell != nullptr) {
+		int index = (int)inst.size();
 		inst.push_back(m.instance());
+		for (auto p = inst.back().ports.begin(); p != inst.back().ports.end(); p++) {
+			nets[*p].portOf.push_back(index);
+		} 
 	}
-	for (auto p = inst.back().ports.begin(); p != inst.back().ports.end(); p++) {
-		nets[*p].portOf.push_back(index);
-	} 
 
 	for (int i = (int)m.devices.size()-1; i >= 0; i--) {
 		popMos(m.devices[i]);
@@ -713,9 +726,23 @@ vector<Subckt> Subckt::generateCells(int start) {
 	cells.reserve(segments.size());
 	for (int i = 0; i < (int)segments.size(); i++) {
 		segments[i].index = start + (int)cells.size();
-		cells.push_back(segments[i].generate(*this));
-		segments[i].cell = &cells.back();
-		apply(segments[i]);
+		Subckt ckt = segments[i].generate(*this);
+		Mapping lbl = ckt.canonicalLabeling();
+		segments[i].apply(lbl);
+		Subckt canon = segments[i].generate(*this);
+		for (int j = 0; j < (int)cells.size(); j++) {
+			if (cells[j].compare(canon) == 0) {
+				segments[i].index = start+j;
+				segments[i].cell = &cells[j];
+				break;
+			}
+		}
+		if (segments[i].index >= start+(int)cells.size()) {
+			cells.push_back(canon);
+			segments[i].cell = &cells.back();
+		}
+		// TODO(edward.bingham) update segments[i] to the appropriate canonical mapping
+		extract(segments[i]);
 		print();
 		for (int j = (int)segments.size()-1; j > i; j--) {
 			// DESIGN(edward.bingham) if two segments overlap, then we just remove
@@ -724,7 +751,7 @@ vector<Subckt> Subckt::generateCells(int start) {
 			// switch (for example, shared weak ground). Otherwise it's an isochronic
 			// fork assumption violation.
 
-			if (not segments[j].apply(segments[i])) {
+			if (not segments[j].extract(segments[i])) {
 				printf("internal %s:%d: overlapping cells found\n", __FILE__, __LINE__);
 			}
 			segments[j].print();
