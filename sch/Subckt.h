@@ -165,6 +165,10 @@ struct Subckt {
 	bool vertexInCell(const vector<int> &cell, int v) const;
 	int cellIndex(const vector<vector<int> > pi, int v) const;
 	int comparePartitions(const vector<vector<int> > &pi0, const vector<vector<int> > &pi1) const;
+
+	//vector<int> omega(vector<vector<int> > pi) const;
+	//vector<vector<int> > discreteCellsOf(vector<vector<int> > pi) const;
+
 	Mapping canonicalLabeling() const;
 
 	void printNet(int i) const;

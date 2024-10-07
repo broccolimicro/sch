@@ -823,15 +823,7 @@ vector<vector<int> > Subckt::partitionByConnectivity(const vector<int> &cell, co
 	return theta;
 }
 
-vector<vector<int> > Subckt::discreteCellsOf(const vector<vector<int> > &pi) const {
-	vector<vector<int> > result;
-	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
-		if (cell->size() == 1) {
-			result.push_back(*cell);
-		}
-	}
-	return result;
-}*/
+*/
 
 bool Subckt::partitionIsDiscrete(const vector<vector<int> > &partition) const {
 	for (auto p = partition.begin(); p != partition.end(); p++) {
@@ -884,15 +876,6 @@ bool Subckt::computePartitions(vector<vector<int> > &partition, vector<vector<in
 
 
 /*
-vector<int> Subckt::omega(vector<vector<int> > pi) {
-	vector<int> result;
-	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
-		result.push_back((*cell)[0]);
-	}
-	return result;
-}
-
-
 bool Subckt::sameCell(int i, int j, vector<vector<int> > theta) {
 	for (auto t = theta.begin(); t != theta.end(); t++) {
 		if (find(t->begin(), t->end(), i) != t->end() and find(t->begin(), t->end(), j) != t->end()) {
@@ -1034,6 +1017,24 @@ int Subckt::comparePartitions(const vector<vector<int> > &pi0, const vector<vect
 	return 0;
 }
 
+/*vector<int> Subckt::omega(vector<vector<int> > pi) const {
+	vector<int> result;
+	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
+		result.push_back((*cell)[0]);
+	}
+	return result;
+}
+
+vector<vector<int> > Subckt::discreteCellsOf(vector<vector<int> > pi) const {
+	vector<vector<int> > result;
+	for (int i = 0; i < (int)pi.size(); i++) {
+		if (pi[i].size() == 1) {
+			result.push_back(pi[i]);
+		}
+	}
+	return result;
+}*/
+
 // This function will be derived from Nauty, Bliss, and DviCL
 //
 // B.D. McKay: Computing automorphisms and canonical labellings of
@@ -1058,16 +1059,21 @@ Mapping Subckt::canonicalLabeling() const {
 			ckt->computePartitions(part);
 			ci = ckt->smallestNondiscreteCell(part);
 			vi = 0;
+			
+			v = -1;
 		}
 		~frame() {}
 
 		vector<vector<int> > part;
 		int ci;
 		int vi;
+		
+		int v;
 
 		vector<array<int, 4> > l;
 
 		bool inc() {
+			v = part[ci][vi];
 			return (++vi < (int)part[ci].size());
 		}
 
@@ -1104,11 +1110,12 @@ Mapping Subckt::canonicalLabeling() const {
 		}
 	};
 
-	int autoCount = 0;
-	frame best;
+	map<vector<int>, vector<int> > stored;
+
+	vector<frame> best;
 	vector<frame> frames(1, frame(this));
 	if (partitionIsDiscrete(frames.back().part)) {
-		best = frames.back();
+		best = frames;
 		frames.pop_back();
 	}
 
@@ -1129,13 +1136,22 @@ Mapping Subckt::canonicalLabeling() const {
 			// found a discrete partition
 			explored++;
 			// found terminal node in tree
-			int cmp = best.part.empty() ? 1 : comparePartitions(next.part, best.part);
+			int cmp = best.empty() ? 1 : comparePartitions(next.part, best.back().part);
 			if (cmp == 1) {
-				best = next;
+				best = frames;
+				best.push_back(next);
 			} else if (cmp == 0) {
-				autoCount++;
+				// We found an automorphism. We can use this to prune the search space.
+				// Find a shared node in the frames list between best and next
+				int from = 0;
+				while (from < (int)frames.size()
+					and from < (int)best.size()
+					and frames[from].v == best[from].v) {
+					from++;
+				}
+				frames.resize(from);
 			}
-		} else if (best.part.empty() or not next.isLessThan(this, best)) {
+		} else if (best.empty() or not next.isLessThan(this, best.back())) {
 			frames.push_back(next);
 		}
 	}
@@ -1144,7 +1160,7 @@ Mapping Subckt::canonicalLabeling() const {
 	for (int i = 0; i < (int)mos.size(); i++) {
 		result.devices.push_back(i);
 	}
-	for (auto cell = best.part.begin(); cell != best.part.end(); cell++) {
+	for (auto cell = best.back().part.begin(); cell != best.back().part.end(); cell++) {
 		result.cellToThis.push_back(cell->back());
 	}
 	return result;
