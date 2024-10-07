@@ -72,7 +72,7 @@ void Mapping::apply(const Mapping &m) {
 	// want: canon -> main
 
 	vector<int> nets;
-	nets.reserve(cellToThis.size());
+	nets.reserve(m.cellToThis.size());
 	for (int i = 0; i < (int)m.cellToThis.size(); i++) {
 		nets.push_back(cellToThis[m.cellToThis[i]]);
 	}
@@ -93,6 +93,16 @@ void Mapping::merge(const Mapping &m) {
 	devices.insert(devices.end(), m.devices.begin(), m.devices.end());
 	sort(devices.begin(), devices.end());
 	devices.erase(unique(devices.begin(), devices.end()), devices.end());
+}
+
+Mapping &Mapping::remap(vector<int> nets) {
+	vector<int> updated;
+	updated.reserve(nets.size());
+	for (int i = 0; i < (int)nets.size(); i++) {
+		updated.push_back(cellToThis[nets[i]]);
+	}
+	cellToThis = updated;
+	return *this;
 }
 
 bool Mapping::overlapsWith(const Mapping &m) const {

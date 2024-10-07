@@ -529,9 +529,7 @@ vector<Subckt> Subckt::generateCells(int start) {
 	for (int i = 0; i < (int)segments.size(); i++) {
 		int index = start+(int)cells.size();
 		Subckt ckt = segments[i].generate(*this, "cell_"+to_string(index));
-		Mapping lbl;
-		lbl.cellToThis = canonicalLabels(ckt);
-		segments[i].apply(lbl);
+		segments[i].remap(canonicalLabels(ckt));
 		Subckt canon = segments[i].generate(*this, "cell_"+to_string(index));
 
 		const Subckt *cell = nullptr;

@@ -28,10 +28,10 @@ struct Mapping {
 	int pushNet(int net);
 
 	void identity(const Subckt &from);
-	void canonical(const Subckt &from);
 	bool extract(const Mapping &m);
 	void apply(const Mapping &m);
 	void merge(const Mapping &m);
+	Mapping &remap(vector<int> nets);
 
 	bool overlapsWith(const Mapping &m) const;
 
