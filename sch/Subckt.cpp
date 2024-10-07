@@ -486,14 +486,14 @@ Mapping Subckt::segment(int net) {
 }
 
 vector<Subckt> Subckt::generateCells(int start) {
-	print();
+	//print();
 	vector<Mapping> segments;
 	for (int i = 0; i < (int)nets.size(); i++) {
 		if (not nets[i].isAnonymous() and (not nets[i].drainOf[0].empty() or not nets[i].drainOf[1].empty())) {
 			auto seg = segment(i);
 			if (not seg.devices.empty()) {
 				segments.push_back(seg);
-				segments.back().print();
+				//segments.back().print();
 			} else {
 				printf("found empty segment\n");
 				seg.print();
@@ -529,12 +529,9 @@ vector<Subckt> Subckt::generateCells(int start) {
 	for (int i = 0; i < (int)segments.size(); i++) {
 		int index = start+(int)cells.size();
 		Subckt ckt = segments[i].generate(*this, "cell_"+to_string(index));
-		segments[i].print();
 		Mapping lbl;
 		lbl.cellToThis = canonicalLabels(ckt);
-		lbl.print();
 		segments[i].apply(lbl);
-		segments[i].print();
 		Subckt canon = segments[i].generate(*this, "cell_"+to_string(index));
 
 		const Subckt *cell = nullptr;
@@ -551,7 +548,7 @@ vector<Subckt> Subckt::generateCells(int start) {
 		}
 		// TODO(edward.bingham) update segments[i] to the appropriate canonical mapping
 		extract(*cell, segments[i], index);
-		print();
+		//print();
 		for (int j = (int)segments.size()-1; j > i; j--) {
 			// DESIGN(edward.bingham) if two segments overlap, then we just remove
 			// the extra devices from one of the segments. It's only ok to have those
@@ -562,7 +559,7 @@ vector<Subckt> Subckt::generateCells(int start) {
 			if (not segments[j].extract(segments[i])) {
 				printf("internal %s:%d: overlapping cells found\n", __FILE__, __LINE__);
 			}
-			segments[j].print();
+			//segments[j].print();
 		}
 	}
 
