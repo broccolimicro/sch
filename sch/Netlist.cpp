@@ -22,15 +22,17 @@ Netlist::~Netlist() {
 }
 
 bool Netlist::mapCells(Subckt &ckt) {
-	vector<Mapping> options;
-	for (auto cell = subckts.begin(); cell != subckts.end(); cell++) {
+	vector<pair<Mapping, int> > options;
+	for (int i = 0; i < (int)subckts.size(); i++) {
 		if (ckt.mos.empty()) {
 			return true;
 		}
 
-		if (cell->isCell) {
-			auto found = ckt.find(*cell, cell-subckts.begin());
-			options.insert(options.end(), found.begin(), found.end());
+		if (subckts[i].isCell) {
+			auto found = ckt.find(subckts[i]);
+			for (auto m = found.begin(); m != found.end(); m++) {
+				options.push_back(pair<Mapping, int>(*m, i));
+			}
 		}
 	}
 
@@ -66,7 +68,7 @@ bool Netlist::mapCells(Subckt &ckt) {
 		if (frame.P.empty() and frame.X.empty()) {
 			int newCovered = 0;
 			for (auto r = frame.R.begin(); r != frame.R.end(); r++) {
-				newCovered += (int)options[*r].devices.size();
+				newCovered += (int)options[*r].first.devices.size();
 			}
 
 			// Then we've found a maximal clique
@@ -79,16 +81,16 @@ bool Netlist::mapCells(Subckt &ckt) {
 			while (not frame.P.empty()) {
 				frames.push_back(frame);
 				frames.back().R.push_back(frame.P.back());
-				auto m0 = options.begin() + frame.P.back();
+				auto o0 = options.begin() + frame.P.back();
 				for (int i = (int)frames.back().P.size()-1; i >= 0; i--) {
-					auto m1 = options.begin() + frames.back().P[i];
-					if (m0->overlapsWith(*m1)) {
+					auto o1 = options.begin() + frames.back().P[i];
+					if (o0->first.overlapsWith(o1->first)) {
 						frames.back().P.erase(frames.back().P.begin() + i);
 					}
 				}
 				for (int i = (int)frames.back().X.size()-1; i >= 0; i--) {
-					auto m1 = options.begin() + frames.back().X[i];
-					if (m0->overlapsWith(*m1)) {
+					auto o1 = options.begin() + frames.back().X[i];
+					if (o0->first.overlapsWith(o1->first)) {
 						frames.back().X.erase(frames.back().X.begin() + i);
 					}
 				}
@@ -100,10 +102,10 @@ bool Netlist::mapCells(Subckt &ckt) {
 	}
 
 	// Now we have the best cell mapping. We need to apply it.
-	for (int i = 0; i < (int)result.size(); i++) {
-		ckt.extract(options[result[i]]);
-		for (int j = i+1; j < (int)result.size(); j++) {
-			options[result[j]].extract(options[result[i]]);
+	for (auto i = result.begin(); i != result.end(); i++) {
+		ckt.extract(subckts[options[*i].second], options[*i].first, options[*i].second);
+		for (auto j = i+1; j != result.end(); j++) {
+			options[*j].first.extract(options[*i].first);
 		}
 	}
 

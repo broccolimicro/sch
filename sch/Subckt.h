@@ -5,10 +5,14 @@
 #include <vector>
 #include <unordered_set>
 #include <limits>
+#include <algorithm>
 
 #include <phy/Tech.h>
 #include <phy/Layout.h>
 #include <phy/vector.h>
+
+#include "Mapping.h"
+#include "Isomorph.h"
 
 using namespace phy;
 using namespace std;
@@ -91,33 +95,12 @@ struct Net {
 };
 
 struct Instance {
+	Instance();
+	Instance(const Subckt &ckt, const Mapping &m, int subckt);
+	~Instance();
+
 	int subckt;
 	vector<int> ports;
-};
-
-struct Mapping {
-	Mapping();
-	Mapping(const Subckt *cell, int index);
-	~Mapping();
-
-	int index;
-	const Subckt *cell;
-	vector<int> cellToThis; // nets
-	vector<int> devices; // devs in this
-
-	Subckt generate(const Subckt &main);
-
-	bool extract(const Mapping &m);
-	void apply(const Mapping &m);
-	void merge(const Mapping &m);
-	Instance instance() const;
-
-	bool overlapsWith(const Mapping &m) const;
-	bool coupledWith(const Subckt &main, const Mapping &m) const;
-
-	int pushNet(int net);
-
-	void print() const;
 };
 
 struct Subckt {
@@ -145,36 +128,64 @@ struct Subckt {
 	int pushMos(int model, int type, int drain, int gate, int source, int base=-1, vec2i size=vec2i(1.0,1.0));
 	void popMos(int index);
 
-	vector<Mapping> find(const Subckt &cell, int index);
-	void extract(const Mapping &m);
+	vector<Mapping> find(const Subckt &cell);
+	void extract(const Subckt &ckt, const Mapping &m, int cellIndex);
 	void cleanDangling(bool remIO=false);
 
 	Mapping segment(int net);
 	vector<Subckt> generateCells(int start);
+	bool areCoupled(const Mapping &m0, const Mapping &m1) const;
+	
+	int compare(const Subckt &ckt) const;
 
 
-	int smallestNondiscreteCell(const vector<vector<int> > &partition) const;
-	vector<vector<int> > createPartitionKey(int v, const vector<vector<int> > &beta) const;
-	array<int, 4> lambda(const vector<int> &c0, const vector<int> &c1) const;
-	vector<array<int, 4> > lambda(vector<vector<int> > pi) const;
-	vector<vector<int> > partitionByConnectivity(const vector<int> &cell, const vector<vector<int> > &beta) const;
-	bool partitionIsDiscrete(const vector<vector<int> > &partition) const;
-	bool computePartitions(vector<vector<int> > &initialPartition, vector<vector<int> > subsetToRefine=vector<vector<int> >()) const;
+	vector<vector<int> > createPartitionKey(int v, const Partition &beta) const;
+	array<int, 4> lambda(const Partition::Cell &c0, const Partition::Cell &c1) const;
+	vector<array<int, 4> > lambda(Partition pi) const;
+	int comparePartitions(const Partition &pi0, const Partition &pi1) const;
+	int verts() const;
 
-	bool vertexInCell(const vector<int> &cell, int v) const;
-	int cellIndex(const vector<vector<int> > pi, int v) const;
-	int comparePartitions(const vector<vector<int> > &pi0, const vector<vector<int> > &pi1) const;
-
-	//vector<int> omega(vector<vector<int> > pi) const;
-	//vector<vector<int> > discreteCellsOf(vector<vector<int> > pi) const;
-
-	Mapping canonicalLabeling() const;
 
 	void printNet(int i) const;
 	void printMos(int i) const;
 	void print() const;
-	
-	int compare(const Subckt &ckt) const;
 };
 
+bool operator==(const Subckt &c0, const Subckt &c1);
+bool operator!=(const Subckt &c0, const Subckt &c1);
+bool operator<(const Subckt &c0, const Subckt &c1);
+bool operator>(const Subckt &c0, const Subckt &c1);
+bool operator<=(const Subckt &c0, const Subckt &c1);
+bool operator>=(const Subckt &c0, const Subckt &c1);
+
 }
+
+template<>
+struct std::hash<sch::Subckt> {
+	void appendHash(std::size_t &h0, std::size_t h1) const {
+    h0 ^= (h1 + 0x9e3779b9 + (h0<<6) + (h0>>2));
+	}
+
+	std::size_t operator()(const sch::Subckt &ckt) const noexcept {
+		std::size_t result = std::hash<size_t>{}(ckt.nets.size());
+
+		for (int i = 0; i < (int)ckt.nets.size(); i++) {
+			appendHash(result, std::hash<int>{}(i));
+			for (int type = 0; type < 2; type++) {
+				appendHash(result, std::hash<int>{}(type));
+				appendHash(result, std::hash<size_t>{}(ckt.nets[i].sourceOf[type].size()));
+
+				vector<int> g0;
+				for (auto j = ckt.nets[i].sourceOf[type].begin(); j != ckt.nets[i].sourceOf[type].end(); j++) {
+					g0.push_back(ckt.mos[*j].drain);
+				}
+				std::sort(g0.begin(), g0.end());
+
+				for (int j = 0; j < (int)g0.size(); j++) {
+					appendHash(result, std::hash<int>{}(g0[j]));
+				}
+			}
+		}
+		return result;
+	}
+};

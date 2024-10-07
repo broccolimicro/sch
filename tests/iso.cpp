@@ -41,13 +41,19 @@ TEST(iso, canonical_equal)
 {
 	int n = 5;
 	Subckt ckt = genRand(n);
-	auto canon = ckt.canonicalLabeling().generate(ckt);
+	Mapping m1;
+	m1.identity(ckt);
+	m1.cellToThis = canonicalLabels(ckt);
+	auto canon = m1.generate(ckt, "cell");
 
 	int equal = 0;
 	int count = 100;
 	for (int i = 0; i < count; i++) {
 		Subckt test = genRand(n);
-		auto canon2 = test.canonicalLabeling().generate(test);
+		Mapping m;
+		m.identity(test);
+		m.cellToThis = canonicalLabels(test);
+		auto canon2 = m.generate(test, "cell");
 		int cmp = canon.compare(canon2);
 		equal += (cmp == 0);
 	}
@@ -59,14 +65,19 @@ TEST(iso, canonical_not_equal)
 {
 	int n = 5;
 	Subckt ckt = genRand(n);
-
-	auto canon = ckt.canonicalLabeling().generate(ckt);
+	Mapping m1;
+	m1.identity(ckt);
+	m1.cellToThis = canonicalLabels(ckt);
+	auto canon = m1.generate(ckt, "cell");
 
 	int equal = 0;
 	int count = 100;
 	for (int i = 0; i < count; i++) {
 		Subckt test = genRand(n, true);
-		auto canon2 = test.canonicalLabeling().generate(test);
+		Mapping m;
+		m.identity(test);
+		m.cellToThis = canonicalLabels(test);
+		auto canon2 = m.generate(test, "cell");
 		int cmp = canon.compare(canon2);
 		equal += (cmp == 0);
 	}
