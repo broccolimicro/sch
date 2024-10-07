@@ -1117,7 +1117,7 @@ Mapping Subckt::canonicalLabeling() const {
 			}
 			printf("} %d:%d\n\n", ci, vi);*/
 
-			//l = ckt->lambda(part);
+			l = ckt->lambda(part);
 			return ci < 0;
 		}
 
@@ -1148,21 +1148,8 @@ Mapping Subckt::canonicalLabeling() const {
 		frames.pop_back();
 	}
 
-	uint64_t count = 1;
-	for (auto c = frames.back().part.begin(); c != frames.back().part.end(); c++) {
-		for (uint64_t i = c->size(); i >= 1; i--) {
-			count *= i;
-		}
-	}
-	printf("exploring %lu labellings\n", count);
-
 	int explored = 0;
 	while (not frames.empty()) {
-		if ((explored&((1<<10)-1)) == 0) {
-			printf("%03d\t%d\t%d\r", (int)frames.size(), explored, autoCount);
-			fflush(stdout);
-		}
-
 		frame next = frames.back();
 		if (not frames.back().inc()) {
 			frames.pop_back();
@@ -1184,12 +1171,10 @@ Mapping Subckt::canonicalLabeling() const {
 			} else if (cmp == 0) {
 				autoCount++;
 			}
-		} else /*if (best.part.empty() or not next.isLessThan(this, best))*/ {
+		} else if (best.part.empty() or not next.isLessThan(this, best)) {
 			frames.push_back(next);
 		}
 	}
-
-	printf("%d/%d automorphisms found\n", autoCount, explored);
 
 	Mapping result;
 	for (int i = 0; i < (int)mos.size(); i++) {

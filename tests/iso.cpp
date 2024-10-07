@@ -7,7 +7,7 @@
 using namespace sch;
 using namespace std;
 
-Subckt genRand(int n) {
+Subckt genRand(int n, bool dev=false) {
 	Subckt ckt;
 	ckt.name = "test";
 
@@ -17,7 +17,8 @@ Subckt genRand(int n) {
 		nets[i] = ckt.pushNet("n" + to_string(i));
 	}
 
-	random_shuffle(nets.begin(), nets.end());
+	std::default_random_engine rand(0/*std::random_device{}()*/);
+	shuffle(nets.begin(), nets.end(), rand);
 
 	// Create a highly symmetric graph for testing. Every permutation of this
 	// graph should create the same canonical labelling.
@@ -29,10 +30,14 @@ Subckt genRand(int n) {
 			ckt.pushMos(-1, Model::NMOS, nets[i*n+j], nets[i*n+j], nets[i*n+(j+n-1)%n]);
 		}
 	}
+
+	if (dev) {
+		ckt.pushMos(-1, Model::NMOS, nets[rand()%25], nets[rand()%25], nets[rand()%25]);
+	}
 	return ckt;
 }
 
-TEST(iso, canonical)
+TEST(iso, canonical_equal)
 {
 	int n = 5;
 	Subckt ckt = genRand(n);
@@ -44,11 +49,28 @@ TEST(iso, canonical)
 		Subckt test = genRand(n);
 		auto canon2 = test.canonicalLabeling().generate(test);
 		int cmp = canon.compare(canon2);
-		printf("result %d\n", cmp);
 		equal += (cmp == 0);
 	}
 
 	EXPECT_EQ(equal, count);
 }
 
+TEST(iso, canonical_not_equal)
+{
+	int n = 5;
+	Subckt ckt = genRand(n);
+
+	auto canon = ckt.canonicalLabeling().generate(ckt);
+
+	int equal = 0;
+	int count = 100;
+	for (int i = 0; i < count; i++) {
+		Subckt test = genRand(n, true);
+		auto canon2 = test.canonicalLabeling().generate(test);
+		int cmp = canon.compare(canon2);
+		equal += (cmp == 0);
+	}
+
+	EXPECT_EQ(equal, 0);
+}
 
