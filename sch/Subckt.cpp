@@ -441,7 +441,6 @@ void Subckt::connectRemote(int n0, int n1) {
 
 int Subckt::pushMos(int model, int type, int drain, int gate, int source, int base, vec2i size) {
 	int result = (int)mos.size();
-	printf("adding to net d=%d g=%d s=%d nets.size=%d device=%d\n", drain, gate, source, (int)nets.size(), result);
 	for (auto i = nets[drain].remote.begin(); i != nets[drain].remote.end(); i++) {
 		nets[*i].drainOf[type].push_back(result);
 	}
@@ -606,7 +605,9 @@ vector<Mapping> Subckt::find(const Subckt &cell, int index) {
 
 void Subckt::apply(const Mapping &m) {
 	int index = (int)inst.size();
-	inst.push_back(m.instance());
+	if (m.index >= 0 and m.cell != nullptr) {
+		inst.push_back(m.instance());
+	}
 	for (auto p = inst.back().ports.begin(); p != inst.back().ports.end(); p++) {
 		nets[*p].portOf.push_back(index);
 	} 
@@ -800,37 +801,16 @@ Subckt::partitionKey Subckt::createPartitionKey(int v, const vector<vector<int> 
 	return result;
 }
 
-int Subckt::lambda(const vector<vector<int> > &pi) const {
-	int result = 0;
-	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
-		for (auto i = cell->begin(); i != cell->end(); i++) {
-			for (auto j = i+1; j != cell->end(); j++) {
-				auto n0 = nets.begin()+*i;
-				auto n1 = nets.begin()+*j;
-
-				for (int type = 0; type < 2; type++) {
-					for (auto k = n0->sourceOf[type].begin(); k != n0->sourceOf[type].end(); k++) {
-						result += n1->connectedTo(mos[*k].drain);
-					}
-					for (auto k = n1->sourceOf[type].begin(); k != n1->sourceOf[type].end(); k++) {
-						result += n0->connectedTo(mos[*k].drain);
-					}
-				}
-			}
-		}
-	}
-	return result;
-}
-
 vector<vector<int> > Subckt::partitionByConnectivity(const vector<int> &cell, const vector<vector<int> > &beta) const {
-	vector<vector<int> > result;
-	map<partitionKey, int> partitions;
+	map<partitionKey, vector<int> > partitions;
 	for (auto v = cell.begin(); v != cell.end(); v++) {
-		auto pos = partitions.insert(pair<partitionKey, int>(createPartitionKey(*v, beta), (int)result.size()));
-		if (pos.second) {
-			result.push_back(vector<int>());
-		}
-		result[pos.first->second].push_back(*v);
+		auto pos = partitions.insert(pair<partitionKey, vector<int> >(createPartitionKey(*v, beta), vector<int>()));
+		pos.first->second.push_back(*v);
+	}
+
+	vector<vector<int> > result;
+	for (auto c = partitions.begin(); c != partitions.end(); c++) {
+		result.push_back(c->second);
 	}
 	return result;
 }
@@ -940,14 +920,75 @@ int Subckt::cellIndex(const vector<vector<int> > pi, int v) const {
 	return -1;
 }
 
+// Lambda functions are indicator functions that are used to prune the search
+// tree. They must be invariant between graph isomorphisms and
+// lexicographically comparable.
+//
+// Compute the following:
+//   1. number of connections from drain in c0 to source in c1 through nmos
+//   2. number of connections from drain in c0 to source in c1 through pmos
+//   3. number of connections from drain in c0 to gate in c1 through nmos
+//   4. number of connections from drain in c0 to gate in c1 through pmos
+array<int, 4> Subckt::lambda(const vector<int> &c0, const vector<int> &c1) const {
+	array<int, 4> result;
+	if (c0.size() == 1 and c1.size() == 1 and c0[0] == c1[0]) {
+		return result;
+	}
+
+	for (auto i = c0.begin(); i != c0.end(); i++) {
+		auto n0 = nets.begin()+*i;
+
+		for (int type = 0; type < 2; type++) {
+			for (auto k = n0->drainOf[type].begin(); k != n0->drainOf[type].end(); k++) {
+				for (auto j = c1.begin(); j != c1.end(); j++) {
+					auto n1 = nets.begin()+*j;
+					if (n1->connectedTo(mos[*k].source)) {
+						result[0*2 + type]++;
+					}
+					/*if (n1->connectedTo(mos[*k].gate)) {
+						result[1*2 + type]++;
+					}*/
+				}
+			}
+		}
+	}
+	return result;
+}
+
+struct lambda_sort {
+    bool operator()(const vector<int> &a, const vector<int> &b) const {
+        return a.size() < b.size() or (a.size() == b.size() and not a.empty() and a[0] < b[0]);
+    }
+};
+
+vector<array<int, 4> > Subckt::lambda(vector<vector<int> > pi) const {
+	// consistent sort order
+	sort(pi.begin(), pi.end(), lambda_sort());
+
+	vector<array<int, 4> > result;
+	result.reserve(pi.size()*pi.size());
+	for (auto cell = pi.begin(); cell != pi.end(); cell++) {
+		result.push_back(lambda(*cell, *cell));
+	}
+
+	for (auto c0 = pi.begin(); c0 != pi.end(); c0++) {
+		for (auto c1 = pi.begin(); c1 != pi.end(); c1++) {
+			if (c0 != c1) {
+				result.push_back(lambda(*c0, *c1));
+			}
+		}
+	}
+	return result;
+}
+
 int Subckt::comparePartitions(const vector<vector<int> > &pi0, const vector<vector<int> > &pi1) const {
-	if (pi0.size() > pi1.size()) {
+	/*if (pi0.size() > pi1.size()) {
 		return 1;
 	} else if (pi0.size() < pi1.size()) {
 		return -1;
-	}
+	}*/
 
-	if (not partitionIsDiscrete(pi0) or not partitionIsDiscrete(pi1)) {
+	if (not partitionIsDiscrete(pi0) or not partitionIsDiscrete(pi1) or pi0.size() != pi1.size()) {
 		printf("comparePartitions assumptions violated\n");
 	}
 	// implement G^pi0 <=> G^pi1
@@ -1024,26 +1065,86 @@ Mapping Subckt::canonicalLabeling() const {
 		int ci;
 		int vi;
 
+		vector<array<int, 4> > l;
+
 		bool inc() {
 			return (++vi < (int)part[ci].size());
 		}
 
 		bool pop(const Subckt *ckt) {
+			/*printf("pop\n");
+			printf("\t{");
+			for (int i = 0; i < (int)part.size(); i++) {
+				printf("%d:(", i);
+				for (int j = 0; j < (int)part[i].size(); j++) {
+					if (j != 0) {
+						printf(" ");
+					}
+					printf("%d", part[i][j]);
+				}
+				printf(")");
+			}
+			printf("} %d:%d\n", ci, vi);*/
 			part.push_back(vector<int>(1, part[ci][vi]));
 			part[ci].erase(part[ci].begin()+vi);
 			vi = 0;
-			if (ckt->computePartitions(part, vector<vector<int> >(1, part.back())) or (int)part[ci].size() == 1) {
+			/*printf("\t{");
+			for (int i = 0; i < (int)part.size(); i++) {
+				printf("%d:(", i);
+				for (int j = 0; j < (int)part[i].size(); j++) {
+					if (j != 0) {
+						printf(" ");
+					}
+					printf("%d", part[i][j]);
+				}
+				printf(")");
+			}
+			printf("} %d:%d\n", ci, vi);*/
+			bool change = ckt->computePartitions(part, vector<vector<int> >(1, part.back()));
+			if (change or (int)part[ci].size() == 1) {
 				ci = ckt->smallestNondiscreteCell(part);
 			}
+			/*printf("\t{");
+			for (int i = 0; i < (int)part.size(); i++) {
+				printf("%d:(", i);
+				for (int j = 0; j < (int)part[i].size(); j++) {
+					if (j != 0) {
+						printf(" ");
+					}
+					printf("%d", part[i][j]);
+				}
+				printf(")");
+			}
+			printf("} %d:%d\n\n", ci, vi);*/
+
+			//l = ckt->lambda(part);
 			return ci < 0;
+		}
+
+		bool isLessThan(const Subckt *ckt, const frame &f) const {
+			int m = (int)min(l.size(), f.l.size());
+			for (int i = 0; i < m; i++) {
+				for (int j = 0; j < 4; j++) {
+					if (l[i][j] < f.l[i][j]) {
+						return false;
+					} else if (l[i][j] > f.l[i][j]) {
+						return true;
+					}
+				}
+			}
+
+			if (not ckt->partitionIsDiscrete(part) or not ckt->partitionIsDiscrete(f.part)) {
+				return false;
+			}
+			return ckt->comparePartitions(part, f.part) == -1;
 		}
 	};
 
 	int autoCount = 0;
-	vector<vector<int> > best;
+	frame best;
 	vector<frame> frames(1, frame(this));
 	if (partitionIsDiscrete(frames.back().part)) {
-		best.swap(frames.back().part);
+		best = frames.back();
 		frames.pop_back();
 	}
 
@@ -1077,13 +1178,13 @@ Mapping Subckt::canonicalLabeling() const {
 			// found a discrete partition
 			explored++;
 			// found terminal node in tree
-			int cmp = comparePartitions(next.part, best);
+			int cmp = best.part.empty() ? 1 : comparePartitions(next.part, best.part);
 			if (cmp == 1) {
-				best.swap(next.part);
+				best = next;
 			} else if (cmp == 0) {
 				autoCount++;
 			}
-		} else {
+		} else /*if (best.part.empty() or not next.isLessThan(this, best))*/ {
 			frames.push_back(next);
 		}
 	}
@@ -1094,7 +1195,7 @@ Mapping Subckt::canonicalLabeling() const {
 	for (int i = 0; i < (int)mos.size(); i++) {
 		result.devices.push_back(i);
 	}
-	for (auto cell = best.begin(); cell != best.end(); cell++) {
+	for (auto cell = best.part.begin(); cell != best.part.end(); cell++) {
 		result.cellToThis.push_back(cell->back());
 	}
 	return result;
@@ -1173,9 +1274,50 @@ void Subckt::print() const {
 	}
 	printf("\n");
 
-	printf("canonical labels\n");
+	/*printf("canonical labels\n");
 	auto lbl = canonicalLabeling();
-	lbl.print();
+	lbl.print();*/
+}
+
+int Subckt::compare(const Subckt &ckt) const {
+	if (nets.size() > ckt.nets.size()) {
+		return 1;
+	} else if (nets.size() < ckt.nets.size()) {
+		return -1;
+	}
+
+	for (int i = 0; i < (int)nets.size(); i++) {
+		auto n0 = nets.begin()+i;
+		auto n1 = ckt.nets.begin()+i;
+		
+		for (int type = 0; type < 2; type++) {
+			vector<int> g0, g1;
+			for (auto j = n0->sourceOf[type].begin(); j != n0->sourceOf[type].end(); j++) {
+				g0.push_back(mos[*j].drain);
+			}
+			sort(g0.begin(), g0.end());
+			for (auto j = n1->sourceOf[type].begin(); j != n1->sourceOf[type].end(); j++) {
+				g1.push_back(ckt.mos[*j].drain);
+			}
+			sort(g1.begin(), g1.end());
+
+			int m = (int)min(g0.size(), g1.size());
+			for (int j = 0; j < m; j++) {
+				if (g0[j] < g1[j]) {
+					return -1;
+				} else if (g0[j] > g1[j]) {
+					return 1;
+				}
+			}
+
+			if (m < (int)g0.size()) {
+				return -1;
+			} else if (m < (int)g1.size()) {
+				return 1;
+			}
+		}
+	}
+	return 0;
 }
 
 }

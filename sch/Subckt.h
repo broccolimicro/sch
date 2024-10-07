@@ -156,7 +156,8 @@ struct Subckt {
 
 	int smallestNondiscreteCell(const vector<vector<int> > &partition) const;
 	partitionKey createPartitionKey(int v, const vector<vector<int> > &beta) const;
-	int lambda(const vector<vector<int> > &pi) const;
+	array<int, 4> lambda(const vector<int> &c0, const vector<int> &c1) const;
+	vector<array<int, 4> > lambda(vector<vector<int> > pi) const;
 	vector<vector<int> > partitionByConnectivity(const vector<int> &cell, const vector<vector<int> > &beta) const;
 	bool partitionIsDiscrete(const vector<vector<int> > &partition) const;
 	bool computePartitions(vector<vector<int> > &initialPartition, vector<vector<int> > subsetToRefine=vector<vector<int> >()) const;
@@ -169,6 +170,8 @@ struct Subckt {
 	void printNet(int i) const;
 	void printMos(int i) const;
 	void print() const;
+	
+	int compare(const Subckt &ckt) const;
 };
 
 }
