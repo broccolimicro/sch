@@ -1072,50 +1072,14 @@ Mapping Subckt::canonicalLabeling() const {
 		}
 
 		bool pop(const Subckt *ckt) {
-			/*printf("pop\n");
-			printf("\t{");
-			for (int i = 0; i < (int)part.size(); i++) {
-				printf("%d:(", i);
-				for (int j = 0; j < (int)part[i].size(); j++) {
-					if (j != 0) {
-						printf(" ");
-					}
-					printf("%d", part[i][j]);
-				}
-				printf(")");
-			}
-			printf("} %d:%d\n", ci, vi);*/
 			part.push_back(vector<int>(1, part[ci][vi]));
 			part[ci].erase(part[ci].begin()+vi);
 			vi = 0;
-			/*printf("\t{");
-			for (int i = 0; i < (int)part.size(); i++) {
-				printf("%d:(", i);
-				for (int j = 0; j < (int)part[i].size(); j++) {
-					if (j != 0) {
-						printf(" ");
-					}
-					printf("%d", part[i][j]);
-				}
-				printf(")");
-			}
-			printf("} %d:%d\n", ci, vi);*/
-			bool change = ckt->computePartitions(part, vector<vector<int> >(1, part.back()));
-			if (change or (int)part[ci].size() == 1) {
+
+			vector<vector<int> > alpha(1, part.back());
+			if (ckt->computePartitions(part, alpha) or (int)part[ci].size() == 1) {
 				ci = ckt->smallestNondiscreteCell(part);
 			}
-			/*printf("\t{");
-			for (int i = 0; i < (int)part.size(); i++) {
-				printf("%d:(", i);
-				for (int j = 0; j < (int)part[i].size(); j++) {
-					if (j != 0) {
-						printf(" ");
-					}
-					printf("%d", part[i][j]);
-				}
-				printf(")");
-			}
-			printf("} %d:%d\n\n", ci, vi);*/
 
 			l = ckt->lambda(part);
 			return ci < 0;
