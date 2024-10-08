@@ -110,6 +110,7 @@ struct Subckt {
 	// Name of this cell
 	string name;
 	bool isCell;
+	size_t id;
 
 	vector<int> ports;
 
@@ -133,9 +134,11 @@ struct Subckt {
 	void cleanDangling(bool remIO=false);
 
 	Mapping segment(int net);
-	vector<Subckt> generateCells(int start);
+	vector<Mapping> generateCells();
 	bool areCoupled(const Mapping &m0, const Mapping &m1) const;
-	
+
+	void remap(vector<int> m);
+	vector<int> canonicalize();
 	int compare(const Subckt &ckt) const;
 
 

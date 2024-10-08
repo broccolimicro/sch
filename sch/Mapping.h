@@ -35,7 +35,7 @@ struct Mapping {
 
 	bool overlapsWith(const Mapping &m) const;
 
-	Subckt generate(const Subckt &from, string name, bool isCell=true) const;
+	Subckt generate(const Subckt &from, bool isCell=true) const;
 
 	void print() const;
 };

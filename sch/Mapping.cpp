@@ -119,9 +119,8 @@ bool Mapping::overlapsWith(const Mapping &m) const {
 	return false;
 }
 
-Subckt Mapping::generate(const Subckt &from, string name, bool isCell) const {
+Subckt Mapping::generate(const Subckt &from, bool isCell) const {
 	Subckt cell;	
-	cell.name = name;
 	cell.isCell = isCell;
 
 	for (auto i = cellToThis.begin(); i != cellToThis.end(); i++) {

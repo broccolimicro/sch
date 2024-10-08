@@ -154,6 +154,7 @@ Instance::~Instance() {
 
 Subckt::Subckt() {
 	isCell = false;
+	id = (size_t)-1;
 }
 
 Subckt::~Subckt() {
@@ -451,7 +452,7 @@ Mapping Subckt::segment(int net) {
 	//    isochronic region as the gate or a net at the gate that is not in the
 	//    same isochronic region as the drain.
 
-	printf("generating gate for %d\n", net);
+	//printf("generating gate for %d\n", net);
 	Mapping result;
 
 	vector<int> stack(1, net);
@@ -459,9 +460,9 @@ Mapping Subckt::segment(int net) {
 		int curr = stack.back();
 		stack.pop_back();
 
-		printf("current net %d\n", curr);
+		//printf("current net %d\n", curr);
 
-		printf("drainOf = {%d, %d}\n", (int)nets[curr].drainOf[0].size(), (int)nets[curr].drainOf[1].size());
+		//printf("drainOf = {%d, %d}\n", (int)nets[curr].drainOf[0].size(), (int)nets[curr].drainOf[1].size());
 		for (int type = 0; type < 2; type++) {
 			for (auto i = nets[curr].drainOf[type].begin(); i != nets[curr].drainOf[type].end(); i++) {
 				result.devices.push_back(*i);
@@ -472,10 +473,10 @@ Mapping Subckt::segment(int net) {
 				
 				int source = mos[*i].source;
 				if (nets[source].isAnonymous()) {
-					printf("anon %d\n", source);
+					//printf("anon %d\n", source);
 					stack.push_back(source);
 				} else {
-					printf("not anon %d\n", source);
+					//printf("not anon %d\n", source);
 				}
 			}
 		}
@@ -485,7 +486,7 @@ Mapping Subckt::segment(int net) {
 	return result;
 }
 
-vector<Subckt> Subckt::generateCells(int start) {
+vector<Mapping> Subckt::generateCells() {
 	//print();
 	vector<Mapping> segments;
 	for (int i = 0; i < (int)nets.size(); i++) {
@@ -501,6 +502,16 @@ vector<Subckt> Subckt::generateCells(int start) {
 		}
 	}
 
+	// Merge cells based on the following constraints:
+	// 1. Identify all cross-coupled (the output of each cell is an input
+	//    to the other) or overlapping cells.
+	// 2. merge all disjoint maximal cliques while the size of the cell is less
+	//    than some threshold. Make the threshold configurable.
+	// 3. If there are still cells with room within the threshold and they are
+	//    given by pass transistor logic at their source, then selectively merge
+	//    the drivers into the cell as long as they are within the same isochronic
+	//    region.
+
 	// TODO(edward.bingham) only do this merge if the signals crossing the bounds don't switch. How do I figure that out?
 	for (int i = 0; i < (int)segments.size(); i++) {
 		for (int j = (int)segments.size()-1; j > i; j--) {
@@ -513,55 +524,8 @@ vector<Subckt> Subckt::generateCells(int start) {
 			}
 		}
 	}
-	
-	// TODO(edward.bingham) Merge cells based on the following constraints:
-	// 1. Identify all cross-coupled (the output of each cell is an input
-	//    to the other) or overlapping cells.
-	// 2. merge all disjoint maximal cliques while the size of the cell is less
-	//    than some threshold. Make the threshold configurable.
-	// 3. If there are still cells with room within the threshold and they are
-	//    given by pass transistor logic at their source, then selectively merge
-	//    the drivers into the cell as long as they are within the same isochronic
-	//    region.
 
-	vector<Subckt> cells;
-	cells.reserve(segments.size());
-	for (int i = 0; i < (int)segments.size(); i++) {
-		int index = start+(int)cells.size();
-		Subckt ckt = segments[i].generate(*this, "cell_"+to_string(index));
-		segments[i].remap(canonicalLabels(ckt));
-		Subckt canon = segments[i].generate(*this, "cell_"+to_string(index));
-
-		const Subckt *cell = nullptr;
-		for (int j = 0; j < (int)cells.size(); j++) {
-			if (cells[j].compare(canon) == 0) {
-				index = start+j;
-				cell = &cells[j];
-				break;
-			}
-		}
-		if (index >= start+(int)cells.size()) {
-			cells.push_back(canon);
-			cell = &cells.back();
-		}
-		// TODO(edward.bingham) update segments[i] to the appropriate canonical mapping
-		extract(*cell, segments[i], index);
-		//print();
-		for (int j = (int)segments.size()-1; j > i; j--) {
-			// DESIGN(edward.bingham) if two segments overlap, then we just remove
-			// the extra devices from one of the segments. It's only ok to have those
-			// devices in a different cell if the signals connecting them don't
-			// switch (for example, shared weak ground). Otherwise it's an isochronic
-			// fork assumption violation.
-
-			if (not segments[j].extract(segments[i])) {
-				printf("internal %s:%d: overlapping cells found\n", __FILE__, __LINE__);
-			}
-			//segments[j].print();
-		}
-	}
-
-	return cells;
+	return segments;
 }
 
 bool Subckt::areCoupled(const Mapping &m0, const Mapping &m1) const {
@@ -586,6 +550,46 @@ bool Subckt::areCoupled(const Mapping &m0, const Mapping &m1) const {
 		hasBtoA = (toA.find(*b) != toA.end());
 	}
 	return (hasAtoB and hasBtoA);
+}
+
+void Subckt::remap(vector<int> m) {
+	for (int i = 0; i < (int)ports.size(); i++) {
+		ports[i] = m[ports[i]];
+	}
+
+	for (int i = 0; i < (int)mos.size(); i++) {
+		mos[i].gate = m[mos[i].gate];
+		mos[i].source = m[mos[i].source];
+		mos[i].drain = m[mos[i].drain];
+		mos[i].base = m[mos[i].base];
+	}
+
+	for (int i = 0; i < (int)nets.size(); i++) {
+		for (int j = 0; j < (int)nets[i].remote.size(); j++) {
+			nets[i].remote[j] = m[nets[i].remote[j]];
+		}
+	}
+
+	for (int i = 0; i < (int)inst.size(); i++) {
+		for (int j = 0; j < (int)inst[i].ports.size(); j++) {
+			inst[i].ports[j] = m[inst[i].ports[j]];
+		}
+	}
+
+	vector<Net> reorder;
+	reorder.reserve(m.size());
+	for (int i = 0; i < (int)m.size(); i++) {
+		reorder.push_back(nets[m[i]]);
+	}
+	std::swap(nets, reorder);
+	reorder.clear();
+}
+
+vector<int> Subckt::canonicalize() {
+	vector<int> lbl = canonicalLabels(*this);
+	remap(lbl);
+	id = std::hash<Subckt>{}(*this);
+	return lbl;
 }
 
 int Subckt::compare(const Subckt &ckt) const {

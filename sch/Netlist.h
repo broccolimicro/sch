@@ -17,13 +17,18 @@ struct Netlist {
 
 	const Tech *tech;
 
-	string libPath;
-	
+	map<size_t, set<int> > cells;
 	vector<Subckt> subckts; 
+
+	int insert(int idx);
+	int insert(const Subckt &cell);
+	void erase(int idx);
 
 	bool mapCells(Subckt &ckt);
 	void mapCells();
 	void build(phy::Library &lib, set<string> cellNames = set<string>());
 };
+
+string idToString(size_t id);
 
 }
