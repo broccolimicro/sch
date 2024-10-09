@@ -1,5 +1,5 @@
 NAME          = sch
-DEPEND        = phy pgen
+DEPEND        = interpret_phy phy pgen
 
 SRCDIR        = $(NAME)
 TESTDIR       = tests
@@ -7,7 +7,7 @@ GTEST        := ../../googletest
 GTEST_I      := -I$(GTEST)/googletest/include -I.
 GTEST_L      := -L$(GTEST)/build/lib -L.
 
-CXXFLAGS      = -std=c++14 -O2 -g -Wall -fmessage-length=0 $(DEPEND:%=-I../%) -I../gdstk/include -I.
+CXXFLAGS      = -std=c++17 -O2 -g -Wall -fmessage-length=0 $(DEPEND:%=-I../%) -I../gdstk/include -I.
 LDFLAGS       =  
 
 SOURCES	     := $(shell mkdir -p $(SRCDIR); find $(SRCDIR) -name '*.cpp')

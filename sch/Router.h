@@ -212,7 +212,8 @@ struct Wire {
 	unordered_set<int> prevNodes;
 
 	void addPin(const Router *rt, Index pin);
-	bool hasPin(const Router *rt, Index pin, vector<Contact>::iterator *out = nullptr);
+	int findPin(const Router *rt, Index pin) const;
+	bool hasPin(const Router *rt, Index pin) const;
 	void resortPins(const Router *rt);
 	int getLevel(int i) const;
 	bool hasPrev(int r) const;
@@ -238,7 +239,6 @@ struct Stack {
 	int route;
 	
 	void push(const Tech &tech, const Subckt &ckt, int device, bool flip);
-	void draw(const Tech &tech, const Subckt &ckt, Layout &dst);
 };
 
 
@@ -393,9 +393,12 @@ struct RouteGroupConstraint {
 };
 
 struct Router {
-	Router(const Tech &tech, const Subckt &ckt);
-	Router(const Tech &tech, const Placement &place);
+	Router(const Tech &tech, const Subckt &ckt, bool progress=false, bool debug=false);
+	Router(const Tech &tech, const Placement &place, bool progress=false, bool debug=false);
 	~Router();
+
+	bool progress;
+	bool debug;
 
 	const Tech &tech;
 	const Subckt &ckt;
@@ -429,10 +432,10 @@ struct Router {
 	void buildViaConstraints(const Tech &tech);
 	void buildRoutes();
 	void buildPinBounds();
-	void findCycles(vector<vector<int> > &cycles);
-	void breakRoute(int route, set<int> cycleRoutes);
-	void breakCycles(vector<vector<int> > cycles);
-	void findAndBreakPinCycles();
+	bool findCycles(vector<vector<int> > &cycles);
+	bool breakRoute(int route, set<int> cycleRoutes);
+	bool breakCycles(vector<vector<int> > cycles);
+	bool findAndBreakPinCycles();
 	void findAndBreakViaCycles();
 	void alignVirtualPins();
 	void addIOPins();
@@ -441,7 +444,7 @@ struct Router {
 	void buildHorizConstraints(const Tech &tech);
 	void updatePinPos();
 	int alignPins(int maxDist = -1);
-	void drawRoutes(const Tech &tech);
+	void drawRoutes();
 	void buildRouteConstraints(const Tech &tech, bool allowOverCell=true);
 	void buildGroupConstraints(const Tech &tech);
 	set<int> propagateRouteConstraint(int idx);
@@ -449,19 +452,18 @@ struct Router {
 	vector<int> findBottom();
 	void zeroWeights();
 	void clearPrev();
-	void resetGraph(const Tech &tech);
-	void buildPrevNodes(vector<int> start=vector<int>());
-	void buildPOffsets(const Tech &tech, vector<int> start=vector<int>());
-	void buildNOffsets(const Tech &tech, vector<int> start=vector<int>());
-	void assignRouteConstraints(const Tech &tech);
+	bool resetGraph(const Tech &tech);
+	bool buildPrevNodes(vector<int> start=vector<int>());
+	bool buildPOffsets(const Tech &tech, vector<int> start=vector<int>());
+	bool buildNOffsets(const Tech &tech, vector<int> start=vector<int>());
+	bool assignRouteConstraints(const Tech &tech);
 	void lowerRoutes(const Tech &tech, int window=0);
 	void updateRouteConstraints(const Tech &tech);
 	int computeCost();
 
 	// Solve the constraint and circuit graph, filling out layers and constraints
 	void load(const Placement &place);
-	int solve(const Tech &tech);
-	void draw(Layout &dst);
+	bool solve(const Tech &tech);
 
 	// Print the solution description
 	void print();

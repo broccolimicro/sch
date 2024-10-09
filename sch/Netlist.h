@@ -3,7 +3,9 @@
 #include "Subckt.h"
 
 #include <phy/Tech.h>
-#include <phy/Library.h>
+
+#include <vector>
+#include <map>
 #include <set>
 
 using namespace std;
@@ -11,11 +13,10 @@ using namespace std;
 namespace sch {
 
 struct Netlist {
-	Netlist();
 	Netlist(const Tech &tech);
 	~Netlist();
 
-	const Tech *tech;
+	const Tech &tech;
 
 	map<size_t, set<int> > cells;
 	vector<Subckt> subckts; 
@@ -25,8 +26,7 @@ struct Netlist {
 	void erase(int idx);
 
 	bool mapCells(Subckt &ckt);
-	void mapCells();
-	void build(phy::Library &lib, set<string> cellNames = set<string>());
+	void mapCells(bool progress=false);
 };
 
 string idToString(size_t id);

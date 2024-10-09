@@ -3,19 +3,19 @@
 #include "Placer.h"
 #include "Router.h"
 
-#include <phy/Layout.h>
-#include <set>
+#include <chrono>
+#define KNRM  "\x1B[0m"
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+#define KYEL  "\x1B[33m"
+#define KBLU  "\x1B[34m"
+using namespace std::chrono;
 
 using namespace std;
 
 namespace sch {
 
-Netlist::Netlist() {
-	this->tech = nullptr;
-}
-
-Netlist::Netlist(const Tech &tech) {
-	this->tech = &tech;
+Netlist::Netlist(const Tech &tech) : tech(tech) {
 }
 
 Netlist::~Netlist() {
@@ -164,7 +164,7 @@ void Netlist::erase(int idx) {
 	subckts.erase(subckts.begin()+idx);
 }
 
-void Netlist::mapCells() {
+void Netlist::mapCells(bool progress) {
 	// check existing cells
 	for (int i = (int)subckts.size()-1; i >= 0; i--) {
 		if (subckts[i].isCell and not subckts[i].mos.empty()) {
@@ -174,8 +174,19 @@ void Netlist::mapCells() {
 	}
 
 	// break large subckts into new cells
+	if (progress) {
+		printf("Break subckts into cells:\n");
+	}
+	steady_clock::time_point start = steady_clock::now();
 	for (int i = (int)subckts.size()-1; i >= 0; i--) {
 		if (not subckts[i].isCell and not subckts[i].mos.empty()) {
+			int count = (int)subckts.size();
+
+			if (progress) {
+				printf("  %s...", subckts[i].name.c_str());
+				fflush(stdout);
+			}
+
 			auto segments = subckts[i].generateCells();
 
 			for (auto s = segments.begin(); s != segments.end(); s++) {
@@ -199,23 +210,15 @@ void Netlist::mapCells() {
 					//segments[j].print();
 				}
 			}
+
+			if (progress) {
+				printf("[%s%d NEW/%d CELLS%s]\n", KGRN, (int)subckts.size()-count, (int)segments.size(), KNRM);
+			}
 		}
 	}
-}
-
-void Netlist::build(phy::Library &lib, set<string> cellNames) {
-	for (auto ckt = subckts.begin(); ckt != subckts.end(); ckt++) {
-		if (cellNames.empty() or cellNames.find(ckt->name) != cellNames.end()) {
-			printf("\rPlacing %s\n", ckt->name.c_str());
-			Placement pl = Placement::solve(*ckt);
-			printf("\rRouting %s\n", ckt->name.c_str());
-			Router rt(*tech, pl);
-			rt.solve(*tech);
-			lib.cells.push_back(phy::Layout(*tech));
-			rt.draw(lib.cells.back());
-			//rt.print();
-			printf("\rDone %s\n", ckt->name.c_str());
-		}
+	steady_clock::time_point finish = steady_clock::now();
+	if (progress) {
+		printf("done [%gs]\n\n", ((float)duration_cast<milliseconds>(finish - start).count())/1000.0);
 	}
 }
 

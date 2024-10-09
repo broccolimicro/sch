@@ -158,8 +158,8 @@ Placement Placement::solve(const Subckt &ckt, int starts, int b, int l, int w, i
 
 	// Check multiple possible initial placements to avoid local minima
 	for (int i = 0; i < starts; i++) {
-		printf("start %d/%d\r", i, starts);
-		fflush(stdout);
+		//printf("start %d/%d\r", i, starts);
+		//fflush(stdout);
 
 		// Run simulated annealing to find closest minimum
 		Placement curr(ckt, b, l, w, g, rand);
@@ -202,7 +202,7 @@ Placement Placement::solve(const Subckt &ckt, int starts, int b, int l, int w, i
 			best = curr;
 		}
 	}
-	printf("Placement complete after %d iterations\n", starts);
+	//printf("Placement complete after %d iterations\n", starts);
 
 	return best;
 }
