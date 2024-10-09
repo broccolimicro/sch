@@ -322,6 +322,7 @@ void drawCell(Layout &dst, const Router &rt) {
 		dst.nets.push_back(Port(rt.ckt.nets[i].name));
 		dst.nets.back().isInput = rt.ckt.nets[i].remoteIO and rt.ckt.nets[i].isInput();
 		dst.nets.back().isOutput = rt.ckt.nets[i].remoteIO and rt.ckt.nets[i].isOutput();
+		// TODO(edward.bingham) information about power and ground
 	}
 
 	for (auto i = rt.routes.begin(); i != rt.routes.end(); i++) {
