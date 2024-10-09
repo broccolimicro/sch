@@ -1320,7 +1320,7 @@ void Router::buildHorizConstraints(const Tech &tech) {
 				int substrateMode = (pin.isGate() or next.isGate()) ? Layout::MERGENET : Layout::DEFAULT;
 				if (minOffset(&off, tech, 0, pin.layout, 0, next.layout, 0, substrateMode, Layout::DEFAULT, false)) {
 					pin.offsetToPin(Index(type, i+1), off);
-				} else {
+				} else if (debug) {
 					printf("error: no offset found at pin (%d,%d)\n", type, i+1);
 				}
 			}
@@ -1802,11 +1802,13 @@ bool Router::buildPrevNodes(vector<int> start) {
 									tokens.back().push_back(j);
 								} else {
 									hasError = true;
-									printf("error: buildPrevNodes found cycle {");
-									for (int i = 0; i < (int)curr.size(); i++) {
-										printf("%d ", curr[i]);
+									if (debug) {
+										printf("error: buildPrevNodes found cycle {");
+										for (int i = 0; i < (int)curr.size(); i++) {
+											printf("%d ", curr[i]);
+										}
+										printf("%d}\n", j);
 									}
-									printf("%d}\n", j);
 								}
 							}
 						}
@@ -1836,11 +1838,13 @@ bool Router::buildPrevNodes(vector<int> start) {
 						tokens.back().push_back(out);
 					} else {
 						hasError = true;
-						printf("error: buildPrevNodes found cycle {");
-						for (int i = 0; i < (int)curr.size(); i++) {
-							printf("%d ", curr[i]);
+						if (debug) {
+							printf("error: buildPrevNodes found cycle {");
+							for (int i = 0; i < (int)curr.size(); i++) {
+								printf("%d ", curr[i]);
+							}
+							printf("%d}\n", out);
 						}
-						printf("%d}\n", out);
 					}
 				}
 			}
@@ -1886,12 +1890,14 @@ bool Router::buildPOffsets(const Tech &tech, vector<int> start) {
 									tokens.push_back(curr);
 									tokens.back().push_back(j);
 								} else {
-									printf("error: buildPOffset found cycle {");
-									for (int i = 0; i < (int)curr.size(); i++) {
-										printf("%d ", curr[i]);
-									}
-									printf("%d}\n", j);
 									hasError = true;
+									if (debug) {
+										printf("error: buildPOffset found cycle {");
+										for (int i = 0; i < (int)curr.size(); i++) {
+											printf("%d ", curr[i]);
+										}
+										printf("%d}\n", j);
+									}
 								}
 							}
 						}
@@ -1926,12 +1932,14 @@ bool Router::buildPOffsets(const Tech &tech, vector<int> start) {
 						tokens.push_back(curr);
 						tokens.back().push_back(out);
 					} else {
-						printf("error: buildPOffset found cycle {");
-						for (int i = 0; i < (int)curr.size(); i++) {
-							printf("%d ", curr[i]);
-						}
-						printf("%d}\n", out);
 						hasError = true;
+						if (debug) {
+							printf("error: buildPOffset found cycle {");
+							for (int i = 0; i < (int)curr.size(); i++) {
+								printf("%d ", curr[i]);
+							}
+							printf("%d}\n", out);
+						}
 					}
 				}
 			}
@@ -1973,11 +1981,13 @@ bool Router::buildNOffsets(const Tech &tech, vector<int> start) {
 						tokens.back().push_back(in);
 					} else {
 						hasError = true;
-						printf("error: buildNOffset found cycle {");
-						for (int i = 0; i < (int)curr.size(); i++) {
-							printf("%d ", curr[i]);
+						if (debug) {
+							printf("error: buildNOffset found cycle {");
+							for (int i = 0; i < (int)curr.size(); i++) {
+								printf("%d ", curr[i]);
+							}
+							printf("%d}\n", in);
 						}
-						printf("%d}\n", in);
 					}
 				}
 			}
