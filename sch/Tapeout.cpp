@@ -25,36 +25,45 @@ using namespace phy;
 namespace sch {
 
 Layout &loadCell(Library &lib, const Netlist &lst, int idx, bool progress, bool debug) {
-	Layout cell(lib.tech);
-	cell.name = lst.subckts[idx].name;
-	string cellPath = lib.libPath + "/" + cell.name+".gds";
+	if (idx >= (int)lib.macros.size()) {
+		lib.macros.resize(idx+1, Layout(lib.tech));
+	}
+	lib.macros[idx].name = lst.subckts[idx].name;
+	string cellPath = lib.libPath + "/" + lib.macros[idx].name+".gds";
 	if (progress) {
-		printf("  %s...", cell.name.c_str());
+		printf("  %s...", lib.macros[idx].name.c_str());
 		fflush(stdout);
 	}
-	if (not filesystem::exists(cellPath) or not import_layout(cell, lib.tech, cellPath, cell.name)) {
+	printf("[");
+	bool imported = false;
+	if (filesystem::exists(cellPath)) {
+		imported = import_layout(lib.macros[idx], lib.tech, cellPath, lib.macros[idx].name);
+		if (progress) {
+			if (imported) {
+				printf("%sFOUND%s]\n", KGRN, KNRM);
+			} else {
+				printf("%sFAILED IMPORT%s, ", KRED, KNRM);
+			}
+		}
+	}
+
+	if (not imported) {
 		bool place = true;
 		bool route = true;
 		Placement pl = Placement::solve(lst.subckts[idx]);
 		Router rt(lib.tech, pl, progress, debug);
 		route = rt.solve(lib.tech);
-		drawCell(cell, rt);
+		drawCell(lib.macros[idx], rt);
 		if (progress) {
 			if (place and route) {
-				printf("[%sGENERATED%s]\n", KGRN, KNRM);
+				printf("%sGENERATED%s]\n", KGRN, KNRM);
 			} else if (not place) {
-				printf("[%sFAILED PLACEMENT%s]\n", KRED, KNRM);
+				printf("%sFAILED PLACEMENT%s]\n", KRED, KNRM);
 			} else if (not route) {
-				printf("[%sFAILED ROUTING%s]\n", KRED, KNRM);
+				printf("%sFAILED ROUTING%s]\n", KRED, KNRM);
 			}
 		}
-	} else if (progress) {
-		printf("[%sFOUND%s]\n", KGRN, KNRM);
 	}
-	if (idx >= (int)lib.macros.size()) {
-		lib.macros.resize(idx+1, Layout(lib.tech));
-	}
-	lib.macros[idx] = cell;
 	return lib.macros[idx];
 }
 
