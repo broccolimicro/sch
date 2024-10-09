@@ -735,9 +735,11 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 		}
 
 		if (fromIdx != -1) {
+			from = routes[route].pins.begin()+fromIdx;
 			count[fromIdx]++;
 		}
 		if (toIdx != -1) {
+			to = routes[route].pins.begin()+toIdx;
 			count[toIdx]++;
 		}
 

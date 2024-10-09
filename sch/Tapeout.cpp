@@ -25,9 +25,9 @@ using namespace phy;
 namespace sch {
 
 Layout &loadCell(Library &lib, const Netlist &lst, int idx, bool progress, bool debug) {
-	string cellPath = lib.libPath + "/" + lst.subckts[idx].name+".gds";
 	Layout cell(lib.tech);
 	cell.name = lst.subckts[idx].name;
+	string cellPath = lib.libPath + "/" + cell.name+".gds";
 	if (progress) {
 		printf("  %s...", cell.name.c_str());
 		fflush(stdout);
