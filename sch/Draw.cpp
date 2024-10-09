@@ -320,7 +320,8 @@ void drawCell(Layout &dst, const Router &rt) {
 	dst.nets.reserve(rt.ckt.nets.size());
 	for (int i = 0; i < (int)rt.ckt.nets.size(); i++) {
 		dst.nets.push_back(Port(rt.ckt.nets[i].name));
-		
+		dst.nets.back().isInput = rt.ckt.nets[i].remoteIO and rt.ckt.nets[i].isInput();
+		dst.nets.back().isOutput = rt.ckt.nets[i].remoteIO and rt.ckt.nets[i].isOutput();
 	}
 
 	for (auto i = rt.routes.begin(); i != rt.routes.end(); i++) {
