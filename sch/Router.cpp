@@ -331,6 +331,14 @@ RouteConstraint::RouteConstraint(int a, int b, int off0, int off1, int select) {
 RouteConstraint::~RouteConstraint() {
 }
 
+bool operator==(const RouteConstraint &c0, const RouteConstraint &c1) {
+	return c0.wires[0] == c1.wires[0] and c0.wires[1] == c1.wires[1];
+}
+
+bool operator<(const RouteConstraint &c0, const RouteConstraint &c1) {
+	return c0.wires[0] < c1.wires[0] or (c0.wires[0] == c1.wires[0] and c0.wires[1] < c1.wires[1]);
+}
+
 ViaConstraint::ViaConstraint() {
 }
 
@@ -359,6 +367,7 @@ Router::Router(const Tech &tech, const Subckt &ckt, bool progress, bool debug) :
 	cost = 0;
 	this->progress = progress;
 	this->debug = debug;
+	allowOverCell = true;
 	for (int type = 0; type < (int)stack.size(); type++) {
 		stack[type].type = type;
 	}
@@ -370,6 +379,7 @@ Router::Router(const Tech &tech, const Placement &place, bool progress, bool deb
 	this->cost = 0;
 	this->progress = progress;
 	this->debug = debug;
+	this->allowOverCell = true;
 	for (int type = 0; type < (int)this->stack.size(); type++) {
 		this->stack[type].type = type;
 	}
@@ -454,7 +464,7 @@ void Router::delRoute(int route) {
 	routes.erase(routes.begin()+route);
 }
 
-void Router::buildPinConstraints(const Tech &tech, int level) {
+void Router::buildPinConstraints(int level) {
 	pinConstraints.clear();
 	// Compute the pin constraints
 	// TODO(edward.bingham) this could be more efficiently done as a 1d rectangle
@@ -487,7 +497,7 @@ void Router::buildPinConstraints(const Tech &tech, int level) {
 	}
 }
 
-void Router::buildViaConstraints(const Tech &tech) {
+void Router::buildViaConstraints() {
 	viaConstraints.clear();
 	// Compute via constraints
 	/*for (int type = 0; type < 2; type++) {
@@ -933,13 +943,42 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 	//}
 	//printf("}\n");
 
+	if (not routes[route].layout.layers.empty()) {
+		if (routes[route].net >= 0) {
+			drawWire(wp.layout, *this, wp);
+			drawWire(wn.layout, *this, wn);
+		} else {
+			drawStack(wp.layout, ckt, this->stack[flip(wp.net)]);
+			drawStack(wn.layout, ckt, this->stack[flip(wn.net)]);
+		}
+	}
+
 	routes[route].net = wp.net;
 	routes[route].pins = wp.pins;
 	routes[route].left = wp.left;
 	routes[route].right = wp.right;
 	routes[route].pOffset = wp.pOffset;
 	routes[route].nOffset = wp.nOffset;
+	routes[route].layout = wp.layout;
 	routes.push_back(wn);
+
+	// Update Route Constraints
+	if (not routeConstraints.empty()) {
+		for (int i = (int)routeConstraints.size()-1; i >= 0; i--) {
+			if (routeConstraints[i].wires[0] == route
+				or routeConstraints[i].wires[1] == route) {
+				routeConstraints.erase(routeConstraints.begin() + i);
+			}
+		}
+
+		for (int i = 0; i < (int)routes.size(); i++) {
+			if (i != route) {
+				auto cnst = createRouteConstraint(i, route);
+				routeConstraints.insert(routeConstraints.end(), cnst.begin(), cnst.end());
+			}
+		}
+		sort(routeConstraints.begin(), routeConstraints.end());
+	}
 
 	return success;
 }
@@ -1262,7 +1301,7 @@ void Router::addIOPins() {
 	}
 }
 
-void Router::buildPins(const Tech &tech) {
+void Router::buildPins() {
 	for (int type = 0; type < 2; type++) {
 		for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
 			Pin &pin = this->stack[type].pins[i];
@@ -1275,7 +1314,7 @@ void Router::buildPins(const Tech &tech) {
 	}
 }
 
-void Router::buildContacts(const Tech &tech) {
+void Router::buildContacts() {
 	for (int i = 0; i < (int)routes.size(); i++) {
 		if (routes[i].net < 0) {
 			continue;
@@ -1605,30 +1644,41 @@ void Router::drawRoutes() {
 	}
 }
 
-void Router::buildRouteConstraints(const Tech &tech, bool allowOverCell) {
+vector<RouteConstraint> Router::createRouteConstraint(int i, int j) {
+	if (i > j) {
+		swap(i, j);
+	}
+
+	vector<RouteConstraint> result;
+	//printf("checkout route %d:%d and %d:%d\n", i, routes[i].net, j, routes[j].net);
+	int routingMode = ((routes[i].net < 0 and routes[j].net >= 0) or (routes[i].net >= 0 and routes[j].net < 0)) ? Layout::MERGENET : Layout::DEFAULT;
+	int off[2] = {0,0};
+	bool fromto = minOffset(off+0, tech, 1, routes[i].layout, 0, routes[j].layout, 0, Layout::DEFAULT, routingMode);
+	bool tofrom = minOffset(off+1, tech, 1, routes[j].layout, 0, routes[i].layout, 0, Layout::DEFAULT, routingMode);
+	if (not allowOverCell and (routes[i].net < 0 or routes[j].net < 0)) {
+		result.push_back(RouteConstraint(i, j, off[0], off[1]));
+		result.back().select = (flip(routes[j].net) == Model::PMOS or flip(routes[i].net) == Model::NMOS);
+	} else if (fromto or tofrom) {
+		result.push_back(RouteConstraint(i, j, off[0], off[1]));
+
+		array<vector<bool>, 2> hasType = {routes[i].pinTypes(), routes[j].pinTypes()};
+		if ((routes[i].net < 0 and routes[j].net < 0) or
+				(routes[i].net < 0 and hasType[1][1-flip(routes[i].net)]) or
+				(routes[j].net < 0 and hasType[0][1-flip(routes[j].net)]))  {
+			result.back().select = (flip(routes[j].net) == Model::PMOS or flip(routes[i].net) == Model::NMOS);
+		}
+	}
+	return result;
+}
+
+void Router::buildRouteConstraints() {
 	//printf("\nbuildRouteConstraints\n");
 	// Compute route constraints
 	vector<RouteConstraint> updated;
 	for (int i = 0; i < (int)routes.size(); i++) {
 		for (int j = i+1; j < (int)routes.size(); j++) {
-			//printf("checkout route %d:%d and %d:%d\n", i, routes[i].net, j, routes[j].net);
-			int routingMode = ((routes[i].net < 0 and routes[j].net >= 0) or (routes[i].net >= 0 and routes[j].net < 0)) ? Layout::MERGENET : Layout::DEFAULT;
-			int off[2] = {0,0};
-			bool fromto = minOffset(off+0, tech, 1, routes[i].layout, 0, routes[j].layout, 0, Layout::DEFAULT, routingMode);
-			bool tofrom = minOffset(off+1, tech, 1, routes[j].layout, 0, routes[i].layout, 0, Layout::DEFAULT, routingMode);
-			if (not allowOverCell and (routes[i].net < 0 or routes[j].net < 0)) {
-				updated.push_back(RouteConstraint(i, j, off[0], off[1]));
-				updated.back().select = (flip(routes[j].net) == Model::PMOS or flip(routes[i].net) == Model::NMOS);
-			} else if (fromto or tofrom) {
-				updated.push_back(RouteConstraint(i, j, off[0], off[1]));
-
-				array<vector<bool>, 2> hasType = {routes[i].pinTypes(), routes[j].pinTypes()};
-				if ((routes[i].net < 0 and routes[j].net < 0) or
-				    (routes[i].net < 0 and hasType[1][1-flip(routes[i].net)]) or
-				    (routes[j].net < 0 and hasType[0][1-flip(routes[j].net)]))  {
-					updated.back().select = (flip(routes[j].net) == Model::PMOS or flip(routes[i].net) == Model::NMOS);
-				}
-			}
+			auto cnst = createRouteConstraint(i, j);
+			updated.insert(updated.end(), cnst.begin(), cnst.end());
 			//printf("done\n\n");
 		}
 	}
@@ -1663,7 +1713,7 @@ void Router::buildRouteConstraints(const Tech &tech, bool allowOverCell) {
 	//printf("done buildRouteConstraints\n\n");
 }
 
-void Router::buildGroupConstraints(const Tech &tech) {
+void Router::buildGroupConstraints() {
 	groupConstraints.clear();
 
 	for (int i = 0; i < (int)routes.size(); i++) {
@@ -2197,7 +2247,7 @@ bool Router::findAndBreakPinCycles() {
 }
 
 // The `window` attempts to prevent too many vias across a route by smoothing the transition
-void Router::lowerRoutes(const Tech &tech, int window) {
+void Router::lowerRoutes(int window) {
 	// TODO(edward.bingham) There's still an interaction between route lowering
 	// and via merging where it ends up creating a double route for two close
 	// pins, causing DRC violations
@@ -2320,23 +2370,23 @@ void Router::load(const Placement &place) {
 bool Router::solve(const Tech &tech) {
 	bool success = true;
 	//addIOPins();
-	buildPins(tech);
+	buildPins();
 	buildHorizConstraints(tech);
 	updatePinPos();
 	alignPins(200);
-	buildPinConstraints(tech, 0);
+	buildPinConstraints(0);
 	//print();
-	//buildViaConstraints(tech);
+	//buildViaConstraints();
 	buildRoutes();
-	buildContacts(tech);
+	buildContacts();
 	success = findAndBreakPinCycles() and success;
-	buildContacts(tech);
+	buildContacts();
 	buildHorizConstraints(tech);
 	updatePinPos();	
 	drawRoutes();
 
-	buildPinConstraints(tech, 0);
-	buildRouteConstraints(tech);
+	buildPinConstraints(0);
+	buildRouteConstraints();
 	success = resetGraph(tech) and success;
 	success = assignRouteConstraints(tech) and success;
 	buildPinBounds();
@@ -2348,19 +2398,19 @@ bool Router::solve(const Tech &tech) {
 	// TODO(edward.bingham) There's a bug in the group constraints functionality
 	// that's exposed by multiple iterations of this.
 	for (int i = 0; i < 2; i++) {
-		lowerRoutes(tech);
-		buildContacts(tech);
+		lowerRoutes();
+		buildContacts();
 		buildHorizConstraints(tech);
 		updatePinPos();
 		//print();
 		drawRoutes();
 
-		buildPinConstraints(tech, 0);
+		buildPinConstraints(0);
 		if (i == 0) {
 			routeConstraints.clear();
 		}
-		buildRouteConstraints(tech);
-		buildGroupConstraints(tech);
+		buildRouteConstraints();
+		buildGroupConstraints();
 		success = resetGraph(tech) and success;
 		success = assignRouteConstraints(tech) and success;
 		buildPinBounds();

@@ -406,6 +406,8 @@ struct Router {
 	const Tech &tech;
 	const Subckt &ckt;
 
+	bool allowOverCell;
+
 	// Computed by the placement system
 	// stack[0] is Model::NMOS
 	// stack[1] is Model::PMOS
@@ -431,8 +433,8 @@ struct Router {
 	
 	// Finish building the constraint graph, filling out vcon and hcon.
 	void delRoute(int route);
-	void buildPinConstraints(const Tech &tech, int level=1);
-	void buildViaConstraints(const Tech &tech);
+	void buildPinConstraints(int level=1);
+	void buildViaConstraints();
 	void buildRoutes();
 	void buildPinBounds();
 	bool findCycles(vector<vector<int> > &cycles);
@@ -442,14 +444,15 @@ struct Router {
 	void findAndBreakViaCycles();
 	void alignVirtualPins();
 	void addIOPins();
-	void buildPins(const Tech &tech);
-	void buildContacts(const Tech &tech);
+	void buildPins();
+	void buildContacts();
 	void buildHorizConstraints(const Tech &tech);
 	void updatePinPos();
 	int alignPins(int maxDist = -1);
 	void drawRoutes();
-	void buildRouteConstraints(const Tech &tech, bool allowOverCell=true);
-	void buildGroupConstraints(const Tech &tech);
+	vector<RouteConstraint> createRouteConstraint(int i, int j);
+	void buildRouteConstraints();
+	void buildGroupConstraints();
 	set<int> propagateRouteConstraint(int idx);
 	vector<int> findTop();
 	vector<int> findBottom();
@@ -460,7 +463,7 @@ struct Router {
 	bool buildPOffsets(const Tech &tech, vector<int> start=vector<int>());
 	bool buildNOffsets(const Tech &tech, vector<int> start=vector<int>());
 	bool assignRouteConstraints(const Tech &tech);
-	void lowerRoutes(const Tech &tech, int window=0);
+	void lowerRoutes(int window=0);
 	void updateRouteConstraints(const Tech &tech);
 	int computeCost();
 
