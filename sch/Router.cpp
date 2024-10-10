@@ -1607,9 +1607,8 @@ void Router::drawRoutes() {
 
 void Router::buildRouteConstraints(const Tech &tech, bool allowOverCell) {
 	//printf("\nbuildRouteConstraints\n");
-	routeConstraints.clear();
-
 	// Compute route constraints
+	vector<RouteConstraint> updated;
 	for (int i = 0; i < (int)routes.size(); i++) {
 		for (int j = i+1; j < (int)routes.size(); j++) {
 			//printf("checkout route %d:%d and %d:%d\n", i, routes[i].net, j, routes[j].net);
@@ -1618,21 +1617,49 @@ void Router::buildRouteConstraints(const Tech &tech, bool allowOverCell) {
 			bool fromto = minOffset(off+0, tech, 1, routes[i].layout, 0, routes[j].layout, 0, Layout::DEFAULT, routingMode);
 			bool tofrom = minOffset(off+1, tech, 1, routes[j].layout, 0, routes[i].layout, 0, Layout::DEFAULT, routingMode);
 			if (not allowOverCell and (routes[i].net < 0 or routes[j].net < 0)) {
-				routeConstraints.push_back(RouteConstraint(i, j, off[0], off[1]));
-				routeConstraints.back().select = (flip(routes[j].net) == Model::PMOS or flip(routes[i].net) == Model::NMOS);
+				updated.push_back(RouteConstraint(i, j, off[0], off[1]));
+				updated.back().select = (flip(routes[j].net) == Model::PMOS or flip(routes[i].net) == Model::NMOS);
 			} else if (fromto or tofrom) {
-				routeConstraints.push_back(RouteConstraint(i, j, off[0], off[1]));
+				updated.push_back(RouteConstraint(i, j, off[0], off[1]));
 
 				array<vector<bool>, 2> hasType = {routes[i].pinTypes(), routes[j].pinTypes()};
 				if ((routes[i].net < 0 and routes[j].net < 0) or
 				    (routes[i].net < 0 and hasType[1][1-flip(routes[i].net)]) or
 				    (routes[j].net < 0 and hasType[0][1-flip(routes[j].net)]))  {
-					routeConstraints.back().select = (flip(routes[j].net) == Model::PMOS or flip(routes[i].net) == Model::NMOS);
+					updated.back().select = (flip(routes[j].net) == Model::PMOS or flip(routes[i].net) == Model::NMOS);
 				}
 			}
 			//printf("done\n\n");
 		}
 	}
+
+	int i = 0, j = 0;
+	while (i < (int)updated.size() and j < (int)routeConstraints.size()) {
+		if (updated[i].wires[0] == routeConstraints[j].wires[0]
+			and updated[i].wires[1] == routeConstraints[j].wires[1]) {
+			if (updated[i].select == -1) {
+				updated[i].select = routeConstraints[j].select;
+			}
+			i++;
+			j++;
+		} else if (updated[i].wires[0] == routeConstraints[j].wires[1]
+			and updated[i].wires[1] == routeConstraints[j].wires[0]) {
+			if (updated[i].select == -1) {
+				updated[i].select = 1-routeConstraints[j].select;
+			}
+			i++;
+			j++;
+		} else if (updated[i].wires[0] < routeConstraints[j].wires[0]
+			or (updated[i].wires[0] == routeConstraints[j].wires[0]
+				and updated[i].wires[1] < routeConstraints[j].wires[1])) {
+			i++;
+		} else {
+			updated.insert(updated.begin()+i, routeConstraints[j]);
+			i++;
+			j++;
+		}
+	}
+	routeConstraints = updated;
 	//printf("done buildRouteConstraints\n\n");
 }
 
@@ -2320,7 +2347,7 @@ bool Router::solve(const Tech &tech) {
 
 	// TODO(edward.bingham) There's a bug in the group constraints functionality
 	// that's exposed by multiple iterations of this.
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < 1; i++) {
 		lowerRoutes(tech);
 		buildContacts(tech);
 		buildHorizConstraints(tech);

@@ -383,6 +383,9 @@ struct RouteConstraint {
 	int off[2];
 };
 
+bool operator==(const RouteConstraint &c0, const RouteConstraint &c1);
+bool operator<(const RouteConstraint &c0, const RouteConstraint &c1);
+
 struct RouteGroupConstraint {
 	RouteGroupConstraint();
 	RouteGroupConstraint(int wire, Index pin);
