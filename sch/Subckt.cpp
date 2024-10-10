@@ -513,12 +513,10 @@ vector<Mapping> Subckt::generateCells() {
 	//    region.
 
 	// TODO(edward.bingham) only do this merge if the signals crossing the bounds don't switch. How do I figure that out?
-	for (int i = 0; i < (int)segments.size(); i++) {
+	for (int i = (int)segments.size()-2; i >= 0; i--) {
 		for (int j = (int)segments.size()-1; j > i; j--) {
-			if (segments[j].overlapsWith(segments[i])) {
-				segments[i].merge(segments[j]);
-				segments.erase(segments.begin() + j);
-			} else if (areCoupled(segments[i], segments[j])) {
+			if (segments[j].overlapsWith(segments[i])
+				or areCoupled(segments[i], segments[j])) {
 				segments[i].merge(segments[j]);
 				segments.erase(segments.begin() + j);
 			}

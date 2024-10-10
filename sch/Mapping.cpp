@@ -49,17 +49,21 @@ void Mapping::identity(const Subckt &from) {
 
 bool Mapping::extract(const Mapping &m) {
 	bool success = true;
-	int j = (int)m.devices.size()-1;
-	for (int i = (int)devices.size()-1; i >= 0; i--) {
-		while (devices[i] < m.devices[j]) {
-			j--;
-		}
-
-		if (devices[i] == m.devices[j]) {
-			success = false;
-			devices.erase(devices.begin() + i);
-		} else {
-			devices[i] -= (j+1);
+	vector<int> remove = m.devices;
+	if (not is_sorted(remove.begin(), remove.end()) or
+		not is_sorted(devices.begin(), devices.end())) {
+		printf("violated sorting assumption\n");
+		sort(remove.begin(), remove.end());
+		sort(devices.begin(), devices.end());
+	}
+	for (int i = (int)remove.size()-1; i >= 0; i--) {
+		for (int j = (int)devices.size()-1; j >= 0 and devices[j] >= remove[i]; j--) {
+			if (devices[j] == remove[i]) {
+				devices.erase(devices.begin()+j);
+				success = false;
+			} else {
+				devices[j]--;
+			}
 		}
 	}
 
@@ -80,15 +84,9 @@ void Mapping::apply(const Mapping &m) {
 }
 
 void Mapping::merge(const Mapping &m) {
-	for (auto i = m.cellToThis.begin(); i != m.cellToThis.end(); i++) {
-		bool found = false;
-		for (auto j = cellToThis.begin(); j != cellToThis.end() and not found; j++) {
-			found = found or (*i == *j);
-		}
-		if (not found) {
-			cellToThis.push_back(*i);
-		}
-	}
+	cellToThis.insert(cellToThis.end(), m.cellToThis.begin(), m.cellToThis.end());
+	sort(cellToThis.begin(), cellToThis.end());
+	cellToThis.erase(unique(cellToThis.begin(), cellToThis.end()), cellToThis.end());
 
 	devices.insert(devices.end(), m.devices.begin(), m.devices.end());
 	sort(devices.begin(), devices.end());

@@ -189,13 +189,23 @@ void Netlist::mapCells(bool progress) {
 
 			auto segments = subckts[i].generateCells();
 
+			int total = 0;
+			for (auto s = segments.begin(); s != segments.end(); s++) {
+				total += (int)s->devices.size();
+			}
+
+			printf("extracting cells %d/%d\n", total, (int)subckts[i].mos.size());
 			for (auto s = segments.begin(); s != segments.end(); s++) {
 				Subckt cell = s->generate(subckts[i]);
 				s->remap(cell.canonicalize());
 				cell.name = "cell_" + idToString(cell.id);
 				int index = insert(cell);
 
+				printf("extracting mapping %d\n", (int)subckts[i].mos.size());
+				s->print();
 				subckts[i].extract(subckts[index], *s, index);
+				printf("done with extraction %d\n", (int)subckts[i].mos.size());
+
 				//print();
 				for (auto s1 = s+1; s1 != segments.end(); s1++) {
 					// DESIGN(edward.bingham) if two segments overlap, then we just remove
@@ -212,7 +222,7 @@ void Netlist::mapCells(bool progress) {
 			}
 
 			if (progress) {
-				printf("[%s%d NEW/%d CELLS%s]\n", KGRN, (int)subckts.size()-count, (int)segments.size(), KNRM);
+				printf("[%s%d UNIQUE/%d CELLS%s]\n", KGRN, (int)subckts.size()-count, (int)segments.size(), KNRM);
 			}
 		}
 	}
