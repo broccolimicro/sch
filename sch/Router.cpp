@@ -2347,7 +2347,7 @@ bool Router::solve(const Tech &tech) {
 
 	// TODO(edward.bingham) There's a bug in the group constraints functionality
 	// that's exposed by multiple iterations of this.
-	for (int i = 0; i < 1; i++) {
+	for (int i = 0; i < 2; i++) {
 		lowerRoutes(tech);
 		buildContacts(tech);
 		buildHorizConstraints(tech);
@@ -2356,6 +2356,9 @@ bool Router::solve(const Tech &tech) {
 		drawRoutes();
 
 		buildPinConstraints(tech, 0);
+		if (i == 0) {
+			routeConstraints.clear();
+		}
 		buildRouteConstraints(tech);
 		buildGroupConstraints(tech);
 		success = resetGraph(tech) and success;
