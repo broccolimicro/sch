@@ -103,7 +103,6 @@ void Netlist::mapCells(bool progress) {
 				total += (int)s->mos.size();
 			}
 
-			printf("extracting cells %d/%d\n", total, (int)subckts[i].mos.size());
 			for (auto s = segments.begin(); s != segments.end(); s++) {
 				Subckt cell(true);
 				Mapping m = s->generate(cell, subckts[i]);
@@ -111,11 +110,8 @@ void Netlist::mapCells(bool progress) {
 				cell.name = "cell_" + idToString(cell.id);
 				int index = insert(cell);
 
-				printf("extracting mapping %d\n", (int)subckts[i].mos.size());
-				s->print();
 				subckts[i].extract(*s);
 				subckts[i].pushInst(Instance(subckts[index], m, index));
-				printf("done with extraction %d\n", (int)subckts[i].mos.size());
 
 				//print();
 				for (auto s1 = s+1; s1 != segments.end(); s1++) {
@@ -137,6 +133,9 @@ void Netlist::mapCells(bool progress) {
 			}
 
 			subckts[i].cleanDangling();
+			if (not subckts[i].mos.empty()) {
+				printf("failed to segment all devices\n");
+			}
 		}
 	}
 	steady_clock::time_point finish = steady_clock::now();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 #include <unordered_set>
@@ -133,7 +134,7 @@ struct Subckt {
 	void extract(const Segment &m);
 	void cleanDangling(bool remIO=false);
 
-	Segment segment(int net);
+	Segment segment(int net, set<int> *covered=nullptr);
 	vector<Segment> segment();
 	bool areCoupled(const Segment &m0, const Segment &m1) const;
 

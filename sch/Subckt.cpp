@@ -325,7 +325,7 @@ void Subckt::cleanDangling(bool remIO) {
 	}
 }
 
-Segment Subckt::segment(int net) {
+Segment Subckt::segment(int net, set<int> *covered) {
 	// TODO(edward.bingham) Generate a cell based on the following constraints:
 	// 1. Follow the graph from drain to source starting from "net"
 	// 2. Stop whenever we hit a power rail
@@ -343,6 +343,10 @@ Segment Subckt::segment(int net) {
 	while (not stack.empty()) {
 		int curr = stack.back();
 		stack.pop_back();
+
+		if (covered != nullptr) {
+			covered->insert(curr);
+		}
 
 		//printf("current net %d\n", curr);
 
@@ -370,9 +374,42 @@ Segment Subckt::segment(int net) {
 vector<Segment> Subckt::segment() {
 	//print();
 	vector<Segment> segments;
+	set<int> covered;
 	for (int i = 0; i < (int)nets.size(); i++) {
 		if (not nets[i].isAnonymous() and (not nets[i].drainOf[0].empty() or not nets[i].drainOf[1].empty())) {
-			auto seg = segment(i);
+			auto seg = segment(i, &covered);
+			if (not seg.mos.empty()) {
+				segments.push_back(seg);
+				//segments.back().print();
+			} else {
+				printf("found empty segment\n");
+				seg.print();
+			}
+		}
+	}
+
+	for (int i = 0; i < (int)nets.size(); i++) {
+		if (covered.find(i) == covered.end()
+			and (not nets[i].drainOf[0].empty()
+				or not nets[i].drainOf[1].empty())
+			and nets[i].sourceOf[0].empty()
+			and nets[i].sourceOf[1].empty()) {
+			auto seg = segment(i, &covered);
+			if (not seg.mos.empty()) {
+				segments.push_back(seg);
+				//segments.back().print();
+			} else {
+				printf("found empty segment\n");
+				seg.print();
+			}
+		}
+	}
+
+	for (int i = 0; i < (int)nets.size(); i++) {
+		if (covered.find(i) == covered.end()
+			and (not nets[i].drainOf[0].empty()
+				or not nets[i].drainOf[1].empty())) {
+			auto seg = segment(i, &covered);
 			if (not seg.mos.empty()) {
 				segments.push_back(seg);
 				//segments.back().print();
