@@ -13,61 +13,24 @@ namespace sch {
 Mapping::Mapping() {
 }
 
-// Create an identity mapping
-Mapping::Mapping(const Subckt &cell) {
-	identity(cell);
+Mapping::Mapping(const Subckt &ckt) {
+	identity(ckt);
+}
+
+Mapping::Mapping(vector<int> nets) {
+	this->nets = nets;
 }
 
 Mapping::~Mapping() {
 }
 
-int Mapping::pushNet(int net) {
-	for (int i = 0; i < (int)cellToThis.size(); i++) {
-		if (cellToThis[i] == net) {
-			return i;
-		}
-	}
+void Mapping::identity(const Subckt &ckt) {
+	nets.clear();
 
-	int result = cellToThis.size();
-	cellToThis.push_back(net);
-	return result;
-}
-
-void Mapping::identity(const Subckt &from) {
-	cellToThis.clear();
-	devices.clear();
-
-	cellToThis.reserve(from.nets.size());
-	for (int i = 0; i < (int)from.nets.size(); i++) {
-		cellToThis.push_back(i);
+	nets.reserve(ckt.nets.size());
+	for (int i = 0; i < (int)ckt.nets.size(); i++) {
+		nets.push_back(i);
 	}
-	devices.reserve(from.mos.size());
-	for (int i = 0; i < (int)from.mos.size(); i++) {
-		devices.push_back(i);
-	}
-}
-
-bool Mapping::extract(const Mapping &m) {
-	bool success = true;
-	vector<int> remove = m.devices;
-	if (not is_sorted(remove.begin(), remove.end()) or
-		not is_sorted(devices.begin(), devices.end())) {
-		printf("violated sorting assumption\n");
-		sort(remove.begin(), remove.end());
-		sort(devices.begin(), devices.end());
-	}
-	for (int i = (int)remove.size()-1; i >= 0; i--) {
-		for (int j = (int)devices.size()-1; j >= 0 and devices[j] >= remove[i]; j--) {
-			if (devices[j] == remove[i]) {
-				devices.erase(devices.begin()+j);
-				success = false;
-			} else {
-				devices[j]--;
-			}
-		}
-	}
-
-	return success;
 }
 
 void Mapping::apply(const Mapping &m) {
@@ -75,40 +38,83 @@ void Mapping::apply(const Mapping &m) {
 	// m: canon -> cell
 	// want: canon -> main
 
-	vector<int> nets;
-	nets.reserve(m.cellToThis.size());
-	for (int i = 0; i < (int)m.cellToThis.size(); i++) {
-		nets.push_back(cellToThis[m.cellToThis[i]]);
-	}
-	cellToThis = nets;
-}
-
-void Mapping::merge(const Mapping &m) {
-	cellToThis.insert(cellToThis.end(), m.cellToThis.begin(), m.cellToThis.end());
-	sort(cellToThis.begin(), cellToThis.end());
-	cellToThis.erase(unique(cellToThis.begin(), cellToThis.end()), cellToThis.end());
-
-	devices.insert(devices.end(), m.devices.begin(), m.devices.end());
-	sort(devices.begin(), devices.end());
-	devices.erase(unique(devices.begin(), devices.end()), devices.end());
-}
-
-Mapping &Mapping::remap(vector<int> nets) {
 	vector<int> updated;
-	updated.reserve(nets.size());
-	for (int i = 0; i < (int)nets.size(); i++) {
-		updated.push_back(cellToThis[nets[i]]);
+	updated.reserve(m.nets.size());
+	for (int i = 0; i < (int)m.nets.size(); i++) {
+		updated.push_back(nets[m.nets[i]]);
 	}
-	cellToThis = updated;
-	return *this;
+	nets = updated;
 }
 
-bool Mapping::overlapsWith(const Mapping &m) const {
+void Mapping::print() const {
+	printf("map{");
+	for (int i = 0; i < (int)nets.size(); i++) {
+		if (i != 0) {
+			printf(", ");
+		}
+		printf("%d -> %d", i, nets[i]);
+	}
+	printf("}\n");
+}
+
+Segment::Segment() {
+}
+
+Segment::Segment(const Subckt &ckt) {
+	identity(ckt);
+}
+
+Segment::Segment(vector<int> mos) {
+	this->mos = mos;
+}
+
+Segment::~Segment() {
+}
+
+void Segment::identity(const Subckt &ckt) {
+	mos.clear();
+
+	mos.reserve(ckt.mos.size());
+	for (int i = 0; i < (int)ckt.mos.size(); i++) {
+		mos.push_back(i);
+	}
+}
+
+bool Segment::extract(const Segment &seg) {
+	bool success = true;
+	vector<int> remove = seg.mos;
+	if (not is_sorted(remove.begin(), remove.end()) or
+		not is_sorted(mos.begin(), mos.end())) {
+		printf("violated sorting assumption\n");
+		sort(remove.begin(), remove.end());
+		sort(mos.begin(), mos.end());
+	}
+	for (int i = (int)remove.size()-1; i >= 0; i--) {
+		for (int j = (int)mos.size()-1; j >= 0 and mos[j] >= remove[i]; j--) {
+			if (mos[j] == remove[i]) {
+				mos.erase(mos.begin()+j);
+				success = false;
+			} else {
+				mos[j]--;
+			}
+		}
+	}
+
+	return success;
+}
+
+void Segment::merge(const Segment &seg) {
+	mos.insert(mos.end(), seg.mos.begin(), seg.mos.end());
+	sort(mos.begin(), mos.end());
+	mos.erase(unique(mos.begin(), mos.end()), mos.end());
+}
+
+bool Segment::overlapsWith(const Segment &seg) const {
 	int i = 0, j = 0;
-	while (i < (int)devices.size() and j < (int)m.devices.size()) {
-		if (devices[i] == m.devices[j]) {
+	while (i < (int)mos.size() and j < (int)seg.mos.size()) {
+		if (mos[i] == seg.mos[j]) {
 			return true;
-		} else if (devices[i] < m.devices[j]) {
+		} else if (mos[i] < seg.mos[j]) {
 			i++;
 		} else {
 			j++;
@@ -117,46 +123,61 @@ bool Mapping::overlapsWith(const Mapping &m) const {
 	return false;
 }
 
-Subckt Mapping::generate(const Subckt &from, bool isCell) const {
-	Subckt cell;	
-	cell.isCell = isCell;
+Mapping Segment::map(const Subckt &ckt) const {
+	Mapping result;
+	for (auto i = mos.begin(); i != mos.end(); i++) {
+		result.nets.push_back(ckt.mos[*i].drain);
+		result.nets.push_back(ckt.mos[*i].gate);
+		result.nets.push_back(ckt.mos[*i].source);
+		result.nets.push_back(ckt.mos[*i].base);
+	}
+	sort(result.nets.begin(), result.nets.end());
+	result.nets.erase(unique(result.nets.begin(), result.nets.end()), result.nets.end());
+	return result;
+}
 
-	for (auto i = cellToThis.begin(); i != cellToThis.end(); i++) {
-		auto n = from.nets.begin()+*i;
+Mapping Segment::generate(Subckt &dst, const Subckt &src) const {
+	Mapping m0 = map(src), m1;
+	for (auto i = m0.nets.begin(); i != m0.nets.end(); i++) {
+		auto n = src.nets.begin()+*i;
 
 		bool isIO = n->isIO or not n->portOf.empty();
 		for (int type = 0; type < 2 and not isIO; type++) {
 			for (auto j = n->gateOf[type].begin(); j != n->gateOf[type].end() and not isIO; j++) {
-				auto pos = lower_bound(devices.begin(), devices.end(), *j);
-				isIO = (pos != devices.end() and *pos == *j);
+				auto pos = lower_bound(mos.begin(), mos.end(), *j);
+				isIO = (pos != mos.end() and *pos == *j);
 			}
 			for (auto j = n->sourceOf[type].begin(); j != n->sourceOf[type].end() and not isIO; j++) {
-				auto pos = lower_bound(devices.begin(), devices.end(), *j);
-				isIO = (pos != devices.end() and *pos == *j);
+				auto pos = lower_bound(mos.begin(), mos.end(), *j);
+				isIO = (pos != mos.end() and *pos == *j);
 			}
 			for (auto j = n->drainOf[type].begin(); j != n->drainOf[type].end() and not isIO; j++) {
-				auto pos = lower_bound(devices.begin(), devices.end(), *j);
-				isIO = (pos != devices.end() and *pos == *j);
+				auto pos = lower_bound(mos.begin(), mos.end(), *j);
+				isIO = (pos != mos.end() and *pos == *j);
 			}
 		}
 
-		cell.pushNet(n->name, isIO);
+		int j = dst.pushNet(n->name, isIO);
+		if (j >= (int)m1.nets.size()) {
+			m1.nets.resize(j+1, -1);
+		}
+		m1.nets[j] = *i;
 	}
 
-	for (auto i = devices.begin(); i != devices.end(); i++) {
-		auto d = from.mos.begin()+*i;
+	for (auto i = mos.begin(); i != mos.end(); i++) {
+		auto d = src.mos.begin()+*i;
 		int gate = -1, source = -1, drain = -1, base = -1;
-		for (int j = 0; j < (int)cellToThis.size(); j++) {
-			if (d->gate == cellToThis[j]) {
+		for (int j = 0; j < (int)m1.nets.size(); j++) {
+			if (d->gate == m1.nets[j]) {
 				gate = j;
 			}
-			if (d->source == cellToThis[j]) {
+			if (d->source == m1.nets[j]) {
 				source = j;
 			}
-			if (d->drain == cellToThis[j]) {
+			if (d->drain == m1.nets[j]) {
 				drain = j;
 			}
-			if (d->base == cellToThis[j]) {
+			if (d->base == m1.nets[j]) {
 				base = j;
 			}
 		}
@@ -165,38 +186,32 @@ Subckt Mapping::generate(const Subckt &from, bool isCell) const {
 			printf("internal %s:%d: cell net map missing nets\n", __FILE__, __LINE__);
 		}
 
-		cell.pushMos(d->model, d->type, drain, gate, source, base, d->size);
-		cell.mos.back().params = d->params;
+		dst.pushMos(d->model, d->type, drain, gate, source, base, d->size);
+		dst.mos.back().params = d->params;
 	}
 
-	for (auto i = cell.nets.begin(); i != cell.nets.end(); i++) {
-		if (i->isIO and i->isOutput()) {
-			i->name = "o" + to_string(i-cell.nets.begin());
-		} else if (i->isIO and i->isInput()) {
-			i->name = "i" + to_string(i-cell.nets.begin());
-		} else if (not i->isIO) {
-			i->name = "_" + to_string(i-cell.nets.begin());
+	for (int i = 0; i < (int)m1.nets.size(); i++) {
+		if (m1.nets[i] >= 0) {
+			if (dst.nets[i].isIO and dst.nets[i].isOutput()) {
+				dst.nets[i].name = "o" + to_string(i);
+			} else if (dst.nets[i].isIO and dst.nets[i].isInput()) {
+				dst.nets[i].name = "i" + to_string(i);
+			} else if (not dst.nets[i].isIO) {
+				dst.nets[i].name = "_" + to_string(i);
+			}
 		}
 	}
 
-	return cell;
+	return m1;
 }
 
-void Mapping::print() const {
-	printf("mapping\n");
-	printf("nets:{");
-	for (int i = 0; i < (int)cellToThis.size(); i++) {
+void Segment::print() const {
+	printf("segment{");
+	for (int i = 0; i < (int)mos.size(); i++) {
 		if (i != 0) {
 			printf(", ");
 		}
-		printf("%d -> %d", i, cellToThis[i]);
-	}
-	printf("}\ndevices:{");
-	for (int i = 0; i < (int)devices.size(); i++) {
-		if (i != 0) {
-			printf(", ");
-		}
-		printf("%d", devices[i]);
+		printf("%d", mos[i]);
 	}
 	printf("}\n\n");
 }

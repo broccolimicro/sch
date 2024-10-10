@@ -25,7 +25,6 @@ struct Netlist {
 	int insert(const Subckt &cell);
 	void erase(int idx);
 
-	bool mapCells(Subckt &ckt);
 	void mapCells(bool progress=false);
 };
 

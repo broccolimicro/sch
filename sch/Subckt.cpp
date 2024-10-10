@@ -145,15 +145,15 @@ Instance::Instance() {
 Instance::Instance(const Subckt &ckt, const Mapping &m, int subckt) {
 	this->subckt = subckt;
 	for (int i = 0; i < (int)ckt.ports.size(); i++) {
-		this->ports.push_back(m.cellToThis[ckt.ports[i]]);
+		this->ports.push_back(m.nets[ckt.ports[i]]);
 	}
 }
 
 Instance::~Instance() {
 }
 
-Subckt::Subckt() {
-	isCell = false;
+Subckt::Subckt(bool isCell) {
+	this->isCell = isCell;
 	id = (size_t)-1;
 }
 
@@ -303,133 +303,17 @@ void Subckt::popMos(int index) {
 	}
 }
 
-vector<Mapping> Subckt::find(const Subckt &cell) {
-	struct frame {
-		frame(const Subckt &cell) : m(cell) {
-			todo.reserve(cell.mos.size());
-			for (int i = 0; i < (int)cell.mos.size(); i++) {
-				todo.push_back(i);
-			}
-		}
-		~frame() {}
-
-		Mapping m;
-		vector<int> todo;  // devs in cell
-	};
-
-	vector<Mapping> result;
-	vector<frame> frames(1, frame(cell));
-	while (not frames.empty()) {
-		auto curr = frames.back();
-		frames.pop_back();
-
-		// TODO(edward.bingham) Be more intelligent about target selection, using
-		// the graph structures so we don't have to do a linear-time search
-		auto target = cell.mos.begin() + curr.todo.back();
-		curr.todo.pop_back();
-
-		for (auto dev = mos.begin(); dev != mos.end(); dev++) {
-			if (*dev != *target) {
-				continue;
-			}
-
-			if (dev->gate >= (int)curr.m.cellToThis.size()) {
-				curr.m.cellToThis.resize(dev->gate+1, -1);
-			}
-			if (curr.m.cellToThis[dev->gate] < 0) {
-				// this net hasn't been assigned yet
-				curr.m.cellToThis[dev->gate] = target->gate;
-			} else if (target->gate != curr.m.cellToThis[dev->gate]) {
-				// not a match
-				continue;
-			}
-
-			if (dev->source >= (int)curr.m.cellToThis.size()) {
-				curr.m.cellToThis.resize(dev->source+1, -1);
-			}
-			if (curr.m.cellToThis[dev->source] < 0) {
-				// this net hasn't been assigned yet
-				curr.m.cellToThis[dev->source] = target->source;
-			} else if (target->source != curr.m.cellToThis[dev->source]) {
-				// not a match
-				continue;
-			}
-
-			if (dev->drain >= (int)curr.m.cellToThis.size()) {
-				curr.m.cellToThis.resize(dev->drain+1, -1);
-			}
-			if (curr.m.cellToThis[dev->drain] < 0) {
-				// this net hasn't been assigned yet
-				curr.m.cellToThis[dev->drain] = target->drain;
-			} else if (target->drain != curr.m.cellToThis[dev->drain]) {
-				// not a match
-				continue;
-			}
-
-			if (dev->base >= (int)curr.m.cellToThis.size()) {
-				curr.m.cellToThis.resize(dev->base+1, -1);
-			}
-			if (curr.m.cellToThis[dev->base] < 0) {
-				// this net hasn't been assigned yet
-				curr.m.cellToThis[dev->base] = target->base;
-			} else if (target->base != curr.m.cellToThis[dev->base]) {
-				// not a match
-				continue;
-			}
-
-			curr.m.devices.push_back(dev-mos.begin());
-			if (not curr.todo.empty()) {
-				frames.push_back(curr);
-				continue;
-			}
-
-			sort(curr.m.devices.begin(), curr.m.devices.end());
-
-			// we found a full match for this cell. Are any of the cell's internal
-			// nets being used outside the cell?
-			bool violation = false;
-			for (int i = 0; i < (int)curr.m.cellToThis.size() and not violation; i++) {
-				if (curr.m.cellToThis[i] < 0 or cell.nets[i].isIO) {
-					// We found an unused net, or this net is externally accessible
-					continue;
-				}
-
-				auto net = nets.begin() + curr.m.cellToThis[i];
-
-				for (int type = 0; type < 2 and not violation; type++) {
-					for (auto j = net->gateOf[type].begin(); j != net->gateOf[type].end() and not violation; j++) {
-						auto pos = lower_bound(curr.m.devices.begin(), curr.m.devices.end(), *j);
-						violation = (pos == curr.m.devices.end() or *pos != *j);
-					}
-					for (auto j = net->sourceOf[type].begin(); j != net->sourceOf[type].end() and not violation; j++) {
-						auto pos = lower_bound(curr.m.devices.begin(), curr.m.devices.end(), *j);
-						violation = (pos == curr.m.devices.end() or *pos != *j);
-					}
-					for (auto j = net->drainOf[type].begin(); j != net->drainOf[type].end() and not violation; j++) {
-						auto pos = lower_bound(curr.m.devices.begin(), curr.m.devices.end(), *j);
-						violation = (pos == curr.m.devices.end() or *pos != *j);
-					}
-				}
-			}
-			
-			if (not violation) {
-				result.push_back(curr.m);
-			}
-		}
-	}
-
-	return result;
-}
-
-void Subckt::extract(const Subckt &ckt, const Mapping &m, int cellIndex) {
+void Subckt::pushInst(Instance ckt) {
 	int index = (int)inst.size();
-	inst.push_back(Instance(ckt, m, cellIndex));
+	inst.push_back(ckt);
 	for (auto p = inst.back().ports.begin(); p != inst.back().ports.end(); p++) {
 		nets[*p].portOf.push_back(index);
-	} 
+	}
+}
 
-	for (int i = (int)m.devices.size()-1; i >= 0; i--) {
-		popMos(m.devices[i]);
+void Subckt::extract(const Segment &seg) {
+	for (int i = (int)seg.mos.size()-1; i >= 0; i--) {
+		popMos(seg.mos[i]);
 	}
 }
 
@@ -441,7 +325,7 @@ void Subckt::cleanDangling(bool remIO) {
 	}
 }
 
-Mapping Subckt::segment(int net) {
+Segment Subckt::segment(int net) {
 	// TODO(edward.bingham) Generate a cell based on the following constraints:
 	// 1. Follow the graph from drain to source starting from "net"
 	// 2. Stop whenever we hit a power rail
@@ -453,7 +337,7 @@ Mapping Subckt::segment(int net) {
 	//    same isochronic region as the drain.
 
 	//printf("generating gate for %d\n", net);
-	Mapping result;
+	Segment result;
 
 	vector<int> stack(1, net);
 	while (not stack.empty()) {
@@ -465,11 +349,7 @@ Mapping Subckt::segment(int net) {
 		//printf("drainOf = {%d, %d}\n", (int)nets[curr].drainOf[0].size(), (int)nets[curr].drainOf[1].size());
 		for (int type = 0; type < 2; type++) {
 			for (auto i = nets[curr].drainOf[type].begin(); i != nets[curr].drainOf[type].end(); i++) {
-				result.devices.push_back(*i);
-				result.pushNet(mos[*i].drain);
-				result.pushNet(mos[*i].gate);
-				result.pushNet(mos[*i].source);
-				result.pushNet(mos[*i].base);
+				result.mos.push_back(*i);
 				
 				int source = mos[*i].source;
 				if (nets[source].isAnonymous()) {
@@ -482,17 +362,18 @@ Mapping Subckt::segment(int net) {
 		}
 	}
 
-	sort(result.devices.begin(), result.devices.end());
+	sort(result.mos.begin(), result.mos.end());
+	result.mos.erase(unique(result.mos.begin(), result.mos.end()), result.mos.end());
 	return result;
 }
 
-vector<Mapping> Subckt::generateCells() {
+vector<Segment> Subckt::segment() {
 	//print();
-	vector<Mapping> segments;
+	vector<Segment> segments;
 	for (int i = 0; i < (int)nets.size(); i++) {
 		if (not nets[i].isAnonymous() and (not nets[i].drainOf[0].empty() or not nets[i].drainOf[1].empty())) {
 			auto seg = segment(i);
-			if (not seg.devices.empty()) {
+			if (not seg.mos.empty()) {
 				segments.push_back(seg);
 				//segments.back().print();
 			} else {
@@ -526,15 +407,15 @@ vector<Mapping> Subckt::generateCells() {
 	return segments;
 }
 
-bool Subckt::areCoupled(const Mapping &m0, const Mapping &m1) const {
+bool Subckt::areCoupled(const Segment &s0, const Segment &s1) const {
 	std::set<int> fromA, toA, fromB, toB;
-	for (auto d = m0.devices.begin(); d != m0.devices.end(); d++) {
+	for (auto d = s0.mos.begin(); d != s0.mos.end(); d++) {
 		fromA.insert(mos[*d].drain);
 		toA.insert(mos[*d].gate);
 		toA.insert(mos[*d].source);
 		toA.insert(mos[*d].base);
 	}
-	for (auto d = m1.devices.begin(); d != m1.devices.end(); d++) {
+	for (auto d = s1.mos.begin(); d != s1.mos.end(); d++) {
 		fromB.insert(mos[*d].drain);
 		toB.insert(mos[*d].gate);
 		toB.insert(mos[*d].source);
@@ -550,42 +431,42 @@ bool Subckt::areCoupled(const Mapping &m0, const Mapping &m1) const {
 	return (hasAtoB and hasBtoA);
 }
 
-void Subckt::remap(vector<int> m) {
+void Subckt::apply(const Mapping &m) {
 	for (int i = 0; i < (int)ports.size(); i++) {
-		ports[i] = m[ports[i]];
+		ports[i] = m.nets[ports[i]];
 	}
 
 	for (int i = 0; i < (int)mos.size(); i++) {
-		mos[i].gate = m[mos[i].gate];
-		mos[i].source = m[mos[i].source];
-		mos[i].drain = m[mos[i].drain];
-		mos[i].base = m[mos[i].base];
+		mos[i].gate = m.nets[mos[i].gate];
+		mos[i].source = m.nets[mos[i].source];
+		mos[i].drain = m.nets[mos[i].drain];
+		mos[i].base = m.nets[mos[i].base];
 	}
 
 	for (int i = 0; i < (int)nets.size(); i++) {
 		for (int j = 0; j < (int)nets[i].remote.size(); j++) {
-			nets[i].remote[j] = m[nets[i].remote[j]];
+			nets[i].remote[j] = m.nets[nets[i].remote[j]];
 		}
 	}
 
 	for (int i = 0; i < (int)inst.size(); i++) {
 		for (int j = 0; j < (int)inst[i].ports.size(); j++) {
-			inst[i].ports[j] = m[inst[i].ports[j]];
+			inst[i].ports[j] = m.nets[inst[i].ports[j]];
 		}
 	}
 
 	vector<Net> reorder;
-	reorder.reserve(m.size());
-	for (int i = 0; i < (int)m.size(); i++) {
-		reorder.push_back(nets[m[i]]);
+	reorder.reserve(m.nets.size());
+	for (int i = 0; i < (int)m.nets.size(); i++) {
+		reorder.push_back(nets[m.nets[i]]);
 	}
 	std::swap(nets, reorder);
 	reorder.clear();
 }
 
-vector<int> Subckt::canonicalize() {
-	vector<int> lbl = canonicalLabels(*this);
-	remap(lbl);
+Mapping Subckt::canonicalize() {
+	Mapping lbl = canonicalLabels(*this);
+	apply(lbl);
 	id = std::hash<Subckt>{}(*this);
 	return lbl;
 }

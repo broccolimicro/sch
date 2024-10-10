@@ -14,28 +14,36 @@ struct Subckt;
 
 struct Mapping {
 	Mapping();
-	Mapping(const Subckt &cell);
+	Mapping(const Subckt &ckt);
+	Mapping(vector<int> nets);
 	~Mapping();
 
-	// cellToThis[n0] = n1
-	// n0 is index of net in new subckt
-	// n1 is index of net in old subckt
-	vector<int> cellToThis; // nets
+	// list of nets from old subckt to include in new subckt
+	vector<int> nets;
+	
+	void identity(const Subckt &ckt);
+	void apply(const Mapping &m);
+
+	void print() const;
+};
+
+struct Segment {
+	Segment();
+	Segment(const Subckt &ckt);
+	Segment(vector<int> mos);
+	~Segment();
 
 	// list of devices from old subckt to include in new subckt
-	vector<int> devices; // devs in this
-	
-	int pushNet(int net);
+	vector<int> mos;
 
-	void identity(const Subckt &from);
-	bool extract(const Mapping &m);
-	void apply(const Mapping &m);
-	void merge(const Mapping &m);
-	Mapping &remap(vector<int> nets);
+	void identity(const Subckt &ckt);
+	bool extract(const Segment &seg);
+	void merge(const Segment &seg);
 
-	bool overlapsWith(const Mapping &m) const;
+	bool overlapsWith(const Segment &seg) const;
 
-	Subckt generate(const Subckt &from, bool isCell=true) const;
+	Mapping map(const Subckt &ckt) const;	
+	Mapping generate(Subckt &dst, const Subckt &src) const;
 
 	void print() const;
 };

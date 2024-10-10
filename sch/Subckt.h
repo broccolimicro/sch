@@ -104,7 +104,7 @@ struct Instance {
 };
 
 struct Subckt {
-	Subckt();
+	Subckt(bool isCell=false);
 	~Subckt();
 
 	// Name of this cell
@@ -128,17 +128,17 @@ struct Subckt {
 	void connectRemote(int n0, int n1);
 	int pushMos(int model, int type, int drain, int gate, int source, int base=-1, vec2i size=vec2i(1.0,1.0));
 	void popMos(int index);
+	void pushInst(Instance ckt);
 
-	vector<Mapping> find(const Subckt &cell);
-	void extract(const Subckt &ckt, const Mapping &m, int cellIndex);
+	void extract(const Segment &m);
 	void cleanDangling(bool remIO=false);
 
-	Mapping segment(int net);
-	vector<Mapping> generateCells();
-	bool areCoupled(const Mapping &m0, const Mapping &m1) const;
+	Segment segment(int net);
+	vector<Segment> segment();
+	bool areCoupled(const Segment &m0, const Segment &m1) const;
 
-	void remap(vector<int> m);
-	vector<int> canonicalize();
+	void apply(const Mapping &m);
+	Mapping canonicalize();
 	int compare(const Subckt &ckt) const;
 
 

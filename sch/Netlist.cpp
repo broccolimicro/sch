@@ -21,97 +21,6 @@ Netlist::Netlist(const Tech &tech) : tech(tech) {
 Netlist::~Netlist() {
 }
 
-bool Netlist::mapCells(Subckt &ckt) {
-	vector<pair<Mapping, int> > options;
-	for (int i = 0; i < (int)subckts.size(); i++) {
-		if (ckt.mos.empty()) {
-			return true;
-		}
-
-		if (subckts[i].isCell) {
-			auto found = ckt.find(subckts[i]);
-			for (auto m = found.begin(); m != found.end(); m++) {
-				options.push_back(pair<Mapping, int>(*m, i));
-			}
-		}
-	}
-
-	// Now we have a set of possible mappings. Those mappings may overlap. We
-	// want to find a selection of mappings that minimizes the total number of
-	// cells used to cover the maximum possible number of devices in this subckt
-	
-	// This is equivalent to the problem of identifying the maximal clique in the
-	// graph that minimizes number of nodes while maximizing coverage. The graph
-	// is constructed using the subsets in "options" as vertices and creating
-	// edges between each pair that doesn't overlap. This is an NP-complete
-	// problem and we are solving it using the Bron–Kerbosch algorithm.
-	int covered = 0;
-	vector<int> result;
-
-	// TODO(edward.bingham) maybe want to cache the results of the overlapsWith computation
-	
-	struct BronKerboschFrame {
-		vector<int> R, P, X;
-	};
-
-	vector<BronKerboschFrame> frames;
-	frames.push_back(BronKerboschFrame());
-	frames.back().P.reserve(options.size());
-	for (int i = 0; i < (int)options.size(); i++) {
-		frames.back().P.push_back(i);
-	}
-
-	while (not frames.empty()) {
-		auto frame = frames.back();
-		frames.pop_back();
-
-		if (frame.P.empty() and frame.X.empty()) {
-			int newCovered = 0;
-			for (auto r = frame.R.begin(); r != frame.R.end(); r++) {
-				newCovered += (int)options[*r].first.devices.size();
-			}
-
-			// Then we've found a maximal clique
-			if (newCovered > covered or (newCovered == covered and frame.R.size() < result.size())) {
-				result = frame.R;
-				covered = newCovered;
-			}
-		} else {
-			// Otherwise, we need to recurse
-			while (not frame.P.empty()) {
-				frames.push_back(frame);
-				frames.back().R.push_back(frame.P.back());
-				auto o0 = options.begin() + frame.P.back();
-				for (int i = (int)frames.back().P.size()-1; i >= 0; i--) {
-					auto o1 = options.begin() + frames.back().P[i];
-					if (o0->first.overlapsWith(o1->first)) {
-						frames.back().P.erase(frames.back().P.begin() + i);
-					}
-				}
-				for (int i = (int)frames.back().X.size()-1; i >= 0; i--) {
-					auto o1 = options.begin() + frames.back().X[i];
-					if (o0->first.overlapsWith(o1->first)) {
-						frames.back().X.erase(frames.back().X.begin() + i);
-					}
-				}
-
-				frame.X.push_back(frame.P.back());
-				frame.P.pop_back();
-			}
-		}
-	}
-
-	// Now we have the best cell mapping. We need to apply it.
-	for (auto i = result.begin(); i != result.end(); i++) {
-		ckt.extract(subckts[options[*i].second], options[*i].first, options[*i].second);
-		for (auto j = i+1; j != result.end(); j++) {
-			options[*j].first.extract(options[*i].first);
-		}
-	}
-
-	return ckt.mos.empty();
-}
-
 int Netlist::insert(int idx) {
 	auto pos = cells.insert(pair<size_t, set<int> >(subckts[idx].id, set<int>()));
 	for (auto j = pos.first->second.begin(); j != pos.first->second.end(); j++) {
@@ -187,23 +96,25 @@ void Netlist::mapCells(bool progress) {
 				fflush(stdout);
 			}
 
-			auto segments = subckts[i].generateCells();
+			auto segments = subckts[i].segment();
 
 			int total = 0;
 			for (auto s = segments.begin(); s != segments.end(); s++) {
-				total += (int)s->devices.size();
+				total += (int)s->mos.size();
 			}
 
 			printf("extracting cells %d/%d\n", total, (int)subckts[i].mos.size());
 			for (auto s = segments.begin(); s != segments.end(); s++) {
-				Subckt cell = s->generate(subckts[i]);
-				s->remap(cell.canonicalize());
+				Subckt cell(true);
+				Mapping m = s->generate(cell, subckts[i]);
+				m.apply(cell.canonicalize());
 				cell.name = "cell_" + idToString(cell.id);
 				int index = insert(cell);
 
 				printf("extracting mapping %d\n", (int)subckts[i].mos.size());
 				s->print();
-				subckts[i].extract(subckts[index], *s, index);
+				subckts[i].extract(*s);
+				subckts[i].pushInst(Instance(subckts[index], m, index));
 				printf("done with extraction %d\n", (int)subckts[i].mos.size());
 
 				//print();
@@ -224,6 +135,8 @@ void Netlist::mapCells(bool progress) {
 			if (progress) {
 				printf("[%s%d UNIQUE/%d CELLS%s]\n", KGRN, (int)subckts.size()-count, (int)segments.size(), KNRM);
 			}
+
+			subckts[i].cleanDangling();
 		}
 	}
 	steady_clock::time_point finish = steady_clock::now();
