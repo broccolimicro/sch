@@ -26,7 +26,7 @@ namespace sch {
 
 Layout &loadCell(Library &lib, const Netlist &lst, int idx, bool progress, bool debug) {
 	if (idx >= (int)lib.macros.size()) {
-		lib.macros.resize(idx+1, Layout(lib.tech));
+		lib.macros.resize(idx+1, Layout(*lib.tech));
 	}
 	lib.macros[idx].name = lst.subckts[idx].name;
 	string cellPath = lib.libPath + "/" + lib.macros[idx].name+".gds";
@@ -37,7 +37,7 @@ Layout &loadCell(Library &lib, const Netlist &lst, int idx, bool progress, bool 
 	printf("[");
 	bool imported = false;
 	if (filesystem::exists(cellPath)) {
-		imported = import_layout(lib.macros[idx], lib.tech, cellPath, lib.macros[idx].name);
+		imported = import_layout(lib.macros[idx], cellPath, lib.macros[idx].name);
 		if (progress) {
 			if (imported) {
 				printf("%sFOUND%s]\n", KGRN, KNRM);
@@ -51,8 +51,8 @@ Layout &loadCell(Library &lib, const Netlist &lst, int idx, bool progress, bool 
 		bool place = true;
 		bool route = true;
 		Placement pl = Placement::solve(lst.subckts[idx]);
-		Router rt(lib.tech, pl, progress, debug);
-		route = rt.solve(lib.tech);
+		Router rt(*lib.tech, pl, progress, debug);
+		route = rt.solve();
 		drawCell(lib.macros[idx], rt);
 		if (progress) {
 			if (place and route) {

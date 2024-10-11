@@ -211,7 +211,7 @@ struct Wire {
 	// index into Subckt::routes
 	unordered_set<int> prevNodes;
 
-	void addPin(const Router *rt, Index pin);
+	void addPin(const Router *rt, Contact pin);
 	int findPin(const Router *rt, Index pin) const;
 	bool hasPin(const Router *rt, Index pin) const;
 	void resortPins(const Router *rt);
@@ -274,6 +274,9 @@ struct PinConstraint {
 	int from; // index into Router::stack[Model::PMOS]
 	int to;   // index into Router::stack[Model::NMOS]
 };
+
+bool operator==(const PinConstraint &c0, const PinConstraint &c1);
+bool operator<(const PinConstraint &c0, const PinConstraint &c1);
 
 // DESIGN(edward.bingham) The following relations between pins are
 // not allowed if the three pins are too close for the via
@@ -403,8 +406,8 @@ struct Router {
 	bool progress;
 	bool debug;
 
-	const Tech &tech;
-	const Subckt &ckt;
+	const Tech *tech;
+	const Subckt *ckt;
 
 	bool allowOverCell;
 
@@ -433,7 +436,7 @@ struct Router {
 	
 	// Finish building the constraint graph, filling out vcon and hcon.
 	void delRoute(int route);
-	void buildPinConstraints(int level=1);
+	void buildPinConstraints(int level=1, bool reset=false);
 	void buildViaConstraints();
 	void buildRoutes();
 	void buildPinBounds();
@@ -446,30 +449,29 @@ struct Router {
 	void addIOPins();
 	void buildPins();
 	void buildContacts();
-	void buildHorizConstraints(const Tech &tech);
-	void updatePinPos();
+	void buildHorizConstraints();
+	void updatePinPos(bool reset=false);
 	int alignPins(int maxDist = -1);
 	void drawRoutes();
 	vector<RouteConstraint> createRouteConstraint(int i, int j);
-	void buildRouteConstraints();
+	void buildRouteConstraints(bool reset=false);
 	void buildGroupConstraints();
 	set<int> propagateRouteConstraint(int idx);
 	vector<int> findTop();
 	vector<int> findBottom();
 	void zeroWeights();
 	void clearPrev();
-	bool resetGraph(const Tech &tech);
+	bool resetGraph();
 	bool buildPrevNodes(vector<int> start=vector<int>());
-	bool buildPOffsets(const Tech &tech, vector<int> start=vector<int>());
-	bool buildNOffsets(const Tech &tech, vector<int> start=vector<int>());
-	bool assignRouteConstraints(const Tech &tech);
+	bool buildPOffsets(vector<int> start=vector<int>());
+	bool buildNOffsets(vector<int> start=vector<int>());
+	bool assignRouteConstraints();
 	void lowerRoutes(int window=0);
-	void updateRouteConstraints(const Tech &tech);
 	int computeCost();
 
 	// Solve the constraint and circuit graph, filling out layers and constraints
 	void load(const Placement &place);
-	bool solve(const Tech &tech);
+	bool solve();
 
 	// Print the solution description
 	void print();

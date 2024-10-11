@@ -16,7 +16,7 @@ struct Netlist {
 	Netlist(const Tech &tech);
 	~Netlist();
 
-	const Tech &tech;
+	const Tech *tech;
 
 	map<size_t, set<int> > cells;
 	vector<Subckt> subckts; 

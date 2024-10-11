@@ -15,7 +15,8 @@ using namespace std;
 
 namespace sch {
 
-Netlist::Netlist(const Tech &tech) : tech(tech) {
+Netlist::Netlist(const Tech &tech) {
+	this->tech = &tech;
 }
 
 Netlist::~Netlist() {

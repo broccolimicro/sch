@@ -10,15 +10,15 @@ int clamp(int value, int lo, int hi) {
 }
 
 void drawDiffusion(Layout &dst, int model, int net, vec2i ll, vec2i ur, vec2i dir) {
-	for (int i = 0; i < (int)dst.tech.models[model].paint.size(); i++) {
+	for (int i = 0; i < (int)dst.tech->models[model].paint.size(); i++) {
 		if (i != 0) {
-			ll -= dst.tech.models[model].paint[i].overhang*dir;
-			ur += dst.tech.models[model].paint[i].overhang*dir;
+			ll -= dst.tech->models[model].paint[i].overhang*dir;
+			ur += dst.tech->models[model].paint[i].overhang*dir;
 		}
 		if (i == 0) {
 			dst.box.bound(ll, ur);
 		}
-		dst.push(dst.tech.models[model].paint[i], Rect(-1, ll, ur));
+		dst.push(dst.tech->models[model].paint[i], Rect(-1, ll, ur));
 	}
 }
 
@@ -27,16 +27,16 @@ void drawTransistor(Layout &dst, const Mos &mos, bool flip, vec2i pos, vec2i dir
 	vec2i ur = pos + mos.size*dir;
 
 	// draw poly
-	vec2i polyOverhang = vec2i(0, dst.tech.models[mos.model].polyOverhang)*dir;
+	vec2i polyOverhang = vec2i(0, dst.tech->models[mos.model].polyOverhang)*dir;
 	dst.box.bound(ll - polyOverhang, ur + polyOverhang);
-	dst.push(dst.tech.wires[0], Rect(mos.gate, ll - polyOverhang, ur + polyOverhang));
+	dst.push(dst.tech->wires[0], Rect(mos.gate, ll - polyOverhang, ur + polyOverhang));
 
 	// draw diffusion
-	for (auto layer = dst.tech.models[mos.model].paint.begin(); layer != dst.tech.models[mos.model].paint.end(); layer++) {
+	for (auto layer = dst.tech->models[mos.model].paint.begin(); layer != dst.tech->models[mos.model].paint.end(); layer++) {
 		vec2i diffOverhang = layer->overhang*dir;
 		ll -= diffOverhang;
 		ur += diffOverhang;
-		bool isDiffusion = layer == dst.tech.models[mos.model].paint.begin();
+		bool isDiffusion = layer == dst.tech->models[mos.model].paint.begin();
 		if (isDiffusion) {
 			dst.box.bound(ll, ur);
 		}
@@ -45,24 +45,24 @@ void drawTransistor(Layout &dst, const Mos &mos, bool flip, vec2i pos, vec2i dir
 }
 
 void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool expand, vec2i pos, vec2i dir) {
-	int viaLayer = dst.tech.vias[viaLevel].draw;
-	int downLevel = dst.tech.vias[viaLevel].downLevel;
-	int upLevel = dst.tech.vias[viaLevel].upLevel;
+	int viaLayer = dst.tech->vias[viaLevel].draw;
+	int downLevel = dst.tech->vias[viaLevel].downLevel;
+	int upLevel = dst.tech->vias[viaLevel].upLevel;
 
 	// spacing and width of a via
-	int viaWidth = dst.tech.paint[viaLayer].minWidth;
-	int rule = dst.tech.getSpacing(viaLayer, viaLayer);
+	int viaWidth = dst.tech->paint[viaLayer].minWidth;
+	int rule = dst.tech->getSpacing(viaLayer, viaLayer);
 	int viaSpacing = 0;
 	if (rule < 0) {
-		viaSpacing = dst.tech.rules[flip(rule)].params[0];
+		viaSpacing = dst.tech->rules[flip(rule)].params[0];
 	}
 
 	// enclosure rules and default orientation
-	vec2i dn = dst.tech.vias[viaLevel].dn;
+	vec2i dn = dst.tech->vias[viaLevel].dn;
 	if (axis[0] == 0) {
 		dn.swap(0,1);
 	}
-	vec2i up = dst.tech.vias[viaLevel].up;
+	vec2i up = dst.tech->vias[viaLevel].up;
 	if (axis[1] == 0) {
 		up.swap(0,1);
 	}
@@ -100,19 +100,19 @@ void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool ex
 	if (downLevel >= 0) {
 		// routing level
 		dst.box.bound(ll, ur);
-		dst.push(dst.tech.wires[downLevel], Rect(net, ll, ur));
+		dst.push(dst.tech->wires[downLevel], Rect(net, ll, ur));
 	} else {
 		// diffusion level
 		int model = -downLevel-1;
-		for (int i = 0; i < (int)dst.tech.models[model].paint.size(); i++) {
+		for (int i = 0; i < (int)dst.tech->models[model].paint.size(); i++) {
 			if (i != 0) {
-				ll -= dst.tech.models[model].paint[i].overhang*dir;
-				ur += dst.tech.models[model].paint[i].overhang*dir;
+				ll -= dst.tech->models[model].paint[i].overhang*dir;
+				ur += dst.tech->models[model].paint[i].overhang*dir;
 			}
 			if (i == 0) {
 				dst.box.bound(ll, ur);
 			}
-			dst.push(dst.tech.models[model].paint[i], Rect(-1, ll, ur));
+			dst.push(dst.tech->models[model].paint[i], Rect(-1, ll, ur));
 		}
 	}
 
@@ -121,7 +121,7 @@ void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool ex
 	int step = viaWidth+viaSpacing;
 	for (idx[0] = 0; idx[0] < num[0]; idx[0]++) {
 		for (idx[1] = 0; idx[1] < num[1]; idx[1]++) {
-			dst.push(dst.tech.vias[viaLevel], Rect(net, pos+(off+idx*step)*dir, pos+(off+idx*step+viaWidth)*dir));
+			dst.push(dst.tech->vias[viaLevel], Rect(net, pos+(off+idx*step)*dir, pos+(off+idx*step+viaWidth)*dir));
 		}
 	}
 
@@ -131,34 +131,34 @@ void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool ex
 	if (upLevel >= 0) {
 		// routing level
 		dst.box.bound(ll, ur);
-		dst.push(dst.tech.wires[upLevel], Rect(net, ll, ur));
+		dst.push(dst.tech->wires[upLevel], Rect(net, ll, ur));
 	} else {
 		// diffusion level
 		int model = -upLevel-1;
-		for (int i = 0; i < (int)dst.tech.models[model].paint.size(); i++) {
+		for (int i = 0; i < (int)dst.tech->models[model].paint.size(); i++) {
 			if (i != 0) {
-				ll -= dst.tech.models[model].paint[i].overhang*dir;
-				ur += dst.tech.models[model].paint[i].overhang*dir;
+				ll -= dst.tech->models[model].paint[i].overhang*dir;
+				ur += dst.tech->models[model].paint[i].overhang*dir;
 			}
 			if (i == 0) {
 				dst.box.bound(ll, ur);
 			}
-			dst.push(dst.tech.models[model].paint[i], Rect(-1, ll, ur));
+			dst.push(dst.tech->models[model].paint[i], Rect(-1, ll, ur));
 		}
 	}
 }
 
 void drawViaStack(Layout &dst, int net, int downLevel, int upLevel, vec2i axis, vec2i size, vec2i pos, vec2i dir) {
 	if (downLevel == upLevel) {
-		int layer = dst.tech.wires[downLevel].draw;
-		int width = dst.tech.paint[layer].minWidth;
+		int layer = dst.tech->wires[downLevel].draw;
+		int width = dst.tech->paint[layer].minWidth;
 		size[0] = max(size[0], width);
 		size[1] = max(size[1], width);
-		dst.push(dst.tech.wires[downLevel], Rect(net, pos, pos+size*dir));
+		dst.push(dst.tech->wires[downLevel], Rect(net, pos, pos+size*dir));
 		return;
 	}
 
-	vector<int> vias = dst.tech.findVias(downLevel, upLevel);
+	vector<int> vias = dst.tech->findVias(downLevel, upLevel);
 	for (int i = 0; i < (int)vias.size(); i++) {
 		drawVia(dst, net, vias[i], axis, size, true, pos, dir);
 	}
@@ -167,9 +167,9 @@ void drawViaStack(Layout &dst, int net, int downLevel, int upLevel, vec2i axis, 
 void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i dir) {
 	// [via level][pin]
 	vector<vector<int> > posArr;
-	posArr.resize(dst.tech.vias.size());
+	posArr.resize(dst.tech->vias.size());
 
-	for (int i = 0; i < (int)dst.tech.vias.size(); i++) {
+	for (int i = 0; i < (int)dst.tech->vias.size(); i++) {
 		posArr[i].reserve(wire.pins.size());
 
 		for (int j = 0; j < (int)wire.pins.size(); j++) {
@@ -192,7 +192,7 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 		}
 	}
 
-	for (int i = 0; i < (int)dst.tech.vias.size(); i++) {
+	for (int i = 0; i < (int)dst.tech->vias.size(); i++) {
 		vector<Layout> vias;
 		vias.reserve(wire.pins.size());
 		int height = 0;
@@ -204,26 +204,26 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 			int wireLow = min(nextLevel, prevLevel);
 			int wireHigh = max(nextLevel, prevLevel);
 
-			int wireLayer = dst.tech.wires[nextLevel].draw;
-			height = dst.tech.paint[wireLayer].minWidth;
+			int wireLayer = dst.tech->wires[nextLevel].draw;
+			height = dst.tech->paint[wireLayer].minWidth;
 
-			if ((pinLevel <= dst.tech.vias[i].downLevel and wireHigh >= dst.tech.vias[i].upLevel) or
-			    (wireLow <= dst.tech.vias[i].downLevel and pinLevel >= dst.tech.vias[i].upLevel)) {
-				int width = dst.tech.paint[dst.tech.wires[pinLevel].draw].minWidth;
-				dst.push(dst.tech.wires[pinLevel], Rect(wire.net, vec2i(pin.pos, 0), vec2i(posArr[i][j], width)));
+			if ((pinLevel <= dst.tech->vias[i].downLevel and wireHigh >= dst.tech->vias[i].upLevel) or
+			    (wireLow <= dst.tech->vias[i].downLevel and pinLevel >= dst.tech->vias[i].upLevel)) {
+				int width = dst.tech->paint[dst.tech->wires[pinLevel].draw].minWidth;
+				dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.pos, 0), vec2i(posArr[i][j], width)));
 
 				vec2i axis(0,0);
-				//if (wireLow <= dst.tech.vias[i].downLevel and wireHigh >= dst.tech.vias[i].downLevel and j > 0 and j < (int)wire.pins.size()-1) {
+				//if (wireLow <= dst.tech->vias[i].downLevel and wireHigh >= dst.tech->vias[i].downLevel and j > 0 and j < (int)wire.pins.size()-1) {
 				//	axis[0] = 0;
 				//}
-				//if (wireLow <= dst.tech.vias[i].upLevel and wireHigh >= dst.tech.vias[i].upLevel and j > 0 and j < (int)wire.pins.size()-1) {
+				//if (wireLow <= dst.tech->vias[i].upLevel and wireHigh >= dst.tech->vias[i].upLevel and j > 0 and j < (int)wire.pins.size()-1) {
 				//	axis[1] = 0;
 				//}
 
-				Layout next(dst.tech);
+				Layout next(*dst.tech);
 				drawVia(next, wire.net, i, axis, vec2i(width, height), true, vec2i(posArr[i][j], 0));
 				int off = numeric_limits<int>::min();
-				if (not vias.empty() and minOffset(&off, dst.tech, 0, vias.back(), 0, next, 0, Layout::IGNORE, Layout::DEFAULT) and off > 0) {
+				if (not vias.empty() and minOffset(&off, 0, vias.back(), 0, next, 0, Layout::IGNORE, Layout::DEFAULT) and off > 0) {
 					Rect box = vias.back().box.bound(next.box);
 					vias.back().clear();
 					drawVia(vias.back(), wire.net, i, axis, vec2i(box.ur[0]-box.ll[0], height), true, vec2i(box.ll[0], 0));
@@ -251,19 +251,19 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 
 		int left = numeric_limits<int>::min();
 		int right = numeric_limits<int>::max();
-		for (int j = 0; j < (int)dst.tech.vias.size(); j++) {
-			if (dst.tech.vias[j].downLevel == prevLevel or dst.tech.vias[j].upLevel == prevLevel) {
+		for (int j = 0; j < (int)dst.tech->vias.size(); j++) {
+			if (dst.tech->vias[j].downLevel == prevLevel or dst.tech->vias[j].upLevel == prevLevel) {
 				left = max(left, posArr[j][i-1]);
 			}
-			if (dst.tech.vias[j].downLevel == nextLevel or dst.tech.vias[j].upLevel == nextLevel) {
+			if (dst.tech->vias[j].downLevel == nextLevel or dst.tech->vias[j].upLevel == nextLevel) {
 				right = min(right, posArr[j][i]);
 			}
 		}
 
-		int height = dst.tech.paint[dst.tech.wires[prevLevel].draw].minWidth;
+		int height = dst.tech->paint[dst.tech->wires[prevLevel].draw].minWidth;
 		vec2i ll = pos+vec2i(left, 0)*dir;
 		vec2i ur = pos+vec2i(right, height)*dir;
-		dst.push(dst.tech.wires[prevLevel], Rect(wire.net, ll, ur));
+		dst.push(dst.tech->wires[prevLevel], Rect(wire.net, ll, ur));
 	}
 }
 
@@ -315,13 +315,13 @@ void drawStack(Layout &dst, const Subckt &ckt, const Stack &stack) {
 
 void drawCell(Layout &dst, const Router &rt) {
 	vec2i dir(1,-1);
-	dst.name = rt.ckt.name;
+	dst.name = rt.ckt->name;
 
-	dst.nets.reserve(rt.ckt.nets.size());
-	for (int i = 0; i < (int)rt.ckt.nets.size(); i++) {
-		dst.nets.push_back(Port(rt.ckt.nets[i].name));
-		dst.nets.back().isInput = rt.ckt.nets[i].remoteIO and rt.ckt.nets[i].isInput();
-		dst.nets.back().isOutput = rt.ckt.nets[i].remoteIO and rt.ckt.nets[i].isOutput();
+	dst.nets.reserve(rt.ckt->nets.size());
+	for (int i = 0; i < (int)rt.ckt->nets.size(); i++) {
+		dst.nets.push_back(Port(rt.ckt->nets[i].name));
+		dst.nets.back().isInput = rt.ckt->nets[i].remoteIO and rt.ckt->nets[i].isInput();
+		dst.nets.back().isOutput = rt.ckt->nets[i].remoteIO and rt.ckt->nets[i].isOutput();
 		// TODO(edward.bingham) information about power and ground
 	}
 
@@ -337,8 +337,8 @@ void drawCell(Layout &dst, const Router &rt) {
 			int top = 0;
 			
 			int pinLevel = pin.layer;
-			int pinLayer = dst.tech.wires[pinLevel].draw;
-			int width = dst.tech.paint[pinLayer].minWidth;
+			int pinLayer = dst.tech->wires[pinLevel].draw;
+			int width = dst.tech->paint[pinLayer].minWidth;
 
 			for (auto j = rt.routes.begin(); j != rt.routes.end(); j++) {
 				if (j->hasPin(&rt, Index(type, i))) {
@@ -353,20 +353,20 @@ void drawCell(Layout &dst, const Router &rt) {
 				}
 			}
 
- 			dst.push(dst.tech.wires[pinLevel], Rect(pin.outNet, vec2i(pin.pos, bottom)*dir, vec2i(pin.pos+width, top)*dir));
+ 			dst.push(dst.tech->wires[pinLevel], Rect(pin.outNet, vec2i(pin.pos, bottom)*dir, vec2i(pin.pos+width, top)*dir));
 		}
 	}
 
 	for (int i = 0; i < (int)dst.layers.size(); i++) {
-		if (dst.tech.paint[dst.layers[i].draw].fill) {
+		if (dst.tech->paint[dst.layers[i].draw].fill) {
 			Rect box = dst.layers[i].bbox();
 			dst.layers[i].clear();
 			dst.layers[i].push(box, true);
 		}
 	}
 
-	if (dst.tech.boundary >= 0) {
-		dst.push(dst.tech.boundary, dst.bbox()); 
+	if (dst.tech->boundary >= 0) {
+		dst.push(dst.tech->boundary, dst.bbox()); 
 	}
 
 	dst.merge();
