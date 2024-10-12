@@ -2030,10 +2030,10 @@ void Router::buildPinBounds(bool reset) {
 	}
 }
 
-bool Router::buildPOffsets(vector<int> start) {
+bool Router::buildOffsets(int type, vector<int> start) {
 	bool hasError = false;
 	if (start.empty()) {
-		start.push_back(this->stack[Model::PMOS].route);
+		start.push_back(this->stack[type].route);
 	}
 
 	// TODO(edward.bingham) for routes that are on the wrong side of the
@@ -2049,11 +2049,11 @@ bool Router::buildPOffsets(vector<int> start) {
 		vector<int> curr = tokens.back();
 		tokens.pop_back();
 
-		if (curr.back() >= 0) {
+		if (type == Model::PMOS and curr.back() >= 0) {
 			for (int i = 0; i < (int)pinConstraints.size(); i++) {
-				if (routes[curr.back()].hasPin(this, Index(Model::PMOS, pinConstraints[i].from))) {
+				if (routes[curr.back()].hasPin(this, Index(type, pinConstraints[i].from))) {
 					for (int j = 0; j < (int)routes.size(); j++) {
-						if (j != curr.back() and routes[j].hasPin(this, Index(Model::NMOS, pinConstraints[i].to))) {
+						if (j != curr.back() and routes[j].hasPin(this, Index(1-type, pinConstraints[i].to))) {
 							bool change = routes[j].prevNodes.insert(curr.back()).second;
 							for (auto prev = routes[curr.back()].prevNodes.begin(); prev != routes[curr.back()].prevNodes.end(); prev++) {
 								bool inserted = routes[j].prevNodes.insert(*prev).second;
@@ -2068,7 +2068,7 @@ bool Router::buildPOffsets(vector<int> start) {
 								} else {
 									hasError = true;
 									if (debug) {
-										printf("error: buildPOffset found cycle {");
+										printf("error: buildOffset found cycle {");
 										for (int i = 0; i < (int)curr.size(); i++) {
 											printf("%d ", curr[i]);
 										}
@@ -2082,39 +2082,64 @@ bool Router::buildPOffsets(vector<int> start) {
 			}
 		}
 		for (int i = 0; i < (int)routeConstraints.size(); i++) {
-			if (routeConstraints[i].select >= 0 and curr.back() == routeConstraints[i].wires[routeConstraints[i].select]) {
-				int weight = routes[curr.back()].offset[Model::PMOS] + routeConstraints[i].off[routeConstraints[i].select];
-				int out = routeConstraints[i].wires[1-routeConstraints[i].select];
+			if (routeConstraints[i].select >= 0) {
+				int weight = routes[curr.back()].offset[type] + routeConstraints[i].off[routeConstraints[i].select];
 
-				// keep track of anscestor nodes
-				bool change = false;
-				if (curr.back() >= 0) {
-					change = routes[out].prevNodes.insert(curr.back()).second;
-					for (auto prev = routes[curr.back()].prevNodes.begin(); prev != routes[curr.back()].prevNodes.end(); prev++) {
-						bool inserted = routes[out].prevNodes.insert(*prev).second;
-						change = change or inserted;
+				if (type == Model::NMOS and curr.back() == routeConstraints[i].wires[1-routeConstraints[i].select]) {
+					int in = routeConstraints[i].wires[routeConstraints[i].select];
+					if (in >= 0 and routes[in].offset[type] < weight) {
+						routes[in].offset[type] = weight;
+
+						auto pos = find(curr.begin(), curr.end(), in);
+						if (pos == curr.end()) {
+							tokens.push_back(curr);
+							tokens.back().push_back(in);
+						} else {
+							hasError = true;
+							if (debug) {
+								printf("error: buildNOffset found cycle {");
+								for (int i = 0; i < (int)curr.size(); i++) {
+									printf("%d ", curr[i]);
+								}
+								printf("%d}\n", in);
+							}
+						}
 					}
 				}
 
-				// keep track of weight
-				if (routes[out].offset[Model::PMOS] < weight) {
-					routes[out].offset[Model::PMOS] = weight;
-					change = true;
-				}
+ 				if (type == Model::PMOS and curr.back() == routeConstraints[i].wires[routeConstraints[i].select]) {
+					int out = routeConstraints[i].wires[1-routeConstraints[i].select];
 
-				if (change) {
-					auto pos = find(curr.begin(), curr.end(), out);
-					if (pos == curr.end()) {
-						tokens.push_back(curr);
-						tokens.back().push_back(out);
-					} else {
-						hasError = true;
-						if (debug) {
-							printf("error: buildPOffset found cycle {");
-							for (int i = 0; i < (int)curr.size(); i++) {
-								printf("%d ", curr[i]);
+					// keep track of anscestor nodes
+					bool change = false;
+					if (curr.back() >= 0) {
+						change = routes[out].prevNodes.insert(curr.back()).second;
+						for (auto prev = routes[curr.back()].prevNodes.begin(); prev != routes[curr.back()].prevNodes.end(); prev++) {
+							bool inserted = routes[out].prevNodes.insert(*prev).second;
+							change = change or inserted;
+						}
+					}
+
+					// keep track of weight
+					if (routes[out].offset[type] < weight) {
+						routes[out].offset[type] = weight;
+						change = true;
+					}
+
+					if (change) {
+						auto pos = find(curr.begin(), curr.end(), out);
+						if (pos == curr.end()) {
+							tokens.push_back(curr);
+							tokens.back().push_back(out);
+						} else {
+							hasError = true;
+							if (debug) {
+								printf("error: buildOffset found cycle {");
+								for (int i = 0; i < (int)curr.size(); i++) {
+									printf("%d ", curr[i]);
+								}
+								printf("%d}\n", out);
 							}
-							printf("%d}\n", out);
 						}
 					}
 				}
@@ -2130,61 +2155,13 @@ bool Router::buildPOffsets(vector<int> start) {
 	return not hasError;
 }
 
-bool Router::buildNOffsets(vector<int> start) {
-	bool hasError = false;
-	if (start.empty()) {
-		start.push_back(this->stack[Model::NMOS].route);
-	}
-
-	vector<vector<int> > tokens;
-	sort(start.begin(), start.end());
-	start.erase(unique(start.begin(), start.end()), start.end());
-	for (int i = 0; i < (int)start.size(); i++) {
-		tokens.push_back(vector<int>(1, start[i]));
-	}
-	while (not tokens.empty()) {
-		vector<int> curr = tokens.back();
-		tokens.pop_back();
-
-		for (int i = 0; i < (int)routeConstraints.size(); i++) {
-			if (routeConstraints[i].select >= 0 and curr.back() == routeConstraints[i].wires[1-routeConstraints[i].select]) {
-				int weight = routes[curr.back()].offset[Model::NMOS] + routeConstraints[i].off[routeConstraints[i].select];
-				int in = routeConstraints[i].wires[routeConstraints[i].select];
-				if (in >= 0 and routes[in].offset[Model::NMOS] < weight) {
-					routes[in].offset[Model::NMOS] = weight;
-
-					auto pos = find(curr.begin(), curr.end(), in);
-					if (pos == curr.end()) {
-						tokens.push_back(curr);
-						tokens.back().push_back(in);
-					} else {
-						hasError = true;
-						if (debug) {
-							printf("error: buildNOffset found cycle {");
-							for (int i = 0; i < (int)curr.size(); i++) {
-								printf("%d ", curr[i]);
-							}
-							printf("%d}\n", in);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if (debug and hasError) {
-		print();
-	}
-	return not hasError;
-}
-
 bool Router::resetGraph() {
 	bool success = true;
 	zeroWeights();
 	clearPrev();
 	success = buildPrevNodes() and success;
-	success = buildPOffsets() and success;
-	success = buildNOffsets() and success;
+	success = buildOffsets(Model::PMOS) and success;
+	success = buildOffsets(Model::NMOS) and success;
 	return success;
 }
 
@@ -2206,8 +2183,8 @@ bool Router::assignRouteConstraints(bool reset) {
 		}
 	}
 	if (inTokens.size() + outTokens.size() > 0) {
-		success = buildPOffsets(inTokens) and success;
-		success = buildNOffsets(outTokens) and success;
+		success = buildOffsets(Model::PMOS, inTokens) and success;
+		success = buildOffsets(Model::NMOS, outTokens) and success;
 	}
 
 	vector<int> unassigned;
@@ -2278,8 +2255,8 @@ bool Router::assignRouteConstraints(bool reset) {
 			// identified before running this algorithm.
 		}
 		if (inTokens.size() + outTokens.size() > 0) {
-			success = buildPOffsets(inTokens) and success;
-			success = buildNOffsets(outTokens) and success;
+			success = buildOffsets(Model::PMOS, inTokens) and success;
+			success = buildOffsets(Model::NMOS, outTokens) and success;
 			continue;
 		}
 
@@ -2334,8 +2311,8 @@ bool Router::assignRouteConstraints(bool reset) {
 				}
 			}
 
-			success = buildPOffsets(inTokens) and success;
-			success = buildNOffsets(outTokens) and success;
+			success = buildOffsets(Model::PMOS, inTokens) and success;
+			success = buildOffsets(Model::NMOS, outTokens) and success;
 			continue;
 		}
 	}

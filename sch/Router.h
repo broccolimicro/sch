@@ -460,8 +460,7 @@ struct Router {
 	bool resetGraph();
 	bool buildPrevNodes(vector<int> start=vector<int>());
 	void buildPinBounds(bool reset=false);
-	bool buildPOffsets(vector<int> start=vector<int>());
-	bool buildNOffsets(vector<int> start=vector<int>());
+	bool buildOffsets(int type, vector<int> start=vector<int>());
 	bool assignRouteConstraints(bool reset=true);
 	void lowerRoutes(int window=0);
 	int computeCost();
