@@ -1831,52 +1831,26 @@ bool Router::buildOffsets(int type, vector<int> start) {
 		vector<int> curr = tokens.back();
 		tokens.pop_back();
 
-		if (type == Model::PMOS) {
-			auto n = next(curr.back());
-			for (auto i = n.begin(); i != n.end(); i++) {
-				int weight = routes[curr.back()].offset[type] + i->second;
+		map<int, int> n = type == Model::PMOS ? next(curr.back()) : prev(curr.back());
+		for (auto i = n.begin(); i != n.end(); i++) {
+			int weight = routes[curr.back()].offset[type] + i->second;
 
-				// keep track of weight
-				if (routes[i->first].offset[type] < weight) {
-					routes[i->first].offset[type] = weight;
-					
-					auto pos = find(curr.begin(), curr.end(), i->first);
-					if (pos == curr.end()) {
-						tokens.push_back(curr);
-						tokens.back().push_back(i->first);
-					} else {
-						hasError = true;
-						if (debug) {
-							printf("error: buildOffset found cycle {");
-							for (int i = 0; i < (int)curr.size(); i++) {
-								printf("%d ", curr[i]);
-							}
-							printf("%d}\n", i->first);
-						}
-					}
-				}
-			}
-		} else if (type == Model::NMOS) {
-			auto p = prev(curr.back());
-			for (auto i = p.begin(); i != p.end(); i++) {
-				int weight = routes[curr.back()].offset[type] + i->second;
+			// keep track of weight
+			if (routes[i->first].offset[type] < weight) {
+				routes[i->first].offset[type] = weight;
 				
-				if (routes[i->first].offset[type] < weight) {
-					routes[i->first].offset[type] = weight;
-
-					auto pos = find(curr.begin(), curr.end(), i->first);
-					if (pos == curr.end()) {
-						tokens.push_back(curr);
-						tokens.back().push_back(i->first);
-					} else {
-						hasError = true;
-						if (debug) {
-							printf("error: buildOffset found cycle {");
-							for (int i = 0; i < (int)curr.size(); i++) {
-								printf("%d ", curr[i]);
-							}
-							printf("%d}\n", i->first);
+				auto pos = find(curr.begin(), curr.end(), i->first);
+				if (pos == curr.end()) {
+					tokens.push_back(curr);
+					tokens.back().push_back(i->first);
+				} else {
+					hasError = true;
+					if (debug) {
+						printf("error: buildOffset found cycle {");
+						for (int i = 0; i < (int)curr.size(); i++) {
+							printf("%d ", curr[i]);
 						}
+						printf("%d}\n", i->first);
 					}
 				}
 			}
