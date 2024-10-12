@@ -202,10 +202,8 @@ struct Wire {
 	// the drawing is complete at the end, we flip the geometry vertically before
 	// saving it to the GDS file.
 
-	// The vertical distance from the PMOS stack to this wire.
-	int pOffset;
-	// The vertical distance from the NMOS stack to this wire.
-	int nOffset;
+	// The vertical distance from the [NMOS,PMOS] stack to this wire.
+	array<int, 2> offset;
 
 	// This is used to detect cycles in the routing graph.
 	// index into Subckt::routes
@@ -374,7 +372,7 @@ struct RouteConstraint {
 	~RouteConstraint();
 
 	// index into Router::wires
-	int wires[2];
+	array<int, 2> wires;
 
 	// derived by Router::solve
 	// from = this->wires[select], to = this->wires[1-select]
@@ -383,7 +381,7 @@ struct RouteConstraint {
 	// pre-computed spacing information. This is the offset from one
 	// Wire::layout's origin to the other Wire::layout's origin along
 	// the vertical axis
-	int off[2];
+	array<int, 2> off;
 };
 
 bool operator==(const RouteConstraint &c0, const RouteConstraint &c1);
@@ -399,7 +397,6 @@ struct RouteGroupConstraint {
 };
 
 struct Router {
-	Router(const Tech &tech, const Subckt &ckt, bool progress=false, bool debug=false);
 	Router(const Tech &tech, const Placement &place, bool progress=false, bool debug=false);
 	~Router();
 
@@ -439,7 +436,6 @@ struct Router {
 	void buildPinConstraints(int level=1, bool reset=false);
 	void buildViaConstraints();
 	void buildRoutes();
-	void buildPinBounds();
 	bool findCycles(vector<vector<int> > &cycles);
 	bool breakRoute(int route, set<int> cycleRoutes);
 	bool breakCycles(vector<vector<int> > cycles);
@@ -449,7 +445,7 @@ struct Router {
 	void addIOPins();
 	void buildPins();
 	void buildContacts();
-	void buildHorizConstraints();
+	void buildHorizConstraints(bool reset=false);
 	void updatePinPos(bool reset=false);
 	int alignPins(int maxDist = -1);
 	void drawRoutes();
@@ -463,9 +459,10 @@ struct Router {
 	void clearPrev();
 	bool resetGraph();
 	bool buildPrevNodes(vector<int> start=vector<int>());
+	void buildPinBounds(bool reset=false);
 	bool buildPOffsets(vector<int> start=vector<int>());
 	bool buildNOffsets(vector<int> start=vector<int>());
-	bool assignRouteConstraints();
+	bool assignRouteConstraints(bool reset=true);
 	void lowerRoutes(int window=0);
 	int computeCost();
 

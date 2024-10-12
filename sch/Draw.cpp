@@ -326,7 +326,7 @@ void drawCell(Layout &dst, const Router &rt) {
 	}
 
 	for (auto i = rt.routes.begin(); i != rt.routes.end(); i++) {
-		drawLayout(dst, i->layout, vec2i(0, i->pOffset)*dir, dir);
+		drawLayout(dst, i->layout, vec2i(0, i->offset[Model::PMOS])*dir, dir);
 	}
 
 	for (int type = 0; type < (int)rt.stack.size(); type++) {
@@ -342,7 +342,7 @@ void drawCell(Layout &dst, const Router &rt) {
 
 			for (auto j = rt.routes.begin(); j != rt.routes.end(); j++) {
 				if (j->hasPin(&rt, Index(type, i))) {
-					int v = j->pOffset;
+					int v = j->offset[Model::PMOS];
 					if (j->net >= 0) {
 						top = first ? v+width : max(top, v+width);
 					} else {
