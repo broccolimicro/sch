@@ -349,11 +349,11 @@ int Router::pinHeight(Index p) const {
 	return result;
 }
 
-vector<bitset> Router::routeOrderMap() {
+vector<bitset> Router::routeOrderMap(int type) {
 	vector<bitset> result;
 	result.resize(routes.size());
 	for (int i = 0; i < (int)routes.size(); i++) {
-		auto n = next(i);
+		auto n = type == Model::PMOS ? next(i) : prev(i);
 		for (auto j = n.begin(); j != n.end(); j++) {
 			result[j->first].set(i, true);
 			result[j->first] |= result[i];
@@ -373,6 +373,13 @@ void Router::delRoute(int route) {
 			if (routeConstraints[i].wires[1] > route) {
 				routeConstraints[i].wires[1]--;
 			}
+		}
+	}
+	for (int i = 0; i < (int)stack.size(); i++) {
+		if (stack[i].route > route) {
+			stack[i].route--;
+		} else if (stack[i].route == route) {
+			stack[i].route = -1;
 		}
 	}
 
@@ -1681,17 +1688,17 @@ void Router::buildRouteConstraints(bool reset) {
 				if (c->select == -1) {
 					c->select = old[j].select;
 				}
-				/*if (c->off[0] < old[j].off[0]) {
+				if (c->off[0] < old[j].off[0]) {
 					c->off[0] = old[j].off[0];
 				}
 				if (c->off[1] < old[j].off[1]) {
 					c->off[1] = old[j].off[1];
-				}*/
+				}
 				i++;
 				j++;
 			} else if (c->wires[0] == old[j].wires[1]
 				and c->wires[1] == old[j].wires[0]) {
-				/*if (c->select == -1) {
+				if (c->select == -1) {
 					c->select = 1-old[j].select;
 				}
 				if (c->off[0] < old[j].off[1]) {
@@ -1699,7 +1706,7 @@ void Router::buildRouteConstraints(bool reset) {
 				}
 				if (c->off[1] < old[j].off[0]) {
 					c->off[1] = old[j].off[0];
-				}*/
+				}
 				i++;
 				j++;
 			} else if (c->wires[0] < old[j].wires[0]
@@ -1707,8 +1714,8 @@ void Router::buildRouteConstraints(bool reset) {
 					and c->wires[1] < old[j].wires[1])) {
 				i++;
 			} else {
-				//routeConstraints.insert(routeConstraints.begin()+i, old[j]);
-				//i++;
+				routeConstraints.insert(routeConstraints.begin()+i, old[j]);
+				i++;
 				j++;
 			}
 		}
@@ -1787,6 +1794,9 @@ void Router::zeroWeights() {
 		routes[i].offset[Model::PMOS] = 0;
 		routes[i].offset[Model::NMOS] = 0;
 	}
+	/*for (int i = 0; i < 2; i++) {
+		routes[stack[i].route].offset[i] = 0;
+	}*/
 }
 
 void Router::buildPinBounds(bool reset) {
@@ -1815,7 +1825,12 @@ void Router::buildPinBounds(bool reset) {
 bool Router::buildOffsets(int type, vector<int> start) {
 	bool hasError = false;
 	if (start.empty()) {
-		start.push_back(this->stack[type].route);
+		vector<bitset> prev = routeOrderMap(type);
+		for (int i = 0; i < (int)prev.size(); i++) {
+			if (prev[i].empty()) {
+				start.push_back(i);
+			}
+		}
 	}
 
 	// TODO(edward.bingham) for routes that are on the wrong side of the
@@ -1903,7 +1918,7 @@ bool Router::assignRouteConstraints(bool reset) {
 		}
 	}
 
-	vector<bitset> prev = routeOrderMap();
+	vector<bitset> prev = routeOrderMap(Model::PMOS);
 
 	while (unassigned.size() > 0) {
 		// handle critical constraints, that would create cycles if assigned the wrong direction.

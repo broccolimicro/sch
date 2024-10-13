@@ -260,7 +260,7 @@ struct Router {
 	map<int, int> prev(int i);
 
 	bool hasPinConstraint(int from, int to);
-	vector<bitset> routeOrderMap();
+	vector<bitset> routeOrderMap(int type);
 
 	// Finish building the constraint graph, filling out vcon and hcon.
 	void delRoute(int route);

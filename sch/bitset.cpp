@@ -19,7 +19,7 @@ void bitset::set(int i, bool v) {
 	}
 }
 
-bool bitset::get(int i) {
+bool bitset::get(int i) const {
 	int idx = ((i+63)/64);
 	int bit = i%64;
 	if (idx >= (int)data.size()) {
@@ -54,6 +54,15 @@ bitset &bitset::operator&=(const bitset &b) {
 		data[i] &= b.data[i];
 	}
 	return *this;
+}
+
+bool bitset::empty() const {
+	for (auto i = data.begin(); i != data.end(); i++) {
+		if (*i != 0) {
+			return false;
+		}
+	}
+	return true;
 }
 
 }
