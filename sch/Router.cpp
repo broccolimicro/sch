@@ -188,9 +188,14 @@ bool Wire::hasPin(const Router *rt, Index pin) const {
 }
 
 void Wire::resortPins(const Router *rt) {
-	sort(pins.begin(), pins.end(), CompareIndex(rt));
-	left = rt->pin(pins[0].idx).pos;
-	right = rt->pin(pins.back().idx).pos+rt->pin(pins.back().idx).width;
+	if (not pins.empty()) {
+		sort(pins.begin(), pins.end(), CompareIndex(rt));
+		left = rt->pin(pins[0].idx).pos;
+		right = rt->pin(pins.back().idx).pos+rt->pin(pins.back().idx).width;
+	} else {
+		left = -1;
+		right = -1;
+	}
 }
 
 int Wire::getLevel(int i) const {
@@ -228,10 +233,12 @@ vector<bool> Wire::pinTypes() const {
 
 Stack::Stack() {
 	type = -1;
+	route = -1;
 }
 
 Stack::Stack(int type) {
 	this->type = type;
+	this->route = -1;
 }
 
 Stack::~Stack() {
@@ -801,9 +808,10 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 		// knows where to draw the vertical path.
 		success = false;
 
+		Index idx(2, (int)this->stack[2].pins.size());
 		this->stack[2].pins.push_back(Pin(*tech, routes[route].net));
 		this->stack[2].pins.back().pos = -50;
-		Contact virtPin(*tech, Index(2, (int)this->stack[2].pins.size()));
+		Contact virtPin(*tech, idx);
 
 		// TODO(edward.bingham) draw contacts for virtual pins
 		// TODO(edward.bingham) add horizontal constraints for virtual pins
@@ -930,7 +938,6 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 
 	// Update Route Constraints
 	if (not routeConstraints.empty()) {
-		printf("Update Route Constraints\n");
 		for (int i = (int)routeConstraints.size()-1; i >= 0; i--) {
 			if (routeConstraints[i].wires[0] == route
 				or routeConstraints[i].wires[1] == route) {
@@ -944,8 +951,6 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 				createRouteConstraint(i, route);
 			}
 		}
-		
-		printf("done\n");
 	}
 
 	return success;
@@ -1670,13 +1675,11 @@ void Router::buildRouteConstraints(bool reset) {
 	// Compute route constraints
 	vector<RouteConstraint> old;
 	old.swap(routeConstraints);
-	printf("buildRouteConstraints()\n");
 	for (int i = 0; i < (int)routes.size(); i++) {
 		for (int j = i+1; j < (int)routes.size(); j++) {
 			createRouteConstraint(i, j);
 		}
 	}
-	printf("done\n");
 
 	if (not reset) {
 		int i = 0, j = 0;
@@ -1794,9 +1797,6 @@ void Router::zeroWeights() {
 		routes[i].offset[Model::PMOS] = 0;
 		routes[i].offset[Model::NMOS] = 0;
 	}
-	/*for (int i = 0; i < 2; i++) {
-		routes[stack[i].route].offset[i] = 0;
-	}*/
 }
 
 void Router::buildPinBounds(bool reset) {
@@ -2182,13 +2182,10 @@ bool Router::solve() {
 	buildPinConstraints(0, true);
 	success = findAndBreakPinCycles() and success;
 	drawRoutes();
-
-	print();
-
 	buildRouteConstraints();
 	success = assignRouteConstraints() and success;
 
-	/*lowerRoutes();
+	lowerRoutes();
 	buildHorizConstraints();
 	updatePinPos();
 
@@ -2197,7 +2194,7 @@ bool Router::solve() {
 	drawRoutes();
 	buildRouteConstraints();
 	buildGroupConstraints();
-	success = assignRouteConstraints() and success;*/
+	success = assignRouteConstraints() and success;
 
 
 

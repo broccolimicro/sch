@@ -72,6 +72,7 @@ void loadCells(Library &lib, const Netlist &lst, bool progress, bool debug) {
 		printf("Load cell layouts:\n");
 	}
 	steady_clock::time_point start = steady_clock::now();
+	lib.macros.reserve(lst.subckts.size()+lib.macros.size());
 	for (int i = 0; i < (int)lst.subckts.size(); i++) {
 		if (lst.subckts[i].isCell) {
 			loadCell(lib, lst, i, progress);

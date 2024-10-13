@@ -326,7 +326,9 @@ void drawCell(Layout &dst, const Router &rt) {
 	}
 
 	for (auto i = rt.routes.begin(); i != rt.routes.end(); i++) {
-		drawLayout(dst, i->layout, vec2i(0, i->offset[Model::PMOS])*dir, dir);
+		if ((int)i->pins.size() > 1) {
+			drawLayout(dst, i->layout, vec2i(0, i->offset[Model::PMOS])*dir, dir);
+		}
 	}
 
 	for (int type = 0; type < (int)rt.stack.size(); type++) {
