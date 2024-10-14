@@ -184,8 +184,8 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 				viaPos = clamp(viaPos, wire.pins[j].left, wire.pins[j].right);
 			}
 			if (wire.pins[j].left > wire.pins[j].right) {
-				printf("error: pin violation on pin %d\n", j);
-				printf("pinPos=%d left=%d right=%d viaPos=%d\n", pin.pos, wire.pins[j].left, wire.pins[j].right, viaPos);
+				//printf("error: pin violation on pin %d\n", j);
+				//printf("pinPos=%d left=%d right=%d viaPos=%d\n", pin.pos, wire.pins[j].left, wire.pins[j].right, viaPos);
 			}
 
 			posArr[i].push_back(viaPos);
@@ -286,7 +286,13 @@ void drawPin(Layout &dst, const Subckt &ckt, const Stack &stack, int pinID, vec2
 		if (model >= 0) {
 			drawViaStack(dst, stack.pins[pinID].outNet, -model-1, 1, vec2i(1,1), vec2i(stack.pins[pinID].width, stack.pins[pinID].height), pos, dir);
 		} else {
-			printf("error: unable to identify transistor model for diffusion contact %d\n", pinID);
+			const Pin &pin = stack.pins[pinID];
+			pos[0] += pin.pos;
+			int level = pin.layer;
+			int layer = dst.tech->wires[level].draw;
+			int width = dst.tech->paint[layer].minWidth;
+			vec2i size(width, width);
+			dst.push(dst.tech->wires[level], Rect(pin.outNet, pos, pos+size*dir));
 		}
 	} else {
 		drawTransistor(dst, ckt.mos[stack.pins[pinID].device], stack.pins[pinID].leftNet != ckt.mos[stack.pins[pinID].device].source, pos, dir);

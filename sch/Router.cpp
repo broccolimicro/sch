@@ -676,6 +676,8 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 
 	Wire wp(*tech, routes[route].net);
 	Wire wn(*tech, routes[route].net);
+	wp.offset = routes[route].offset;
+	wn.offset = routes[route].offset;
 	vector<int> count(routes[route].pins.size(), 0);
 	bool wpHasGate = false;
 	bool wnHasGate = false;
@@ -810,7 +812,10 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 
 		Index idx(2, (int)this->stack[2].pins.size());
 		this->stack[2].pins.push_back(Pin(*tech, routes[route].net));
+		drawPin(this->stack[2].pins.back().layout, *ckt, this->stack[2], idx.pin);
 		this->stack[2].pins.back().pos = -50;
+		this->stack[2].pins.back().lo = routes[route].offset[Model::PMOS];
+		this->stack[2].pins.back().hi = routes[route].offset[Model::PMOS];
 		Contact virtPin(*tech, idx);
 
 		// TODO(edward.bingham) draw contacts for virtual pins
@@ -927,13 +932,7 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 		}
 	}
 
-	routes[route].net = wp.net;
-	routes[route].pins = wp.pins;
-	routes[route].left = wp.left;
-	routes[route].right = wp.right;
-	routes[route].offset[Model::PMOS] = wp.offset[Model::PMOS];
-	routes[route].offset[Model::NMOS] = wp.offset[Model::NMOS];
-	routes[route].layout = wp.layout;
+	routes[route] = wp;
 	routes.push_back(wn);
 
 	// Update Route Constraints
@@ -1250,8 +1249,84 @@ void Router::alignVirtualPins() {
 	// change and so pin ranges don't continue to mean the same thing. So, what
 	// if I just define the ranges as an absolute measure? Then if the pin
 	// placements change... There is a cyclic dependency
-	for (int i = 0; i < (int)this->stack[2].pins.size(); i++) {
-		
+
+	// TODO(edward.bingham) I need to compare virtual pins against eachother as well
+	vector<map<pair<int, Index>, array<int, 2> > > constraints;
+	constraints.resize(stack[2].pins.size());
+	for (int i = 0; i < (int)stack[2].pins.size(); i++) {
+		for (int type = 0; type < 2; type++) {
+			for (int j = 0; j < (int)stack[type].pins.size(); j++) {
+				if (j == i) {
+					continue;
+				}
+
+				array<int, 2> off;
+				bool fromto = minOffset(&off[0], 0, stack[2].pins[i].layout, 0, stack[type].pins[j].layout, 0, Layout::DEFAULT, Layout::DEFAULT);
+				bool tofrom = minOffset(&off[1], 0, stack[type].pins[j].layout, 0, stack[2].pins[i].layout, 0, Layout::DEFAULT, Layout::DEFAULT);
+
+				// TODO(edward.bingham) lo and hi values don't include route or contact height
+				if ((fromto or tofrom) and stack[2].pins[i].lo < stack[type].pins[j].hi and stack[type].pins[j].lo < stack[2].pins[i].hi) {
+					constraints[i].insert(pair<pair<int, Index>, array<int, 2> >(pair<int, Index>(stack[type].pins[j].pos, Index(type, j)), off));
+				}
+			}
+		}
+	}
+
+	vector<map<int, array<int, 2> > > ranges;
+	ranges.resize(constraints.size());
+	for (int i = 0; i < (int)constraints.size(); i++) {
+		auto k = constraints[i].begin();
+		int cost = 0;
+		for (auto route = routes.begin(); route != routes.end(); route++) {
+			if (route->hasPin(this, Index(2, i))) {
+				if (route->left > k->first.first) {
+					cost += route->left - k->first.first;
+				}
+			}
+		}
+		ranges[i].insert(pair<int, array<int, 2> >(cost, array<int, 2>({std::numeric_limits<int>::min(), k->first.first})));
+		for (auto j = constraints[i].begin(); j != constraints[i].end(); j++) {
+			auto k = j;
+			k++;
+			if (k == constraints[i].end()) {
+				int cost = 0;
+				for (auto route = routes.begin(); route != routes.end(); route++) {
+					if (route->hasPin(this, Index(2, i))) {
+						if (route->right < j->first.first) {
+							cost += j->first.first - route->right;
+						}
+					}
+				}
+				ranges[i].insert(pair<int, array<int, 2> >(cost, array<int, 2>({j->first.first, std::numeric_limits<int>::max()})));
+
+				continue;
+			} else {
+				int space = k->first.first - j->first.first;
+				int blocked = k->second[0] + j->second[1];
+				if (blocked < space) {
+					int cost = 0;
+					for (auto route = routes.begin(); route != routes.end(); route++) {
+						if (route->hasPin(this, Index(2, i))) {
+							if (route->left > k->first.first) {
+								cost += route->left - k->first.first;
+							} else if (route->right < j->first.first) {
+								cost += j->first.first - route->right;
+							}
+						}
+					}
+
+					ranges[i].insert(pair<int, array<int, 2> >(cost, array<int, 2>({j->first.first, k->first.first})));
+				}
+			}
+		}
+	}
+
+	for (int i = 0; i < (int)ranges.size(); i++) {
+		auto j = ranges[i].begin();
+		stack[2].pins[i].pos = j->second[0];
+		if (stack[2].pins[i].pos == std::numeric_limits<int>::min()) {
+			stack[2].pins[i].pos = j->second[1];
+		}
 	}
 }
 
@@ -1275,11 +1350,13 @@ void Router::addIOPins() {
 }
 
 void Router::buildPins() {
-	for (int type = 0; type < 2; type++) {
+	for (int type = 0; type < (int)stack.size(); type++) {
 		for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
 			Pin &pin = this->stack[type].pins[i];
-			pin.width = this->pinWidth(Index(type, i));
-			pin.height = this->pinHeight(Index(type, i));
+			if (type < 2) {
+				pin.width = this->pinWidth(Index(type, i));
+				pin.height = this->pinHeight(Index(type, i));
+			}
 
 			pin.layout.clear();
 			drawPin(pin.layout, *ckt, this->stack[type], i);
@@ -2185,6 +2262,12 @@ bool Router::solve() {
 	buildRouteConstraints();
 	success = assignRouteConstraints() and success;
 
+	alignVirtualPins();
+	drawRoutes();
+	buildRouteConstraints();
+	buildGroupConstraints();
+	success = assignRouteConstraints() and success;
+
 	lowerRoutes();
 	buildHorizConstraints();
 	updatePinPos();
@@ -2195,8 +2278,6 @@ bool Router::solve() {
 	buildRouteConstraints();
 	buildGroupConstraints();
 	success = assignRouteConstraints() and success;
-
-
 
 	// TODO(edward.bingham) Assigning the route constraints affects where
 	// contacts are relative to each other vertically. This changes the pin
