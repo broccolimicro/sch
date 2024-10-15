@@ -281,7 +281,7 @@ struct Router {
 	int alignPins(int maxDist = -1);
 	void drawRoutes();
 	void createRouteConstraint(int i, int j);
-	void buildRouteConstraints(bool reset=false);
+	void buildRouteConstraints(bool resetSpacing=false, bool resetOrder=false);
 	void buildGroupConstraints();
 	set<int> propagateRouteConstraint(int idx);
 	void zeroWeights();

@@ -1748,7 +1748,7 @@ void Router::createRouteConstraint(int i, int j) {
 	}
 }
 
-void Router::buildRouteConstraints(bool reset) {
+void Router::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
 	// Compute route constraints
 	vector<RouteConstraint> old;
 	old.swap(routeConstraints);
@@ -1758,33 +1758,33 @@ void Router::buildRouteConstraints(bool reset) {
 		}
 	}
 
-	if (not reset) {
+	if (not resetOrder and not resetSpacing) {
 		int i = 0, j = 0;
 		while (i < (int)routeConstraints.size() and j < (int)old.size()) {
 			auto c = routeConstraints.begin()+i;
 
 			if (c->wires[0] == old[j].wires[0]
 				and c->wires[1] == old[j].wires[1]) {
-				if (c->select == -1) {
+				if (c->select == -1 and not resetOrder) {
 					c->select = old[j].select;
 				}
-				if (c->off[0] < old[j].off[0]) {
+				if (c->off[0] < old[j].off[0] and not resetSpacing) {
 					c->off[0] = old[j].off[0];
 				}
-				if (c->off[1] < old[j].off[1]) {
+				if (c->off[1] < old[j].off[1] and not resetSpacing) {
 					c->off[1] = old[j].off[1];
 				}
 				i++;
 				j++;
 			} else if (c->wires[0] == old[j].wires[1]
 				and c->wires[1] == old[j].wires[0]) {
-				if (c->select == -1) {
+				if (c->select == -1 and not resetOrder) {
 					c->select = 1-old[j].select;
 				}
-				if (c->off[0] < old[j].off[1]) {
+				if (c->off[0] < old[j].off[1] and not resetSpacing) {
 					c->off[0] = old[j].off[1];
 				}
-				if (c->off[1] < old[j].off[0]) {
+				if (c->off[1] < old[j].off[0] and not resetSpacing) {
 					c->off[1] = old[j].off[0];
 				}
 				i++;
@@ -1794,8 +1794,10 @@ void Router::buildRouteConstraints(bool reset) {
 					and c->wires[1] < old[j].wires[1])) {
 				i++;
 			} else {
-				routeConstraints.insert(routeConstraints.begin()+i, old[j]);
-				i++;
+				if (not resetSpacing) {
+					routeConstraints.insert(routeConstraints.begin()+i, old[j]);
+					i++;
+				}
 				j++;
 			}
 		}
@@ -2255,6 +2257,7 @@ bool Router::solve() {
 
 	buildHorizConstraints();
 	updatePinPos();
+	alignPins(200);
 
 	buildPinConstraints(0, true);
 	success = findAndBreakPinCycles() and success;
@@ -2265,19 +2268,26 @@ bool Router::solve() {
 	alignVirtualPins();
 	drawRoutes();
 	buildRouteConstraints();
-	buildGroupConstraints();
 	success = assignRouteConstraints() and success;
 
 	lowerRoutes();
-	buildHorizConstraints();
-	updatePinPos();
+	buildGroupConstraints();
 
-	buildPinConstraints(0, true);
-	success = findAndBreakPinCycles() and success;
 	drawRoutes();
 	buildRouteConstraints();
-	buildGroupConstraints();
 	success = assignRouteConstraints() and success;
+
+	buildHorizConstraints();
+	updatePinPos(true);
+	alignPins(200);
+
+	buildPinConstraints(0);
+	success = findAndBreakPinCycles() and success;
+	alignVirtualPins();
+	drawRoutes();
+	buildRouteConstraints();
+	success = assignRouteConstraints() and success;
+
 
 	// TODO(edward.bingham) Assigning the route constraints affects where
 	// contacts are relative to each other vertically. This changes the pin
