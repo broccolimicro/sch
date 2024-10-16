@@ -73,7 +73,7 @@ struct Pin {
 	int lo;
 	int hi;
 
-	void offsetToPin(Index pin, int value);
+	bool offsetToPin(Index pin, int value);
 
 	bool isGate() const;
 	bool isContact() const;
@@ -117,8 +117,8 @@ struct Contact {
 	//  ->
 	map<Index, int> toPin;
 
-	void offsetFromPin(Index Pin, int value);
-	void offsetToPin(Index Pin, int value);
+	bool offsetFromPin(Index Pin, int value);
+	bool offsetToPin(Index Pin, int value);
 };
 
 bool operator<(const Contact &c0, const Contact &c1);
@@ -227,6 +227,9 @@ struct Router {
 	bool progress;
 	bool debug;
 
+	array<bool, 2> unresolvedCycle;
+	bool degenerative;
+
 	const Tech *tech;
 	const Subckt *ckt;
 
@@ -264,29 +267,29 @@ struct Router {
 
 	// Finish building the constraint graph, filling out vcon and hcon.
 	void delRoute(int route);
-	void buildPinConstraints(int level=1, bool reset=false);
+	bool buildPinConstraints(int level=1, bool reset=false);
 	void buildViaConstraints();
 	void buildRoutes();
-	bool findCycles(vector<vector<int> > &cycles);
-	bool breakRoute(int route, set<int> cycleRoutes);
-	bool breakCycles(vector<vector<int> > cycles);
+	void findCycles(vector<vector<int> > &cycles);
+	void breakRoute(int route, set<int> cycleRoutes);
+	void breakCycles(vector<vector<int> > cycles);
 	bool findAndBreakPinCycles();
 	void findAndBreakViaCycles();
 	void alignVirtualPins();
 	void addIOPins();
 	void buildPins();
 	void buildContacts();
-	void buildHorizConstraints(bool reset=false);
-	void updatePinPos(bool reset=false);
-	int alignPins(int maxDist = -1);
+	bool buildHorizConstraints(bool reset=false);
+	bool updatePinPos(bool reset=false);
+	bool alignPins(int maxDist = -1, bool reset=false);
 	void drawRoutes();
 	void createRouteConstraint(int i, int j);
-	void buildRouteConstraints(bool resetSpacing=false, bool resetOrder=false);
+	bool buildRouteConstraints(bool resetSpacing=false, bool resetOrder=false);
 	void buildGroupConstraints();
 	set<int> propagateRouteConstraint(int idx);
 	void zeroWeights();
-	bool resetGraph();
-	void buildPinBounds(bool reset=false);
+	void resetGraph();
+	bool buildPinBounds(bool reset=false);
 	bool buildOffsets(int type, vector<int> start=vector<int>());
 	bool assignRouteConstraints(bool reset=true);
 	void lowerRoutes(int window=0);

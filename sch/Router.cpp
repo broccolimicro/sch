@@ -59,12 +59,14 @@ Pin::Pin(const Tech &tech, int device, int outNet, int leftNet, int rightNet) : 
 Pin::~Pin() {
 }
 
-void Pin::offsetToPin(Index pin, int value) {
+bool Pin::offsetToPin(Index pin, int value) {
 	//printf("offsetToPin %d\n", value);
 	auto result = toPin.insert(pair<Index, int>(pin, value));
-	if (not result.second) {
-		result.first->second = max(result.first->second, value);
+	if (not result.second and value > result.first->second) {
+		result.first->second = value;
+		return true;
 	}
+	return result.second;
 	//printf("Done inserting %d\n", result.first->second);
 }
 
@@ -90,18 +92,22 @@ Contact::Contact(const Tech &tech, Index idx) : layout(tech) {
 Contact::~Contact() {
 }
 
-void Contact::offsetFromPin(Index pin, int value) {
+bool Contact::offsetFromPin(Index pin, int value) {
 	auto result = fromPin.insert(pair<Index, int>(pin, value));
-	if (not result.second) {
-		result.first->second = max(result.first->second, value);
+	if (not result.second and value > result.first->second) {
+		result.first->second = value;
+		return true;
 	}
+	return result.second;
 }
 
-void Contact::offsetToPin(Index pin, int value) {
+bool Contact::offsetToPin(Index pin, int value) {
 	auto result = toPin.insert(pair<Index, int>(pin, value));
-	if (not result.second) {
-		result.first->second = max(result.first->second, value);
+	if (not result.second and value > result.first->second) {
+		result.first->second = value;
+		return true;
 	}
+	return result.second;
 }
 
 bool operator<(const Contact &c0, const Contact &c1) {
@@ -289,6 +295,9 @@ Router::Router(const Tech &tech, const Placement &place, bool progress, bool deb
 	this->progress = progress;
 	this->debug = true;
 	this->allowOverCell = true;
+	this->unresolvedCycle[0] = false;
+	this->unresolvedCycle[1] = false;
+	this->degenerative = false;
 	for (int type = 0; type < (int)this->stack.size(); type++) {
 		this->stack[type].type = type;
 	}
@@ -395,7 +404,7 @@ void Router::delRoute(int route) {
 
 // depends on:
 // updatePinPos() - this determines what the pin constraints are
-void Router::buildPinConstraints(int level, bool reset) {
+bool Router::buildPinConstraints(int level, bool reset) {
 	// TODO(edward.bingham) this could be more efficiently done as a 1d rectangle
 	// overlap problem
 	set<PinConstraint> old;
@@ -470,6 +479,19 @@ void Router::buildPinConstraints(int level, bool reset) {
 			pinConstraints.insert(*c);
 		}
 	}
+	if (pinConstraints.size() != old.size()) {
+		return true;
+	}
+	auto c0 = pinConstraints.begin();
+	auto c1 = old.begin();
+	while (c0 != pinConstraints.end() and c1 != old.end()) {
+		if (!(*c0 == *c1)) {
+			return true;
+		}
+		c0++;
+		c1++;
+	}
+	return false;
 }
 
 void Router::buildViaConstraints() {
@@ -590,7 +612,7 @@ bool Router::hasPinConstraint(int from, int to) {
 	return false;
 }
 
-bool Router::findCycles(vector<vector<int> > &cycles) {
+void Router::findCycles(vector<vector<int> > &cycles) {
 	// DESIGN(edward.bingham) There can be multiple cycles with the same set of
 	// nodes as a result of multiple pin constraints. This function does not
 	// differentiate between those cycles. Doing so could introduce an
@@ -598,8 +620,9 @@ bool Router::findCycles(vector<vector<int> > &cycles) {
 	// splitting on the node in the cycle that has the most pin constraints
 	// (maximising min(in.size(), out.size()))
 
+	degenerative = false;
 	if (routes.size() == 0) {
-		return false;
+		return;
 	}
 
 	//vector<int> B;
@@ -635,8 +658,9 @@ bool Router::findCycles(vector<vector<int> > &cycles) {
 			}
 
 			if ((int)cycles.size() > 20000) {
+				degenerative = true;
 				printf("%s:%d: error: degenerative layout has created an exponential number of cycles. Terminating cycle finding algorithm early.\n", __FILE__, __LINE__);
-				return false;
+				return;
 			}
 		}
 
@@ -650,10 +674,9 @@ bool Router::findCycles(vector<vector<int> > &cycles) {
 			}
 		}
 	}
-	return true;
 }
 
-bool Router::breakRoute(int route, set<int> cycleRoutes) {
+void Router::breakRoute(int route, set<int> cycleRoutes) {
 	// DESIGN(edward.bingham) There are two obvious options to mitigate cycles
 	// in the constraint graph by splitting a route. Either way, one pin needs
 	// to be shared across the two routes to handle the vertical connection
@@ -668,7 +691,6 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 	// Either way, we should share the pin with the fewest pin constraints
 	// as the vertical route. We may also want to check the number of
 	// route constraints and distance to other pins in the new net.
-	bool success = true;
 
 	int left = min(this->stack[0].pins[0].pos, this->stack[1].pins[0].pos);
 	int right = max(this->stack[0].pins.back().pos, this->stack[1].pins.back().pos);
@@ -808,8 +830,6 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 		// way at the end of the cell. I also need to create functionality for
 		// saving the vertical position of the pin so the drawing functionality
 		// knows where to draw the vertical path.
-		success = false;
-
 		Index idx(2, (int)this->stack[2].pins.size());
 		this->stack[2].pins.push_back(Pin(*tech, routes[route].net));
 		drawPin(this->stack[2].pins.back().layout, *ckt, this->stack[2], idx.pin);
@@ -951,12 +971,9 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 			}
 		}
 	}
-
-	return success;
 }
 
-bool Router::breakCycles(vector<vector<int> > cycles) {
-	bool success = true;
+void Router::breakCycles(vector<vector<int> > cycles) {
 	//int startingRoutes = (int)routes.size();
 
 	// count up cycle participation for heuristic
@@ -1083,7 +1100,7 @@ bool Router::breakCycles(vector<vector<int> > cycles) {
 		//	printf("%d ", *i);
 		//}
 		//printf("\n");
-		success = breakRoute(route, cycleRoutes) and success;
+		breakRoute(route, cycleRoutes);
 		//printf("wire %d %d->%d: ", routes[route].net, routes[route].left, routes[route].right);
 		//for (int j = 0; j < (int)routes[route].pins.size(); j++) {
 		//	printf("(%d,%d) ", routes[route].pins[j].type, routes[route].pins[j].pin);
@@ -1127,7 +1144,6 @@ bool Router::breakCycles(vector<vector<int> > cycles) {
 
 		printf("\n\n");
 	}*/
-	return success;
 }
 
 void Router::findAndBreakViaCycles() {
@@ -1387,7 +1403,8 @@ void Router::buildContacts() {
 	}
 }
 
-void Router::buildHorizConstraints(bool reset) {
+bool Router::buildHorizConstraints(bool reset) {
+	bool change = false;
 	if (reset) {
 		for (int type = 0; type < (int)this->stack[type].pins.size(); type++) {
 			for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
@@ -1412,7 +1429,7 @@ void Router::buildHorizConstraints(bool reset) {
 				Pin &next = this->stack[type].pins[i+1];
 				int substrateMode = (pin.isGate() or next.isGate()) ? Layout::MERGENET : Layout::DEFAULT;
 				if (minOffset(&off, 0, pin.layout, 0, next.layout, 0, substrateMode, Layout::DEFAULT, false)) {
-					pin.offsetToPin(Index(type, i+1), off);
+					change = pin.offsetToPin(Index(type, i+1), off) or change;
 				} else if (debug) {
 					printf("error: no offset found at pin (%d,%d)\n", type, i+1);
 				}
@@ -1427,25 +1444,28 @@ void Router::buildHorizConstraints(bool reset) {
 					int off = 0;
 					if ((routes[j].pins[k].idx.type != type or i < routes[j].pins[k].idx.pin) and
 					    minOffset(&off, 0, pin.layout, 0, routes[j].pins[k].layout, 0, Layout::IGNORE, Layout::MERGENET)) {
-						routes[j].pins[k].offsetFromPin(Index(type, i), off);
+						change = routes[j].pins[k].offsetFromPin(Index(type, i), off) or change;
 					}
 
 					off = 0;
 					if ((routes[j].pins[k].idx.type != type or routes[j].pins[k].idx.pin < i) and
 					    minOffset(&off, 0, routes[j].pins[k].layout, 0, pin.layout, 0, Layout::IGNORE, Layout::MERGENET)) {
-						routes[j].pins[k].offsetToPin(Index(type, i), off);
+						change = routes[j].pins[k].offsetToPin(Index(type, i), off) or change;
 					}
 				}
 			}
 		}
 	}
+	return change;
 }
 
 // depends on:
 // buildHorizConstraints() - these constraints determine the
 //                           position of the pins
-void Router::updatePinPos(bool reset) {
+bool Router::updatePinPos(bool reset) {
+	bool change = false;
 	if (reset) {
+		change = true;
 		for (int type = 0; type < (int)this->stack.size(); type++) {
 			for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
 				this->stack[type].pins[i].pos = 0;
@@ -1488,6 +1508,7 @@ void Router::updatePinPos(bool reset) {
 			int pos = pin.pos+off->second;
 			if (next.pos < pos) {
 				//printf("pinToPin (%d,%d)->%d->(%d,%d) %d->%d\n", curr.type, curr.pin, off->second, off->first.type, off->first.pin, next.pos, pos);
+				change = true;
 				next.pos = pos;
 				stack.push_back(off->first);
 			}
@@ -1510,10 +1531,12 @@ void Router::updatePinPos(bool reset) {
 					Pin &align = this->stack[1-type].pins[pin.align];
 					if (pin.pos < align.pos) {
 						//printf("pinAlign (%d,%d)--(%d,%d) %d->%d\n", type, i, 1-type, pin.align, pin.pos, align.pos);
+						change = true;
 						pin.pos = align.pos;
 						stack.push_back(Index(type, i));
 					} else if (align.pos < pin.pos) {
 						//printf("pinAlign (%d,%d)--(%d,%d) %d->%d\n", 1-type, pin.align, type, i, align.pos, pin.pos);
+						change = true;
 						align.pos = pin.pos;
 						stack.push_back(Index(1-type, pin.align));
 					}
@@ -1540,6 +1563,7 @@ void Router::updatePinPos(bool reset) {
 					if (prev.pos < pin.pos and routes[i].offset[Model::PMOS] >= prev.lo and routes[i].offset[Model::PMOS] <= prev.hi) {
 						int pos = prev.pos+off->second;
 						if (routes[i].pins[j].left < pos) {
+							change = true;
 							//printf("pinToVia (%d,%d)->%d->(%d,%d) %d->%d\n", off->first.type, off->first.pin, off->second, i, j, routes[i].pins[j].left, pos);
 							routes[i].pins[j].left = pos;
 						}
@@ -1551,6 +1575,7 @@ void Router::updatePinPos(bool reset) {
 					if (pin.pos < next.pos and routes[i].offset[Model::PMOS] >= next.lo and routes[i].offset[Model::PMOS] <= next.hi) {
 						int pos = routes[i].pins[j].left+off->second;
 						if (next.pos < pos) {
+							change = true;
 							//printf("viaToPin (%d,%d)->%d->(%d,%d) %d->%d\n", i, j, off->second, off->first.type, off->first.pin, next.pos, pos);
 							next.pos = pos;
 							stack.push_back(off->first);
@@ -1575,6 +1600,7 @@ void Router::updatePinPos(bool reset) {
 				if (pin.pos < next.pos and routes[i].offset[Model::PMOS] >= next.lo and routes[i].offset[Model::PMOS] <= next.hi) {
 					int pos = next.pos-off->second;
 					if (routes[i].pins[j].right > pos) {
+						change = true;
 						routes[i].pins[j].right = pos;
 					}
 				}
@@ -1587,12 +1613,16 @@ void Router::updatePinPos(bool reset) {
 			routes[i].resortPins(this);
 		}
 	}
+	return change;
 }
 
-int Router::alignPins(int maxDist) {
-	for (int type = 0; type < (int)this->stack.size(); type++) {
-		for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
-			this->stack[type].pins[i].align = -1;
+bool Router::alignPins(int maxDist, bool reset) {
+	bool change = false;
+	if (reset) {
+		for (int type = 0; type < (int)this->stack.size(); type++) {
+			for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
+				this->stack[type].pins[i].align = -1;
+			}
 		}
 	}
 
@@ -1673,7 +1703,7 @@ int Router::alignPins(int maxDist) {
 		}
 		matches++;
 
-		updatePinPos();
+		change = updatePinPos() or change;
 		for (int i = (int)align.size()-1; i >= 0; i--) {
 			if (align[i].conflictsWith(curr)) {
 				align.erase(align.begin()+i);
@@ -1681,7 +1711,7 @@ int Router::alignPins(int maxDist) {
 		}
 	}
 
-	return matches;
+	return change;
 }
 
 // depends on:
@@ -1748,8 +1778,9 @@ void Router::createRouteConstraint(int i, int j) {
 	}
 }
 
-void Router::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
+bool Router::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
 	// Compute route constraints
+	bool change = false;
 	vector<RouteConstraint> old;
 	old.swap(routeConstraints);
 	for (int i = 0; i < (int)routes.size(); i++) {
@@ -1758,7 +1789,7 @@ void Router::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
 		}
 	}
 
-	if (not resetOrder and not resetSpacing) {
+	if (not resetOrder or not resetSpacing) {
 		int i = 0, j = 0;
 		while (i < (int)routeConstraints.size() and j < (int)old.size()) {
 			auto c = routeConstraints.begin()+i;
@@ -1774,6 +1805,7 @@ void Router::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
 				if (c->off[1] < old[j].off[1] and not resetSpacing) {
 					c->off[1] = old[j].off[1];
 				}
+				change = change or (c->select != old[j].select or c->off[0] > old[j].off[0] or c->off[1] > old[j].off[1]);
 				i++;
 				j++;
 			} else if (c->wires[0] == old[j].wires[1]
@@ -1787,21 +1819,26 @@ void Router::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
 				if (c->off[1] < old[j].off[0] and not resetSpacing) {
 					c->off[1] = old[j].off[0];
 				}
+				change = change or (c->select != 1-old[j].select or c->off[0] > old[j].off[1] or c->off[1] > old[j].off[0]);
 				i++;
 				j++;
 			} else if (c->wires[0] < old[j].wires[0]
 				or (c->wires[0] == old[j].wires[0]
 					and c->wires[1] < old[j].wires[1])) {
+				change = true;
 				i++;
 			} else {
 				if (not resetSpacing) {
 					routeConstraints.insert(routeConstraints.begin()+i, old[j]);
 					i++;
+				} else {
+					change = true;
 				}
 				j++;
 			}
 		}
 	}
+	return change;
 }
 
 void Router::buildGroupConstraints() {
@@ -1878,7 +1915,8 @@ void Router::zeroWeights() {
 	}
 }
 
-void Router::buildPinBounds(bool reset) {
+bool Router::buildPinBounds(bool reset) {
+	bool change = false;
 	if (reset) {
 		for (int type = 0; type < (int)this->stack.size(); type++) {
 			for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
@@ -1893,16 +1931,20 @@ void Router::buildPinBounds(bool reset) {
 			Pin &pin = this->pin(routes[i].pins[j].idx);
 			if (routes[i].offset[Model::PMOS] < pin.lo) {
 				pin.lo = routes[i].offset[Model::PMOS];
+				change = true;
 			}
 			if (routes[i].offset[Model::PMOS] > pin.hi) {
 				pin.hi = routes[i].offset[Model::PMOS];
+				change = true;
 			}
 		}
 	}
+	return change;
 }
 
 bool Router::buildOffsets(int type, vector<int> start) {
-	bool hasError = false;
+	bool change = false;
+	unresolvedCycle[type] = false;
 	if (start.empty()) {
 		vector<bitset> prev = routeOrderMap(type);
 		for (int i = 0; i < (int)prev.size(); i++) {
@@ -1931,6 +1973,7 @@ bool Router::buildOffsets(int type, vector<int> start) {
 
 			// keep track of weight
 			if (routes[i->first].offset[type] < weight) {
+				change = true;
 				routes[i->first].offset[type] = weight;
 				
 				auto pos = find(curr.begin(), curr.end(), i->first);
@@ -1938,7 +1981,7 @@ bool Router::buildOffsets(int type, vector<int> start) {
 					tokens.push_back(curr);
 					tokens.back().push_back(i->first);
 				} else {
-					hasError = true;
+					unresolvedCycle[type] = true;
 					if (debug) {
 						printf("error: buildOffset found cycle {");
 						for (int i = 0; i < (int)curr.size(); i++) {
@@ -1953,30 +1996,29 @@ bool Router::buildOffsets(int type, vector<int> start) {
 	
 	buildPinBounds(true);
 
-	if (debug and hasError) {
+	if (debug and unresolvedCycle[type]) {
 		print();
 	}
-	return not hasError;
+	return change;
 }
 
-bool Router::resetGraph() {
-	bool success = true;
+void Router::resetGraph() {
 	zeroWeights();
-	success = buildOffsets(Model::PMOS) and success;
-	success = buildOffsets(Model::NMOS) and success;
-	return success;
+	buildOffsets(Model::PMOS);
+	buildOffsets(Model::NMOS);
 }
 
 bool Router::assignRouteConstraints(bool reset) {
-	bool success = true;
+	bool change = false;
 	if (reset) {
-		success = resetGraph();
+		resetGraph();
 	}
 
 	vector<int> inTokens, outTokens;
 	for (int i = 0; i < (int)routeConstraints.size(); i++) {
 		if (routeConstraints[i].select >= 0) {
 			set<int> prop = propagateRouteConstraint(i);
+			change = change or not prop.empty();
 			for (auto j = prop.begin(); j != prop.end(); j++) {
 				int from = routeConstraints[*j].select;
 				inTokens.push_back(routeConstraints[*j].wires[from]);
@@ -1985,8 +2027,8 @@ bool Router::assignRouteConstraints(bool reset) {
 		}
 	}
 	if (inTokens.size() + outTokens.size() > 0) {
-		success = buildOffsets(Model::PMOS, inTokens) and success;
-		success = buildOffsets(Model::NMOS, outTokens) and success;
+		change = buildOffsets(Model::PMOS, inTokens) or change;
+		change = buildOffsets(Model::NMOS, outTokens) or change;
 	}
 
 	vector<int> unassigned;
@@ -2023,11 +2065,13 @@ bool Router::assignRouteConstraints(bool reset) {
 			int b = routeConstraints[i].wires[1];
 
 			if (a >= 0 and prev[a].get(b)) {
+				change = true;
 				routeConstraints[i].select = 1;
 				inTokens.push_back(b);
 				outTokens.push_back(a);
 				unassigned.erase(unassigned.begin()+u);
 			} else if (b >= 0 and prev[b].get(a)) {
+				change = true;
 				routeConstraints[i].select = 0;
 				inTokens.push_back(a);
 				outTokens.push_back(b);
@@ -2037,6 +2081,7 @@ bool Router::assignRouteConstraints(bool reset) {
 			// Propagate order decision through the group constraints
 			if (routeConstraints[i].select >= 0) {
 				set<int> prop = propagateRouteConstraint(i);
+				change = change or not prop.empty();
 				for (auto j = prop.begin(); j != prop.end(); j++) {
 					int from = routeConstraints[*j].select;
 					inTokens.push_back(routeConstraints[*j].wires[from]);
@@ -2059,8 +2104,8 @@ bool Router::assignRouteConstraints(bool reset) {
 			// identified before running this algorithm.
 		}
 		if (inTokens.size() + outTokens.size() > 0) {
-			success = buildOffsets(Model::PMOS, inTokens) and success;
-			success = buildOffsets(Model::NMOS, outTokens) and success;
+			change = buildOffsets(Model::PMOS, inTokens) or change;
+			change = buildOffsets(Model::NMOS, outTokens) or change;
 			continue;
 		}
 
@@ -2094,10 +2139,12 @@ bool Router::assignRouteConstraints(bool reset) {
 			// DESIGN(edward.bingham) this randomization implements gradient descent
 			// for the route lowering algorithm
 			if (label0 < label1 or (label0 == label1 and (rand()&1))) {
+				change = true;
 				routeConstraints[index].select = 0;
 				inTokens.push_back(routeConstraints[index].wires[0]);
 				outTokens.push_back(routeConstraints[index].wires[1]);
 			} else {
+				change = true;
 				routeConstraints[index].select = 1;
 				inTokens.push_back(routeConstraints[index].wires[1]);
 				outTokens.push_back(routeConstraints[index].wires[0]);
@@ -2107,6 +2154,7 @@ bool Router::assignRouteConstraints(bool reset) {
 			// Propagate order decision through the group constraints
 			if (routeConstraints[index].select >= 0) {
 				set<int> prop = propagateRouteConstraint(index);
+				change = change or not prop.empty();
 				for (auto j = prop.begin(); j != prop.end(); j++) {
 					int from = routeConstraints[*j].select;
 					inTokens.push_back(routeConstraints[*j].wires[from]);
@@ -2115,21 +2163,19 @@ bool Router::assignRouteConstraints(bool reset) {
 				}
 			}
 
-			success = buildOffsets(Model::PMOS, inTokens) and success;
-			success = buildOffsets(Model::NMOS, outTokens) and success;
+			change = buildOffsets(Model::PMOS, inTokens) or change;
+			change = buildOffsets(Model::NMOS, outTokens) or change;
 			continue;
 		}
 	}
-
-	return success;
+	return change;
 }
 
 bool Router::findAndBreakPinCycles() {
-	bool success = true;
 	vector<vector<int> > cycles;
-	success = findCycles(cycles) and success;
-	success = breakCycles(cycles) and success;
-	return success;
+	findCycles(cycles);
+	breakCycles(cycles);
+	return not cycles.empty();
 }
 
 // The `window` attempts to prevent too many vias across a route by smoothing the transition
@@ -2244,50 +2290,76 @@ void Router::load(const Placement &place) {
 }
 
 bool Router::solve() {
-	bool success = true;
 	buildPins();
 	//addIOPins();
 	buildRoutes();
 
+	printf("Inital Routing\n");
 	buildPinConstraints(0, true);
-	success = findAndBreakPinCycles() and success;
+	findAndBreakPinCycles();
 	drawRoutes();
 	buildRouteConstraints();
-	success = assignRouteConstraints() and success;
+	assignRouteConstraints();
 
+	printf("Inital Pin Alignment\n");
 	buildHorizConstraints();
 	updatePinPos();
 	alignPins(200);
 
 	buildPinConstraints(0, true);
-	success = findAndBreakPinCycles() and success;
+	findAndBreakPinCycles();
 	drawRoutes();
 	buildRouteConstraints();
-	success = assignRouteConstraints() and success;
+	assignRouteConstraints();
 
+	printf("Initial Virtual Pins\n");
 	alignVirtualPins();
 	drawRoutes();
 	buildRouteConstraints();
-	success = assignRouteConstraints() and success;
+	assignRouteConstraints();
 
+	printf("Lowering Routes\n");
 	lowerRoutes();
 	buildGroupConstraints();
 
 	drawRoutes();
 	buildRouteConstraints();
-	success = assignRouteConstraints() and success;
+	assignRouteConstraints();
 
-	buildHorizConstraints();
-	updatePinPos(true);
-	alignPins(200);
-
-	buildPinConstraints(0);
-	success = findAndBreakPinCycles() and success;
-	alignVirtualPins();
-	drawRoutes();
-	buildRouteConstraints();
-	success = assignRouteConstraints() and success;
-
+	bool change = true;
+	for (int i = 0; i < 100 and change; i++) {
+		change = false;
+		if (buildHorizConstraints()) {
+			printf("buildHorizConstraints()\n");
+			change = true;
+		}
+		if (updatePinPos()) {
+			printf("updatePinPos()\n");
+			change = true;
+		}
+		if (alignPins(200)) {
+			printf("alignPins()\n");
+			change = true;
+		}
+		if (buildPinConstraints(0)) {
+			printf("buildPinConstraints()\n");
+			change = true;
+		}
+		if (findAndBreakPinCycles()) {
+			printf("findAndBreakPinCycles()\n");
+			change = true;
+		}
+		alignVirtualPins();
+		drawRoutes();
+		if (buildRouteConstraints()) {
+			printf("buildRouteConstraints()\n");
+			change = true;
+		}
+		if (assignRouteConstraints()) {
+			printf("assignRouteConstraints()\n");
+			change = true;
+		}
+	}
 
 	// TODO(edward.bingham) Assigning the route constraints affects where
 	// contacts are relative to each other vertically. This changes the pin
@@ -2340,7 +2412,7 @@ bool Router::solve() {
 	// these cells are interfacing with.
 
 	//print();
-	return success;
+	return not change and not unresolvedCycle[0] and not unresolvedCycle[1] and not degenerative;
 }
 
 void Router::print() {

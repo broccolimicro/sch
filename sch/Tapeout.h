@@ -5,7 +5,6 @@
 
 namespace sch {
 
-Layout &loadCell(phy::Library &lib, const Netlist &lst, int idx, bool progress=false, bool debug=false);
-void loadCells(phy::Library &lib, const Netlist &lst, bool progress=false, bool debug=false);
+int routeCell(phy::Library &lib, const Netlist &lst, int idx, bool progress=false, bool debug=false);
 
 }
