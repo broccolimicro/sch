@@ -293,7 +293,7 @@ Router::Router(const Tech &tech, const Placement &place, bool progress, bool deb
 	this->cellHeight = 0;
 	this->cost = 0;
 	this->progress = progress;
-	this->debug = true;
+	this->debug = debug;
 	this->allowOverCell = true;
 	this->unresolvedCycle[0] = false;
 	this->unresolvedCycle[1] = false;
@@ -612,7 +612,7 @@ bool Router::hasPinConstraint(int from, int to) {
 	return false;
 }
 
-void Router::findCycles(vector<vector<int> > &cycles) {
+bool Router::findCycles(vector<vector<int> > &cycles) {
 	// DESIGN(edward.bingham) There can be multiple cycles with the same set of
 	// nodes as a result of multiple pin constraints. This function does not
 	// differentiate between those cycles. Doing so could introduce an
@@ -622,7 +622,7 @@ void Router::findCycles(vector<vector<int> > &cycles) {
 
 	degenerative = false;
 	if (routes.size() == 0) {
-		return;
+		return true;
 	}
 
 	//vector<int> B;
@@ -657,10 +657,21 @@ void Router::findCycles(vector<vector<int> > &cycles) {
 				}
 			}
 
-			if ((int)cycles.size() > 20000) {
-				degenerative = true;
-				printf("%s:%d: error: degenerative layout has created an exponential number of cycles. Terminating cycle finding algorithm early.\n", __FILE__, __LINE__);
-				return;
+			if ((int)cycles.size() >= 100) {
+				//degenerative = true;
+				//printf("%s:%d: error: degenerative layout has created an exponential number of cycles. Terminating cycle finding algorithm early.\n", __FILE__, __LINE__);
+				/*printf("degenerative %d\n", (int)cycles.size());
+				for (auto cycle = cycles.begin(); cycle != cycles.end(); cycle++) {
+					printf("{");
+					for (int j = 0; j < (int)cycle->size(); j++) {
+						if (j != 0) {
+							printf(" ");
+						}
+						printf("%d", (*cycle)[j]);
+					}
+					printf("}\n");
+				}*/
+				return false;
 			}
 		}
 
@@ -674,6 +685,20 @@ void Router::findCycles(vector<vector<int> > &cycles) {
 			}
 		}
 	}
+
+	/*printf("found cycles %d\n", (int)cycles.size());
+	for (auto cycle = cycles.begin(); cycle != cycles.end(); cycle++) {
+		printf("{");
+		for (int j = 0; j < (int)cycle->size(); j++) {
+			if (j != 0) {
+				printf(" ");
+			}
+			printf("%d", (*cycle)[j]);
+		}
+		printf("}\n");
+	}*/
+
+	return true;
 }
 
 void Router::breakRoute(int route, set<int> cycleRoutes) {
@@ -1381,7 +1406,7 @@ void Router::buildPins() {
 
 	buildHorizConstraints();
 	updatePinPos();
-	alignPins(200);
+	alignPins(200, true);
 }
 
 void Router::buildContacts() {
@@ -1420,6 +1445,11 @@ bool Router::buildHorizConstraints(bool reset) {
 		}
 	}
 
+
+	// TODO(edward.bingham) create layout connecting routes, then check spacing
+	// from that instead of checking spacing from whole pin. The pin might be
+	// quite a bit larger than the connective tissue between the vias across
+	// routes.
 	for (int type = 0; type < 2; type++) {
 		for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
 			Pin &pin = this->stack[type].pins[i];
@@ -1436,6 +1466,11 @@ bool Router::buildHorizConstraints(bool reset) {
 			}
 
 			for (int j = 0; j < (int)routes.size(); j++) {
+				// TODO(edward.bingham) might be preferable to set routingMode to
+				// Layout::MERGENET and to re-enable this skip condition, then add
+				// rectangles into the layout to fill in nets with minimum spacing
+				// violations.
+				int routingMode = Layout::MERGENET;
 				if (routes[j].net < 0 or routes[j].hasPin(this, Index(type, i))) {
 					continue;
 				}
@@ -1443,13 +1478,13 @@ bool Router::buildHorizConstraints(bool reset) {
 				for (int k = 0; k < (int)routes[j].pins.size(); k++) {
 					int off = 0;
 					if ((routes[j].pins[k].idx.type != type or i < routes[j].pins[k].idx.pin) and
-					    minOffset(&off, 0, pin.layout, 0, routes[j].pins[k].layout, 0, Layout::IGNORE, Layout::MERGENET)) {
+					    minOffset(&off, 0, pin.layout, 0, routes[j].pins[k].layout, 0, Layout::IGNORE, routingMode)) {
 						change = routes[j].pins[k].offsetFromPin(Index(type, i), off) or change;
 					}
 
 					off = 0;
 					if ((routes[j].pins[k].idx.type != type or routes[j].pins[k].idx.pin < i) and
-					    minOffset(&off, 0, routes[j].pins[k].layout, 0, pin.layout, 0, Layout::IGNORE, Layout::MERGENET)) {
+					    minOffset(&off, 0, routes[j].pins[k].layout, 0, pin.layout, 0, Layout::IGNORE, routingMode)) {
 						change = routes[j].pins[k].offsetToPin(Index(type, i), off) or change;
 					}
 				}
@@ -1617,6 +1652,7 @@ bool Router::updatePinPos(bool reset) {
 }
 
 bool Router::alignPins(int maxDist, bool reset) {
+	// TODO(edward.bingham) setting reset to false breaks this function
 	bool change = false;
 	if (reset) {
 		for (int type = 0; type < (int)this->stack.size(); type++) {
@@ -1703,7 +1739,7 @@ bool Router::alignPins(int maxDist, bool reset) {
 		}
 		matches++;
 
-		change = updatePinPos() or change;
+		change = updatePinPos(reset) or change;
 		for (int i = (int)align.size()-1; i >= 0; i--) {
 			if (align[i].conflictsWith(curr)) {
 				align.erase(align.begin()+i);
@@ -1984,10 +2020,10 @@ bool Router::buildOffsets(int type, vector<int> start) {
 					unresolvedCycle[type] = true;
 					if (debug) {
 						printf("error: buildOffset found cycle {");
-						for (int i = 0; i < (int)curr.size(); i++) {
-							printf("%d ", curr[i]);
+						for (int j = 0; j < (int)curr.size(); j++) {
+							printf("%d:%s(%d) ", curr[j], curr[j] >= 0 ? ckt->nets[routes[curr[j]].net].name.c_str() : "", routes[curr[j]].net);
 						}
-						printf("%d}\n", i->first);
+						printf("%d:%s(%d)}\n", i->first, i->first >= 0 ? ckt->nets[routes[i->first].net].name.c_str() : "", routes[i->first].net);
 					}
 				}
 			}
@@ -1996,9 +2032,9 @@ bool Router::buildOffsets(int type, vector<int> start) {
 	
 	buildPinBounds(true);
 
-	if (debug and unresolvedCycle[type]) {
+	/*if (debug and unresolvedCycle[type]) {
 		print();
-	}
+	}*/
 	return change;
 }
 
@@ -2172,10 +2208,15 @@ bool Router::assignRouteConstraints(bool reset) {
 }
 
 bool Router::findAndBreakPinCycles() {
+	bool change = false;
 	vector<vector<int> > cycles;
-	findCycles(cycles);
+	while (not findCycles(cycles)) {
+		breakCycles(cycles);
+		change = change or not cycles.empty();
+		cycles.clear();
+	}
 	breakCycles(cycles);
-	return not cycles.empty();
+	return change or not cycles.empty();
 }
 
 // The `window` attempts to prevent too many vias across a route by smoothing the transition
@@ -2294,69 +2335,65 @@ bool Router::solve() {
 	//addIOPins();
 	buildRoutes();
 
-	printf("Inital Routing\n");
 	buildPinConstraints(0, true);
 	findAndBreakPinCycles();
 	drawRoutes();
-	buildRouteConstraints();
+	buildRouteConstraints(true, true);
 	assignRouteConstraints();
 
-	printf("Inital Pin Alignment\n");
 	buildHorizConstraints();
-	updatePinPos();
-	alignPins(200);
+	updatePinPos(true);
+	alignPins(200, true);
 
 	buildPinConstraints(0, true);
 	findAndBreakPinCycles();
 	drawRoutes();
-	buildRouteConstraints();
+	buildRouteConstraints(true);
 	assignRouteConstraints();
 
-	printf("Initial Virtual Pins\n");
 	alignVirtualPins();
 	drawRoutes();
-	buildRouteConstraints();
+	buildRouteConstraints(true);
 	assignRouteConstraints();
 
-	printf("Lowering Routes\n");
 	lowerRoutes();
 	buildGroupConstraints();
 
 	drawRoutes();
-	buildRouteConstraints();
+	buildRouteConstraints(true);
 	assignRouteConstraints();
 
 	bool change = true;
-	for (int i = 0; i < 100 and change; i++) {
+	for (int i = 0; i < 5 and change; i++) {
 		change = false;
 		if (buildHorizConstraints()) {
-			printf("buildHorizConstraints()\n");
+			if (debug) printf("buildHorizConstraints()\n");
 			change = true;
 		}
-		if (updatePinPos()) {
-			printf("updatePinPos()\n");
-			change = true;
+		if (updatePinPos(true)) {
+			if (debug) printf("updatePinPos()\n");
+			//change = true;
 		}
-		if (alignPins(200)) {
-			printf("alignPins()\n");
+		/*if (alignPins(200, true)) {
+			if (debug) printf("alignPins()\n");
 			change = true;
-		}
+		}*/
 		if (buildPinConstraints(0)) {
-			printf("buildPinConstraints()\n");
+			if (debug) printf("buildPinConstraints()\n");
 			change = true;
 		}
 		if (findAndBreakPinCycles()) {
-			printf("findAndBreakPinCycles()\n");
+			if (debug) printf("findAndBreakPinCycles()\n");
 			change = true;
 		}
 		alignVirtualPins();
 		drawRoutes();
 		if (buildRouteConstraints()) {
-			printf("buildRouteConstraints()\n");
+			if (debug) printf("buildRouteConstraints()\n");
 			change = true;
 		}
 		if (assignRouteConstraints()) {
-			printf("assignRouteConstraints()\n");
+			if (debug) printf("assignRouteConstraints()\n");
 			change = true;
 		}
 	}

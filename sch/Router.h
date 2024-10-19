@@ -270,7 +270,7 @@ struct Router {
 	bool buildPinConstraints(int level=1, bool reset=false);
 	void buildViaConstraints();
 	void buildRoutes();
-	void findCycles(vector<vector<int> > &cycles);
+	bool findCycles(vector<vector<int> > &cycles);
 	void breakRoute(int route, set<int> cycleRoutes);
 	void breakCycles(vector<vector<int> > cycles);
 	bool findAndBreakPinCycles();

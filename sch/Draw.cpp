@@ -37,10 +37,15 @@ void drawTransistor(Layout &dst, const Mos &mos, bool flip, vec2i pos, vec2i dir
 		ll -= diffOverhang;
 		ur += diffOverhang;
 		bool isDiffusion = layer == dst.tech->models[mos.model].paint.begin();
+		bool isBulk = layer == dst.tech->models[mos.model].paint.end()-1;
 		if (isDiffusion) {
 			dst.box.bound(ll, ur);
 		}
-		dst.push(*layer, Rect(-1, ll, ur));
+		int net = -1;
+		if (isBulk) {
+			net = mos.base;
+		}
+		dst.push(*layer, Rect(net, ll, ur));
 	}
 }
 
@@ -51,11 +56,7 @@ void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool ex
 
 	// spacing and width of a via
 	int viaWidth = dst.tech->paint[viaLayer].minWidth;
-	int rule = dst.tech->getSpacing(viaLayer, viaLayer);
-	int viaSpacing = 0;
-	if (rule < 0) {
-		viaSpacing = dst.tech->rules[flip(rule)].params[0];
-	}
+	int viaSpacing = dst.tech->getSpacing(viaLayer, viaLayer);
 
 	// enclosure rules and default orientation
 	vec2i dn = dst.tech->vias[viaLevel].dn;
@@ -197,20 +198,26 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 		vias.reserve(wire.pins.size());
 		int height = 0;
 		for (int j = 0; j < (int)wire.pins.size(); j++) {
+			// TODO(edward.bingham) use the via position to help
+			// determine the location of the vertical route. Make the
+			// vertical route width wider when possible to route from
+			// the pin to the via.
 			const Pin &pin = rt.pin(wire.pins[j].idx);
 			int pinLevel = pin.layer;
+			int pinLayer = dst.tech->wires[pinLevel].draw;
 			int prevLevel = wire.getLevel(j-1);
 			int nextLevel = wire.getLevel(j);
 			int wireLow = min(nextLevel, prevLevel);
 			int wireHigh = max(nextLevel, prevLevel);
 
 			int wireLayer = dst.tech->wires[nextLevel].draw;
+			int minSpacing = dst.tech->getSpacing(pinLayer, pinLayer);
 			height = dst.tech->paint[wireLayer].minWidth;
 
 			if ((pinLevel <= dst.tech->vias[i].downLevel and wireHigh >= dst.tech->vias[i].upLevel) or
 			    (wireLow <= dst.tech->vias[i].downLevel and pinLevel >= dst.tech->vias[i].upLevel)) {
-				int width = dst.tech->paint[dst.tech->wires[pinLevel].draw].minWidth;
-				dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.pos, 0), vec2i(posArr[i][j], width)));
+				// Draw the horizontal wire from the pin to the via
+				int width = dst.tech->paint[pinLayer].minWidth;
 
 				vec2i axis(0,0);
 				//if (wireLow <= dst.tech->vias[i].downLevel and wireHigh >= dst.tech->vias[i].downLevel and j > 0 and j < (int)wire.pins.size()-1) {
@@ -220,9 +227,28 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 				//	axis[1] = 0;
 				//}
 
+				// Draw the via
 				Layout next(*dst.tech);
 				drawVia(next, wire.net, i, axis, vec2i(width, height), true, vec2i(posArr[i][j], 0));
+				auto layer = next.find(pinLayer);
+				if (layer != next.layers.end()) {
+					// TODO(edward.bingham) This draws the wire from the pin
+					// to the via, that wire is made to be the same
+					// thickness as the via. However, we might want to make
+					// that wire min width once we get past the min spacing
+					// and/or notch size rules.
+					Rect bbox = layer->bbox();
+					if (wire.pins[j].idx.type == Model::PMOS and bbox.ll[0] < pin.pos+width+minSpacing and pin.pos < bbox.ur[0]+minSpacing) {
+						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.pos, bbox.ll[1]), vec2i(posArr[i][j], width)));
+					} else if (wire.pins[j].idx.type == Model::NMOS and bbox.ll[0] < pin.pos+width+minSpacing and pin.pos-minSpacing < bbox.ur[0]) {
+						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.pos, 0), vec2i(posArr[i][j], bbox.ur[1])));
+					} else {
+						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.pos, 0), vec2i(posArr[i][j], width)));
+					}
+				}
+
 				int off = numeric_limits<int>::min();
+				// Check if we need to merge the vias
 				if (not vias.empty() and minOffset(&off, 0, vias.back(), 0, next, 0, Layout::IGNORE, Layout::DEFAULT) and off > 0) {
 					Rect box = vias.back().box.bound(next.box);
 					vias.back().clear();
@@ -233,14 +259,11 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 			}
 		}
 
+		// add all of the new vias to the final layout
 		for (int i = 0; i < (int)vias.size(); i++) {
 			drawLayout(dst, vias[i], pos, dir);
 		}
 	}
-
-	// TODO(edward.bingham) We need to check every pin on this wire to every via
-	// to make sure we haven't created a notch that will violate spacing rules.
-	// If we do end up creating a notch, then we need to fill it in.
 
 	// TODO(edward.bingham) We need to create pin locations on each wire for the
 	// inputs and outputs.
@@ -347,21 +370,57 @@ void drawCell(Layout &dst, const Router &rt) {
 			int pinLevel = pin.layer;
 			int pinLayer = dst.tech->wires[pinLevel].draw;
 			int width = dst.tech->paint[pinLayer].minWidth;
+			//int minSpacing = dst.tech->getSpacing(pinLayer, pinLayer);
 
+			vector<Layer> layers;
 			for (auto j = rt.routes.begin(); j != rt.routes.end(); j++) {
 				if (j->hasPin(&rt, Index(type, i))) {
-					int v = j->offset[Model::PMOS];
-					if (j->net >= 0) {
-						top = first ? v+width : max(top, v+width);
-					} else {
-						top = first ? v : max(top, v);
+					auto layer = j->layout.find(pinLayer);
+					if (layer != j->layout.layers.end()) {
+						Layer l = layer->clamp(0, pin.pos, pin.pos+pin.width);
+						l.shift(vec2i(0, j->offset[Model::PMOS])*dir, dir);
+						layers.push_back(l);
+
+						int v = j->offset[Model::PMOS];
+						if (j->net >= 0) {
+							top = first ? v+width : max(top, v+width);
+						} else {
+							top = first ? v : max(top, v);
+						}
+						bottom = first ? v : min(bottom, v);
+						first = false;
 					}
-					bottom = first ? v : min(bottom, v);
-					first = false;
 				}
 			}
 
+			// TODO(edward.bingham) determine if route is within minimum
+			// separation distance. If so, then intersect the route
+			// layout with the bounds of the pin. Then use that
+			// intersection to determine the bounds of the vertical
+			// route from the pin to the wire.
+			/*for (auto j0 = layers.begin(); j0 != layers.end(); j0++) {
+				for (auto j1 = j0+1; j1 != layers.end(); j1++) {
+					for (auto r0 = j0->geo.begin(); r0 != j0->geo.end(); r0++) {
+						for (auto r1 = j1->geo.begin(); r1 != j1->geo.end(); r1++) {
+							if (r1->ur[1] < r0->ll[1] and r0->ll[1] - r1->ur[1] < minSpacing) {
+								dst.push(dst.tech->wires[pinLevel], Rect(pin.outNet, vec2i(max(r1->ll[0], r0->ll[0]), r1->ur[1]), vec2i(min(r1->ur[0], r0->ur[0]), r0->ll[1])));
+							} else if (r0->ur[1] < r1->ll[1] and r1->ll[1] - r0->ur[1] < minSpacing) {
+								dst.push(dst.tech->wires[pinLevel], Rect(pin.outNet, vec2i(max(r0->ll[0], r1->ll[0]), r0->ur[1]), vec2i(min(r0->ur[0], r1->ur[0]), r1->ll[1])));
+							}
+						}
+					}
+				}
+			}*/
+
+			// Draw the vertical route from the pin to the wire.
  			dst.push(dst.tech->wires[pinLevel], Rect(pin.outNet, vec2i(pin.pos, bottom)*dir, vec2i(pin.pos+width, top)*dir));
+		}
+	}
+
+	// fill in min-spacing violations between two wires on the same layer connected to the same net.
+	for (auto layer = dst.layers.begin(); layer != dst.layers.end(); layer++) {
+		if (layer->isRouting) {
+			layer->fillSpacing();
 		}
 	}
 
@@ -373,11 +432,38 @@ void drawCell(Layout &dst, const Router &rt) {
 		}
 	}
 
+	Rect box = dst.bbox();
 	if (dst.tech->boundary >= 0) {
-		dst.push(dst.tech->boundary, dst.bbox()); 
+		dst.push(dst.tech->boundary, box); 
 	}
 
 	dst.merge();
+
+	/*nlab = dst.tech->findPaint("nwell.label");
+	plab = dst.tech->findPaint("pwell.label");
+	nwell = dst.tech->findPaint("nwell.drawing");*/	
+
+	// Find best place to put the pin for the ports
+	vector<bool> nets;
+	nets.resize(rt.ckt->nets.size(), false);
+	for (int i = (int)dst.tech->wires.size()-1; i >= 0; i--) {
+		auto layer = dst.find(dst.tech->wires[i].draw);
+		if (layer != dst.layers.end()) {
+			for (int j = (int)layer->geo.size()-1; j >= 0; j--) {
+				auto r = layer->geo.begin()+j;
+				for (int k = 0; k < (int)rt.ckt->nets.size(); k++) {
+					if (not nets[k] and r->net == k) {
+						dst.nets[k].label = dst.tech->wires[i].label;
+						dst.nets[k].pos = (r->ll+r->ur)/2;
+						nets[k] = true;
+						if (find(rt.ckt->ports.begin(), rt.ckt->ports.end(), k) != rt.ckt->ports.end()) {
+							dst.push(dst.tech->wires[i].pin, *r);
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 void drawLayout(Layout &dst, const Layout &src, vec2i pos, vec2i dir) {
