@@ -10,15 +10,25 @@ int clamp(int value, int lo, int hi) {
 }
 
 void drawDiffusion(Layout &dst, int model, int net, vec2i ll, vec2i ur, vec2i dir) {
-	for (int i = 0; i < (int)dst.tech->models[model].paint.size(); i++) {
-		if (i != 0) {
-			ll -= dst.tech->models[model].paint[i].overhang*dir;
-			ur += dst.tech->models[model].paint[i].overhang*dir;
-		}
-		if (i == 0) {
+	int curr = -1;
+	for (auto layer = dst.tech->models[model].stack.begin(); layer != dst.tech->models[model].stack.end(); layer++) {
+		int prev = curr;
+		curr = dst.tech->subst[flip(*layer)].draw;
+
+		if (prev < 0) {
 			dst.box.bound(ll, ur);
+		} else {
+			vec2i overhang = max(dst.tech->getEnclosing(curr, prev), 0);
+			// This is a diffusion, so we want the long dimension along the x-axis to
+			// reduce cell height at the expense of cell length. This reduces total
+			// layout area.
+			overhang.swap(0,1);
+			
+			ll -= overhang*dir;
+			ur += overhang*dir;
 		}
-		dst.push(dst.tech->models[model].paint[i], Rect(-1, ll, ur));
+		
+		dst.push(dst.tech->subst[flip(*layer)], Rect(-1, ll, ur));
 	}
 }
 
@@ -26,26 +36,39 @@ void drawTransistor(Layout &dst, const Mos &mos, bool flip, vec2i pos, vec2i dir
 	vec2i ll = pos;
 	vec2i ur = pos + mos.size*dir;
 
+	int poly = dst.tech->wires[0].draw;
+	int diff = dst.tech->subst[::flip(dst.tech->models[mos.model].stack[0])].draw;
+
+	// We want the transistors to be oriented left to right, so the long
+	// dimension of poly overhang should be vertical.
+	vec2i polyOverhang = max(dst.tech->getEnclosing(poly, diff), 0)*dir;
+
 	// draw poly
-	vec2i polyOverhang = vec2i(0, dst.tech->models[mos.model].polyOverhang)*dir;
 	dst.box.bound(ll - polyOverhang, ur + polyOverhang);
 	dst.push(dst.tech->wires[0], Rect(mos.gate, ll - polyOverhang, ur + polyOverhang));
 
 	// draw diffusion
-	for (auto layer = dst.tech->models[mos.model].paint.begin(); layer != dst.tech->models[mos.model].paint.end(); layer++) {
-		vec2i diffOverhang = layer->overhang*dir;
+	int curr = poly;
+	for (auto layer = dst.tech->models[mos.model].stack.begin(); layer != dst.tech->models[mos.model].stack.end(); layer++) {
+		int prev = curr;
+		curr = dst.tech->subst[::flip(*layer)].draw;
+		vec2i diffOverhang = max(dst.tech->getEnclosing(curr, prev), 0);
+		// We want the transistors to be oriented left to right, so the long
+		// dimension of diff overhang should be horizontal.
+		diffOverhang.swap(0,1);
+		diffOverhang *= dir;
+
 		ll -= diffOverhang;
 		ur += diffOverhang;
-		bool isDiffusion = layer == dst.tech->models[mos.model].paint.begin();
-		bool isBulk = layer == dst.tech->models[mos.model].paint.end()-1;
-		if (isDiffusion) {
+		if (prev == poly) {
+			// first layer should be the diffusion layer
 			dst.box.bound(ll, ur);
 		}
 		int net = -1;
-		if (isBulk) {
+		if (dst.tech->subst[::flip(*layer)].isWell) {
 			net = mos.base;
 		}
-		dst.push(*layer, Rect(net, ll, ur));
+		dst.push(dst.tech->subst[::flip(*layer)], Rect(net, ll, ur));
 	}
 }
 
@@ -53,17 +76,19 @@ void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool ex
 	int viaLayer = dst.tech->vias[viaLevel].draw;
 	int downLevel = dst.tech->vias[viaLevel].downLevel;
 	int upLevel = dst.tech->vias[viaLevel].upLevel;
+	int downLayer = downLevel < 0 ? dst.tech->subst[flip(dst.tech->models[flip(downLevel)].stack[0])].draw : dst.tech->wires[downLevel].draw;
+	int upLayer = upLevel < 0 ? dst.tech->subst[flip(dst.tech->models[flip(upLevel)].stack[0])].draw : dst.tech->wires[upLevel].draw;
 
 	// spacing and width of a via
 	int viaWidth = dst.tech->paint[viaLayer].minWidth;
 	int viaSpacing = dst.tech->getSpacing(viaLayer, viaLayer);
 
 	// enclosure rules and default orientation
-	vec2i dn = dst.tech->vias[viaLevel].dn;
+	vec2i dn = dst.tech->getEnclosing(downLayer, viaLayer);
 	if (axis[0] == 0) {
 		dn.swap(0,1);
 	}
-	vec2i up = dst.tech->vias[viaLevel].up;
+	vec2i up = dst.tech->getEnclosing(upLayer, viaLayer);
 	if (axis[1] == 0) {
 		up.swap(0,1);
 	}
@@ -105,15 +130,26 @@ void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool ex
 	} else {
 		// diffusion level
 		int model = -downLevel-1;
-		for (int i = 0; i < (int)dst.tech->models[model].paint.size(); i++) {
-			if (i != 0) {
-				ll -= dst.tech->models[model].paint[i].overhang*dir;
-				ur += dst.tech->models[model].paint[i].overhang*dir;
-			}
-			if (i == 0) {
+
+		int curr = -1;
+		for (auto layer = dst.tech->models[model].stack.begin(); layer != dst.tech->models[model].stack.end(); layer++) {
+			int prev = curr;
+			curr = dst.tech->subst[flip(*layer)].draw;
+
+			if (prev == -1) {
 				dst.box.bound(ll, ur);
+			} else {
+				vec2i overhang = max(dst.tech->getEnclosing(curr, prev), 0);
+				// This is a diffusion, so we want the long dimension along the x-axis to
+				// reduce cell height at the expense of cell length. This reduces total
+				// layout area.
+				overhang.swap(0,1);
+
+				ll -= overhang*dir;
+				ur += overhang*dir;
 			}
-			dst.push(dst.tech->models[model].paint[i], Rect(-1, ll, ur));
+
+			dst.push(dst.tech->subst[flip(*layer)], Rect(-1, ll, ur));
 		}
 	}
 
@@ -136,15 +172,25 @@ void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool ex
 	} else {
 		// diffusion level
 		int model = -upLevel-1;
-		for (int i = 0; i < (int)dst.tech->models[model].paint.size(); i++) {
-			if (i != 0) {
-				ll -= dst.tech->models[model].paint[i].overhang*dir;
-				ur += dst.tech->models[model].paint[i].overhang*dir;
-			}
-			if (i == 0) {
+
+		int curr = -1;
+		for (auto layer = dst.tech->models[model].stack.begin(); layer != dst.tech->models[model].stack.end(); layer++) {
+			int prev = curr;
+			curr = dst.tech->subst[flip(*layer)].draw;
+
+			if (prev == -1) {
 				dst.box.bound(ll, ur);
+			} else {
+				vec2i overhang = max(dst.tech->getEnclosing(curr, prev), 0);
+				// This is a diffusion, so we want the long dimension along the x-axis to
+				// reduce cell height at the expense of cell length. This reduces total
+				// layout area.
+				overhang.swap(0,1);
+
+				ll -= overhang*dir;
+				ur += overhang*dir;
 			}
-			dst.push(dst.tech->models[model].paint[i], Rect(-1, ll, ur));
+			dst.push(dst.tech->subst[flip(*layer)], Rect(-1, ll, ur));
 		}
 	}
 }
@@ -425,7 +471,7 @@ void drawCell(Layout &dst, const Router &rt) {
 	}
 
 	for (int i = 0; i < (int)dst.layers.size(); i++) {
-		if (dst.tech->paint[dst.layers[i].draw].fill) {
+		if (dst.layers[i].draw >= 0 and dst.tech->paint[dst.layers[i].draw].fill) {
 			Rect box = dst.layers[i].bbox();
 			dst.layers[i].clear();
 			dst.layers[i].push(box, true);
