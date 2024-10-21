@@ -22,25 +22,68 @@ Mos::Mos() {
 Mos::Mos(int model, int type) {
 	this->model = model;
 	this->type = type;
-	this->size = vec2i(1.0,1.0);
+	this->size = vec2i(0,0);
+	this->area = vec2i(0,0);
+	this->perim = vec2i(0,0);
 	this->drain = -1;
 	this->gate = -1;
 	this->source = -1;
 	this->base = -1;
 }
 
-Mos::Mos(int model, int type, int drain, int gate, int source, int base, vec2i size) {
+Mos::Mos(int model, int type, int drain, int gate, int source, int base) {
 	this->model = model;
 	this->type = type;
-	this->size = vec2i(1.0,1.0);
 	this->drain = drain;
 	this->gate = gate;
 	this->source = source;
-	this->base = base < 0 ? source : base;
-	this->size = size;
+	this->base = base;
+	this->size = vec2i(0,0);
+	this->area = vec2i(0,0);
+	this->perim = vec2i(0,0);
+}
+
+
+Mos::Mos(const Tech &tech, int model, int type, int drain, int gate, int source, int base, vec2i size) {
+	this->model = model;
+	this->type = type;
+	this->drain = drain;
+	this->gate = gate;
+	this->source = source;
+	this->base = base;
+	setSize(tech, size);
 }
 
 Mos::~Mos() {
+}
+
+void Mos::setSize(const Tech &tech, vec2i size) {
+	this->size = size;
+
+	int via = -1;
+	for (int i = 0; i < (int)tech.vias.size() and via < 0; i++) {
+		if (tech.vias[i].downLevel == -model-1 and tech.vias[i].upLevel == 1) {
+			via = i;
+		}
+	}
+
+	int gateToVia = 0;
+	int viaSize = 0;
+	if (via >= 0) {
+		gateToVia = tech.getSpacing(tech.wires[0].draw, tech.vias[via].draw);
+		viaSize = tech.paint[tech.vias[via].draw].minWidth;
+	} else {
+		gateToVia = tech.getSpacing(tech.wires[0].draw, tech.wires[0].draw)/2;
+	}
+
+	int w = size[1];
+	int l = gateToVia + viaSize + gateToVia;
+
+	int a = w*l/2;
+	int p = w+l;
+
+	this->area = vec2i(a, a);
+	this->perim = vec2i(p, p);
 }
 
 int Mos::left(bool flip) const {
@@ -220,9 +263,9 @@ void Subckt::popNet(int index) {
 			d->drain = -1;
 		}
 
-		if (d->base > index) {
+		if (d->base >= 0 and d->base > index) {
 			d->base--;
-		} else if (d->base == index) {
+		} else if (d->base >= 0 and d->base == index) {
 			d->base = -1;
 		}
 	}
@@ -257,7 +300,7 @@ void Subckt::connectRemote(int n0, int n1) {
 	nets[n1].remoteIO = nets[n0].remoteIO;
 }
 
-int Subckt::pushMos(int model, int type, int drain, int gate, int source, int base, vec2i size) {
+int Subckt::pushMos(int model, int type, int drain, int gate, int source, int base) {
 	int result = (int)mos.size();
 	for (auto i = nets[drain].remote.begin(); i != nets[drain].remote.end(); i++) {
 		nets[*i].drainOf[type].push_back(result);
@@ -269,7 +312,13 @@ int Subckt::pushMos(int model, int type, int drain, int gate, int source, int ba
 		nets[*i].gateOf[type].push_back(result);
 	}
 
-	mos.push_back(Mos(model, type, drain, gate, source, base, size));
+	mos.push_back(Mos(model, type, drain, gate, source, base));
+	return result;
+}
+
+int Subckt::pushMos(const Tech &tech, int model, int type, int drain, int gate, int source, int base, vec2i size) {
+	int result = pushMos(model, type, drain, gate, source, base);
+	mos[result].setSize(tech, size);
 	return result;
 }
 

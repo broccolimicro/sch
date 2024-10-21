@@ -186,7 +186,10 @@ Mapping Segment::generate(Subckt &dst, const Subckt &src) const {
 			printf("internal %s:%d: cell net map missing nets\n", __FILE__, __LINE__);
 		}
 
-		dst.pushMos(d->model, d->type, drain, gate, source, base, d->size);
+		dst.pushMos(d->model, d->type, drain, gate, source, base);
+		dst.mos.back().size = d->size;
+		dst.mos.back().area = d->area;
+		dst.mos.back().perim = d->perim;
 		dst.mos.back().params = d->params;
 	}
 

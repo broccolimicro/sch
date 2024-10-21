@@ -26,7 +26,8 @@ struct Subckt;
 struct Mos {
 	Mos();
 	Mos(int model, int type);
-	Mos(int model, int type, int drain, int gate, int source, int base=-1, vec2i size=vec2i(1.0,1.0));
+	Mos(int model, int type, int drain, int gate, int source, int base=-1);
+	Mos(const Tech &tech, int model, int type, int drain, int gate, int source, int base, vec2i size);
 	~Mos();
 
 	// Technologies often have multiple NMOS or PMOS transistor models. This
@@ -49,7 +50,10 @@ struct Mos {
 	// name of parameter -> list of values for that parameter
 	map<string, vector<double> > params;
 	vec2i size; // [length, width] of the transistor
+	vec2i area; // [drain, source]
+	vec2i perim; // [drain, source]
 
+	void setSize(const Tech &tech, vec2i size);
 	int left(bool flip = false) const;
 	int right(bool flip = false) const;
 };
@@ -127,7 +131,8 @@ struct Subckt {
 	int pushNet(string name, bool isIO=false);
 	void popNet(int index);
 	void connectRemote(int n0, int n1);
-	int pushMos(int model, int type, int drain, int gate, int source, int base=-1, vec2i size=vec2i(1.0,1.0));
+	int pushMos(int model, int type, int drain, int gate, int source, int base=-1);
+	int pushMos(const Tech &tech, int model, int type, int drain, int gate, int source, int base, vec2i size);
 	void popMos(int index);
 	void pushInst(Instance ckt);
 

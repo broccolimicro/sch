@@ -72,7 +72,7 @@ void drawTransistor(Layout &dst, const Mos &mos, bool flip, vec2i pos, vec2i dir
 	}
 }
 
-void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool expand, vec2i pos, vec2i dir) {
+void drawVia(Layout &dst, int net, int base, int viaLevel, vec2i axis, vec2i size, bool expand, vec2i pos, vec2i dir) {
 	int viaLayer = dst.tech->vias[viaLevel].draw;
 	int downLevel = dst.tech->vias[viaLevel].downLevel;
 	int upLevel = dst.tech->vias[viaLevel].upLevel;
@@ -148,8 +148,11 @@ void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool ex
 				ll -= overhang*dir;
 				ur += overhang*dir;
 			}
-
-			dst.push(dst.tech->subst[flip(*layer)], Rect(-1, ll, ur));
+			int rnet = -1;
+			if (dst.tech->subst[flip(*layer)].isWell) {
+				rnet = base;
+			}
+			dst.push(dst.tech->subst[flip(*layer)], Rect(rnet, ll, ur));
 		}
 	}
 
@@ -190,12 +193,16 @@ void drawVia(Layout &dst, int net, int viaLevel, vec2i axis, vec2i size, bool ex
 				ll -= overhang*dir;
 				ur += overhang*dir;
 			}
-			dst.push(dst.tech->subst[flip(*layer)], Rect(-1, ll, ur));
+			int rnet = -1;
+			if (dst.tech->subst[flip(*layer)].isWell) {
+				rnet = base;
+			}
+			dst.push(dst.tech->subst[flip(*layer)], Rect(rnet, ll, ur));
 		}
 	}
 }
 
-void drawViaStack(Layout &dst, int net, int downLevel, int upLevel, vec2i axis, vec2i size, vec2i pos, vec2i dir) {
+void drawViaStack(Layout &dst, int net, int base, int downLevel, int upLevel, vec2i axis, vec2i size, vec2i pos, vec2i dir) {
 	if (downLevel == upLevel) {
 		int layer = dst.tech->wires[downLevel].draw;
 		int width = dst.tech->paint[layer].minWidth;
@@ -207,7 +214,7 @@ void drawViaStack(Layout &dst, int net, int downLevel, int upLevel, vec2i axis, 
 
 	vector<int> vias = dst.tech->findVias(downLevel, upLevel);
 	for (int i = 0; i < (int)vias.size(); i++) {
-		drawVia(dst, net, vias[i], axis, size, true, pos, dir);
+		drawVia(dst, net, base, vias[i], axis, size, true, pos, dir);
 	}
 }
 
@@ -275,7 +282,7 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 
 				// Draw the via
 				Layout next(*dst.tech);
-				drawVia(next, wire.net, i, axis, vec2i(width, height), true, vec2i(posArr[i][j], 0));
+				drawVia(next, wire.net, pin.baseNet, i, axis, vec2i(width, height), true, vec2i(posArr[i][j], 0));
 				auto layer = next.find(pinLayer);
 				if (layer != next.layers.end()) {
 					// TODO(edward.bingham) This draws the wire from the pin
@@ -298,7 +305,7 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 				if (not vias.empty() and minOffset(&off, 0, vias.back(), 0, next, 0, Layout::IGNORE, Layout::DEFAULT) and off > 0) {
 					Rect box = vias.back().box.bound(next.box);
 					vias.back().clear();
-					drawVia(vias.back(), wire.net, i, axis, vec2i(box.ur[0]-box.ll[0], height), true, vec2i(box.ll[0], 0));
+					drawVia(vias.back(), wire.net, pin.baseNet, i, axis, vec2i(box.ur[0]-box.ll[0], height), true, vec2i(box.ll[0], 0));
 				} else {
 					vias.push_back(next);
 				}
@@ -353,7 +360,7 @@ void drawPin(Layout &dst, const Subckt &ckt, const Stack &stack, int pinID, vec2
 		}
 
 		if (model >= 0) {
-			drawViaStack(dst, stack.pins[pinID].outNet, -model-1, 1, vec2i(1,1), vec2i(stack.pins[pinID].width, stack.pins[pinID].height), pos, dir);
+			drawViaStack(dst, stack.pins[pinID].outNet, stack.pins[pinID].baseNet, -model-1, 1, vec2i(1,1), vec2i(stack.pins[pinID].width, stack.pins[pinID].height), pos, dir);
 		} else {
 			const Pin &pin = stack.pins[pinID];
 			pos[0] += pin.pos;
@@ -499,12 +506,33 @@ void drawCell(Layout &dst, const Router &rt) {
 				auto r = layer->geo.begin()+j;
 				for (int k = 0; k < (int)rt.ckt->nets.size(); k++) {
 					if (not nets[k] and r->net == k) {
-						dst.nets[k].label = dst.tech->wires[i].label;
-						dst.nets[k].pos = (r->ll+r->ur)/2;
-						nets[k] = true;
+						dst.nets[k].label = dst.tech->wires[i].draw;
 						if (find(rt.ckt->ports.begin(), rt.ckt->ports.end(), k) != rt.ckt->ports.end()) {
 							dst.push(dst.tech->wires[i].pin, *r);
+							dst.nets[k].label = dst.tech->wires[i].label;
 						}
+						dst.nets[k].pos = (r->ll+r->ur)/2;
+						nets[k] = true;
+					}
+				}
+			}
+		}
+	}
+
+	for (int i = 0; i < (int)dst.tech->subst.size(); i++) {
+		auto layer = dst.find(dst.tech->subst[i].draw);
+		if (layer != dst.layers.end()) {
+			for (int j = (int)layer->geo.size()-1; j >= 0; j--) {
+				auto r = layer->geo.begin()+j;
+				for (int k = 0; k < (int)rt.ckt->nets.size(); k++) {
+					if (not nets[k] and r->net == k) {
+						dst.nets[k].label = dst.tech->subst[i].draw;
+						if (find(rt.ckt->ports.begin(), rt.ckt->ports.end(), k) != rt.ckt->ports.end()) {
+							dst.push(dst.tech->subst[i].pin, *r);
+							dst.nets[k].label = dst.tech->subst[i].label;
+						}
+						dst.nets[k].pos = (r->ll+r->ur)/2;
+						nets[k] = true;
 					}
 				}
 			}

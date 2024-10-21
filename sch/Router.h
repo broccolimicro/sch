@@ -23,9 +23,9 @@ struct Router;
 struct Pin {
 	Pin(const Tech &tech);
 	// Construct a "contact" pin.
-	Pin(const Tech &tech, int outNet);
+	Pin(const Tech &tech, int outNet, int baseNet);
 	// Construct a "gate" pin
-	Pin(const Tech &tech, int device, int outNet, int leftNet, int rightNet);
+	Pin(const Tech &tech, int device, int outNet, int leftNet, int rightNet, int baseNet);
 	~Pin();
 
 	// inNet == outNet == gateNet for contacts
@@ -34,6 +34,7 @@ struct Pin {
 	int leftNet;
 	int outNet;
 	int rightNet;
+	int baseNet;
 
 	// index into Subckt::mos for gates of transistors
 	// equal to -1 for contacts

@@ -24,11 +24,12 @@ Pin::Pin(const Tech &tech) : layout(tech) {
 	hi = numeric_limits<int>::min();
 }
 
-Pin::Pin(const Tech &tech, int outNet) : layout(tech) {
+Pin::Pin(const Tech &tech, int outNet, int baseNet) : layout(tech) {
 	this->device = -1;
 	this->outNet = outNet;
 	this->leftNet = outNet;
 	this->rightNet = outNet;
+	this->baseNet = baseNet;
 
 	align = -1;
 
@@ -40,11 +41,12 @@ Pin::Pin(const Tech &tech, int outNet) : layout(tech) {
 	hi = numeric_limits<int>::min();
 }
 
-Pin::Pin(const Tech &tech, int device, int outNet, int leftNet, int rightNet) : layout(tech) {
+Pin::Pin(const Tech &tech, int device, int outNet, int leftNet, int rightNet, int baseNet) : layout(tech) {
 	this->device = device;
 	this->outNet = outNet;
 	this->leftNet = leftNet;
 	this->rightNet = rightNet;
+	this->baseNet = baseNet;
 
 	align = -1;
 
@@ -255,17 +257,19 @@ void Stack::push(const Tech &tech, const Subckt &ckt, int device, bool flip) {
 	int fromNet = -1;
 	int toNet = -1;
 	int gateNet = -1;
+	int baseNet = -1;
 
 	if (device >= 0) {
 		fromNet = ckt.mos[device].left(flip);
 		toNet = ckt.mos[device].right(flip);
 		gateNet = ckt.mos[device].gate;
+		baseNet = ckt.mos[device].base;
 	}
 
 	// Get information about the previous transistor on the stack. First if
 	// statement in the funtion guarantees that there is at least one transistor
 	// already on the stack.
-	bool link = (pins.size() > 0 and gateNet >= 0 and fromNet == pins.back().rightNet);
+	bool link = (pins.size() > 0 and gateNet >= 0 and fromNet == pins.back().rightNet and baseNet == pins.back().baseNet);
 
 	// We can't link this transistor to the previous one in the stack, so we
 	// need to cap off the stack with a contact, start a new stack with a new
@@ -273,16 +277,16 @@ void Stack::push(const Tech &tech, const Subckt &ckt, int device, bool flip) {
 	// unflipped orderings.
 
 	if (not link and not pins.empty() and pins.back().isGate()) {
-		pins.push_back(Pin(tech, pins.back().rightNet));
+		pins.push_back(Pin(tech, pins.back().rightNet, pins.back().baseNet));
 	}
 
 	if (fromNet >= 0 and (not link or pins.empty() or ckt.nets[fromNet].hasContact(type))) {
 		// Add a contact for the first net or between two transistors.
-		pins.push_back(Pin(tech, fromNet));
+		pins.push_back(Pin(tech, fromNet, baseNet));
 	}
 
 	if (device >= 0) {
-		pins.push_back(Pin(tech, device, gateNet, fromNet, toNet));
+		pins.push_back(Pin(tech, device, gateNet, fromNet, toNet, baseNet));
 	}
 }
 
@@ -856,7 +860,7 @@ void Router::breakRoute(int route, set<int> cycleRoutes) {
 		// saving the vertical position of the pin so the drawing functionality
 		// knows where to draw the vertical path.
 		Index idx(2, (int)this->stack[2].pins.size());
-		this->stack[2].pins.push_back(Pin(*tech, routes[route].net));
+		this->stack[2].pins.push_back(Pin(*tech, routes[route].net, -1));
 		drawPin(this->stack[2].pins.back().layout, *ckt, this->stack[2], idx.pin);
 		this->stack[2].pins.back().pos = -50;
 		this->stack[2].pins.back().lo = routes[route].offset[Model::PMOS];
@@ -1382,7 +1386,7 @@ void Router::addIOPins() {
 			}
 			if (not found) {*/
 				Index ioPin(2, (int)this->stack[2].pins.size());
-				this->stack[2].pins.push_back(Pin(*tech, i));
+				this->stack[2].pins.push_back(Pin(*tech, i, -1));
 				this->stack[2].pins.back().pos = -50;
 				this->stack[2].pins.back().layer = 2;
 			//}
@@ -1423,7 +1427,7 @@ void Router::buildContacts() {
 			int minLevel = min(pin.layer, min(nextLevel, prevLevel));
 
 			routes[i].pins[j].layout.clear();
-			drawViaStack(routes[i].pins[j].layout, routes[i].net, minLevel, maxLevel, vec2i(0, 0), vec2i(0,0), vec2i(0,0));
+			drawViaStack(routes[i].pins[j].layout, routes[i].net, pin.baseNet, minLevel, maxLevel, vec2i(0, 0), vec2i(0,0), vec2i(0,0));
 		}
 	}
 }
