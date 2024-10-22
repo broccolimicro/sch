@@ -272,7 +272,7 @@ struct Router {
 	void buildRoutes();
 	bool findCycle(int s, const vector<set<int> > &Ak, vector<pair<int, set<int> > > &cycles);
 	bool findCycles(vector<pair<int, set<int> > > &cycles);
-	void breakRoute(int route, set<int> cycleRoutes);
+	bool breakRoute(int route, set<int> cycleRoutes);
 	bool breakCycles();
 	void findAndBreakViaCycles();
 	void alignVirtualPins();

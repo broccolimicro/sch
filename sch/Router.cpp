@@ -741,7 +741,7 @@ bool Router::findCycles(vector<pair<int, set<int> > > &cycles) {
 	return found;
 }
 
-void Router::breakRoute(int route, set<int> cycleRoutes) {
+bool Router::breakRoute(int route, set<int> cycleRoutes) {
 	// DESIGN(edward.bingham) There are two obvious options to mitigate cycles
 	// in the constraint graph by splitting a route. Either way, one pin needs
 	// to be shared across the two routes to handle the vertical connection
@@ -834,6 +834,10 @@ void Router::breakRoute(int route, set<int> cycleRoutes) {
 			count.erase(count.begin()+toIdx);
 			routes[route].pins.erase(to);
 		}
+	}
+
+	if (wp.pins.empty() or wn.pins.empty()) {
+		return false;
 	}
 
 	//printf("Step 1: w={");
@@ -1035,6 +1039,8 @@ void Router::breakRoute(int route, set<int> cycleRoutes) {
 			}
 		}
 	}
+
+	return true;
 }
 
 bool Router::breakCycles() {
@@ -1093,21 +1099,32 @@ bool Router::breakCycles() {
 		//
 		// Therefore, we prefer to share pins if we can, but we can only share pins
 		// if they themselves don't participate in the cycle.
-		int maxCycleCount = -1;
-		int maxDensity = -1;
-		int route = -1;
+		map<pair<int, int>, vector<int> > order;
 		for (int i = 0; i < (int)cycles.size(); i++) {
 			int density = min(numIn[i], numOut[i]);
-			if (routes[i].net >= 0 and (((int)cycles[i].first > maxCycleCount or
-					((int)cycles[i].first == maxCycleCount and density > maxDensity)))) {
-				route = i;
-				maxCycleCount = cycles[i].first;
-				maxDensity = density;
+			if (routes[i].net >= 0) {
+				auto pos = order.insert(pair<pair<int, int>, vector<int> >(pair<int, int>(cycles[i].first, density), vector<int>())).first;
+				pos->second.push_back(i);
 			}
 		}
 
-		
-		breakRoute(route, cycles[route].second);
+		// attempt to break routes until we're successful.
+		while (not order.empty()) {
+			auto pos = std::prev(order.end());
+			int route = pos->second.back();
+			if (breakRoute(route, cycles[route].second)) {
+				break;
+			}
+			pos->second.pop_back();
+			if (pos->second.empty()) {
+				order.erase(pos);
+			}
+		}
+		if (order.empty()) {
+			printf("error: found unbreakable cycle\n");
+			// found an unbreakable cycle
+			return change;
+		}
 		change = true;
 
 		for (auto i = cycles.begin(); i != cycles.end(); i++) {
