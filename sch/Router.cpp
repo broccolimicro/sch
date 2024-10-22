@@ -2009,26 +2009,24 @@ bool Router::buildOffsets(int type, vector<int> start) {
 
 		map<int, int> n = type == Model::PMOS ? next(curr.back()) : prev(curr.back());
 		for (auto i = n.begin(); i != n.end(); i++) {
-			int weight = routes[curr.back()].offset[type] + i->second;
+			auto pos = find(curr.begin(), curr.end(), i->first);
+			if (pos == curr.end()) {
+				int weight = routes[curr.back()].offset[type] + i->second;
+				if (routes[i->first].offset[type] < weight) {
+					change = true;
+					routes[i->first].offset[type] = weight;
 
-			// keep track of weight
-			if (routes[i->first].offset[type] < weight) {
-				change = true;
-				routes[i->first].offset[type] = weight;
-				
-				auto pos = find(curr.begin(), curr.end(), i->first);
-				if (pos == curr.end()) {
 					tokens.push_back(curr);
 					tokens.back().push_back(i->first);
-				} else {
-					unresolvedCycle[type] = true;
-					if (debug) {
-						printf("error: buildOffset found cycle {");
-						for (int j = 0; j < (int)curr.size(); j++) {
-							printf("%d:%s(%d) ", curr[j], curr[j] >= 0 ? ckt->nets[routes[curr[j]].net].name.c_str() : "", routes[curr[j]].net);
-						}
-						printf("%d:%s(%d)}\n", i->first, i->first >= 0 ? ckt->nets[routes[i->first].net].name.c_str() : "", routes[i->first].net);
+				}
+			} else {
+				unresolvedCycle[type] = true;
+				if (debug) {
+					printf("error: buildOffset found cycle {");
+					for (int j = 0; j < (int)curr.size(); j++) {
+						printf("%d:%s(%d) ", curr[j], curr[j] >= 0 ? ckt->nets[routes[curr[j]].net].name.c_str() : "", routes[curr[j]].net);
 					}
+					printf("%d:%s(%d)}\n", i->first, i->first >= 0 ? ckt->nets[routes[i->first].net].name.c_str() : "", routes[i->first].net);
 				}
 			}
 		}
@@ -2274,12 +2272,16 @@ void Router::lowerRoutes(int window) {
 	}*/
 
 	for (int i = 0; i < (int)routes.size(); i++) {
-		vector<bool> types = routes[i].pinTypes();
+		/*vector<bool> types = routes[i].pinTypes();
 		if ((not types[Model::PMOS] or not types[Model::NMOS]) and not routes[i].hasGate(this)) {
 			continue;
-		}
-		for (int j = 0; j < (int)routes[i].pins.size()-1; j++) {
-			int level = max(1, min(this->pin(routes[i].pins[j].idx).layer, this->pin(routes[i].pins[j+1].idx).layer));
+		}*/
+		for (int j = 0; j < (int)routes[i].pins.size(); j++) {
+			int level = this->pin(routes[i].pins[j].idx).layer;
+			if (j+1 < (int)routes[i].pins.size()) {
+				level = min(level, this->pin(routes[i].pins[j+1].idx).layer);
+			}
+			level = max(1, level);
 			for (; level < (int)tech->wires.size(); level++) {
 				bool found = false;
 				for (int k = max(0, j-window); not found and k < min(j+window+1, (int)blockedLevels[i].size()); k++) {
@@ -2289,7 +2291,7 @@ void Router::lowerRoutes(int window) {
 					break;
 				}
 			}
-			if ((int)routes[i].level.size() < j+1) {
+			if (j >= (int)routes[i].level.size()) {
 				routes[i].level.resize(j+1, 2);
 			}
 			routes[i].level[j] = level;
@@ -2364,24 +2366,21 @@ bool Router::solve() {
 	buildGroupConstraints();
 
 	drawRoutes();
-	buildRouteConstraints(true);
+	buildRouteConstraints();
 	assignRouteConstraints();
+	buildHorizConstraints(true);
 
 	bool change = true;
-	for (int i = 0; i < 5 and change; i++) {
+	for (int i = 0; i < 10 and change; i++) {
 		change = false;
-		if (buildHorizConstraints()) {
-			if (debug) printf("buildHorizConstraints()\n");
-			change = true;
-		}
 		if (updatePinPos(true)) {
 			if (debug) printf("updatePinPos()\n");
 			//change = true;
 		}
-		/*if (alignPins(200, true)) {
-			if (debug) printf("alignPins()\n");
-			change = true;
-		}*/
+		//if (alignPins(200, true)) {
+		//	if (debug) printf("alignPins()\n");
+		//	change = true;
+		//}
 		if (buildPinConstraints(0)) {
 			if (debug) printf("buildPinConstraints()\n");
 			change = true;
@@ -2398,6 +2397,10 @@ bool Router::solve() {
 		}
 		if (assignRouteConstraints()) {
 			if (debug) printf("assignRouteConstraints()\n");
+			change = true;
+		}
+		if (buildHorizConstraints()) {
+			if (debug) printf("buildHorizConstraints()\n");
 			change = true;
 		}
 	}
