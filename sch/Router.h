@@ -229,7 +229,6 @@ struct Router {
 	bool debug;
 
 	array<bool, 2> unresolvedCycle;
-	bool degenerative;
 
 	const Tech *tech;
 	const Subckt *ckt;
@@ -271,6 +270,7 @@ struct Router {
 	bool buildPinConstraints(int level=1, bool reset=false);
 	void buildViaConstraints();
 	void buildRoutes();
+	bool findCycle(int s, const vector<set<int> > &Ak, vector<vector<int> > &cycles);
 	bool findCycles(vector<vector<int> > &cycles);
 	void breakRoute(int route, set<int> cycleRoutes);
 	void breakCycles(vector<vector<int> > cycles);

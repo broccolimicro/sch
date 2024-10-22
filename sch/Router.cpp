@@ -301,7 +301,6 @@ Router::Router(const Tech &tech, const Placement &place, bool progress, bool deb
 	this->allowOverCell = true;
 	this->unresolvedCycle[0] = false;
 	this->unresolvedCycle[1] = false;
-	this->degenerative = false;
 	for (int type = 0; type < (int)this->stack.size(); type++) {
 		this->stack[type].type = type;
 	}
@@ -616,6 +615,72 @@ bool Router::hasPinConstraint(int from, int to) {
 	return false;
 }
 
+bool Router::findCycle(int s, const vector<set<int> > &Ak, vector<vector<int> > &cycles) {
+	vector<bool> blocked(Ak.size(), false);
+	vector<set<int> > B(Ak.size(), set<int>());
+
+	struct frame {
+		frame() {
+			searched = false;
+		}
+		frame(vector<int> path) {
+			this->path = path;
+			searched = false;
+		}
+		~frame() {}
+
+		vector<int> path;
+		bool searched;
+	};
+
+	vector<frame> stack;
+	stack.push_back(frame(vector<int>(1, s)));
+
+	bool found = false;
+	while (not stack.empty()) {
+		int v = stack.back().path.back();
+		if (stack.back().searched) {
+			if (found) {
+				// Unblock vertex v
+				vector<int> unblock(1, v);
+				while (not unblock.empty()) {
+					int u = unblock.back();
+					unblock.pop_back();
+					blocked[u] = false;
+					for (auto w = B[u].begin(); w != B[u].end(); w++) {
+						if (blocked[*w]) {
+							unblock.push_back(*w);
+						}
+					}
+					B[u].clear();
+				}
+			} else {
+				for (auto w = Ak[v].begin(); w != Ak[v].end(); w++) {
+					B[*w].insert(v);
+				}
+			}
+			stack.pop_back();
+		} else {
+			stack.back().searched = true;
+			vector<int> path = stack.back().path;
+
+			blocked[v] = true;
+			for (auto w = Ak[v].begin(); w != Ak[v].end(); w++) {
+				if (*w == s) {
+					// We found a cycle
+					cycles.push_back(path);
+					found = true;
+				} else if (not blocked[*w]) {
+					stack.push_back(frame(path));
+					stack.back().path.push_back(*w);
+				}
+			}
+		}
+	}
+
+	return found;
+}
+
 bool Router::findCycles(vector<vector<int> > &cycles) {
 	// DESIGN(edward.bingham) There can be multiple cycles with the same set of
 	// nodes as a result of multiple pin constraints. This function does not
@@ -623,86 +688,52 @@ bool Router::findCycles(vector<vector<int> > &cycles) {
 	// exponential blow up, and we can ensure that we split those cycles by
 	// splitting on the node in the cycle that has the most pin constraints
 	// (maximising min(in.size(), out.size()))
+	vector<set<int> > Ak(routes.size(), set<int>());
+	for (int i = 0; i < (int)routes.size(); i++) {
+		for (auto c = routeConstraints.begin(); c != routeConstraints.end(); c++) {
+			if (c->select >= 0 and c->wires[c->select] == i) {
+				Ak[i].insert(c->wires[1-c->select]);
+			}
+		}
 
-	degenerative = false;
-	if (routes.size() == 0) {
-		return true;
-	}
-
-	//vector<int> B;
-	//vector<bool> blocked(routes.size(), false);
-
-	unordered_set<int> seen;
-	unordered_set<int> staged;
-	
-	list<vector<int> > tokens;
-	tokens.push_back(vector<int>(1, 0));
-	staged.insert(0);
-	while (not tokens.empty()) {
-		while (not tokens.empty()) {
-			vector<int> curr = tokens.front();
-			tokens.pop_front();
-			int i = curr.back();
-			auto n = next(i);
-			for (auto j = n.begin(); j != n.end(); j++) {
-				auto loop = find(curr.begin(), curr.end(), j->first);
-				if (loop != curr.end()) {
-					cycles.push_back(curr);
-					cycles.back().erase(cycles.back().begin(), cycles.back().begin()+(loop-curr.begin()));
-					vector<int>::iterator minElem = min_element(cycles.back().begin(), cycles.back().end());
-					rotate(cycles.back().begin(), minElem, cycles.back().end());
-					if (find(cycles.begin(), (cycles.end()-1), cycles.back()) != (cycles.end()-1)) {
-						cycles.pop_back();
+		for (auto c = pinConstraints.begin(); c != pinConstraints.end(); c++) {
+			if (routes[i].hasPin(this, Index(Model::PMOS, c->from))) {
+				for (int j = 0; j < (int)routes.size(); j++) {
+					if (j != i and Ak[i].find(j) == Ak[i].end()
+						and routes[j].hasPin(this, Index(Model::NMOS, c->to))) {
+						Ak[i].insert(j);
 					}
-				} else if (seen.find(j->first) == seen.end()) {
-					tokens.push_back(curr);
-					tokens.back().push_back(j->first);
-					staged.insert(j->first);
 				}
 			}
-
-			if ((int)cycles.size() >= 100) {
-				//degenerative = true;
-				//printf("%s:%d: error: degenerative layout has created an exponential number of cycles. Terminating cycle finding algorithm early.\n", __FILE__, __LINE__);
-				/*printf("degenerative %d\n", (int)cycles.size());
-				for (auto cycle = cycles.begin(); cycle != cycles.end(); cycle++) {
-					printf("{");
-					for (int j = 0; j < (int)cycle->size(); j++) {
-						if (j != 0) {
-							printf(" ");
-						}
-						printf("%d", (*cycle)[j]);
-					}
-					printf("}\n");
-				}*/
-				return false;
-			}
-		}
-
-		seen.insert(staged.begin(), staged.end());
-		staged.clear();
-		for (int i = 0; i < (int)routes.size(); i++) {
-			if (seen.find(i) == seen.end()) {
-				tokens.push_back(vector<int>(1, i));
-				staged.insert(i);
-				break;
-			}
 		}
 	}
 
-	/*printf("found cycles %d\n", (int)cycles.size());
-	for (auto cycle = cycles.begin(); cycle != cycles.end(); cycle++) {
+	bool found = false;
+	for (int s = 0; s < (int)Ak.size(); s++) {
+		if (not Ak[s].empty()) {
+			found = findCycle(s, Ak, cycles) or found;
+			Ak[s].clear();
+		}
+	}
+
+	/*printf("cycles: {");
+	for (auto c = cycles.begin(); c != cycles.end(); c++) {
+		if (c != cycles.begin()) {
+			printf("\n\t");
+		}
 		printf("{");
-		for (int j = 0; j < (int)cycle->size(); j++) {
-			if (j != 0) {
+		for (auto v = c->begin(); v != c->end(); v++) {
+			if (v != c->begin()) {
 				printf(" ");
 			}
-			printf("%d", (*cycle)[j]);
+			printf("%d", *v);
 		}
-		printf("}\n");
-	}*/
+		printf("}");
+	}
+	printf("}\n");*/
+	printf("cycles %d\n", (int)cycles.size());
 
-	return true;
+	return found;
 }
 
 void Router::breakRoute(int route, set<int> cycleRoutes) {
@@ -2212,13 +2243,12 @@ bool Router::assignRouteConstraints(bool reset) {
 bool Router::findAndBreakPinCycles() {
 	bool change = false;
 	vector<vector<int> > cycles;
-	while (not findCycles(cycles)) {
+	while (findCycles(cycles)) {
 		breakCycles(cycles);
-		change = change or not cycles.empty();
 		cycles.clear();
+		change = true;
 	}
-	breakCycles(cycles);
-	return change or not cycles.empty();
+	return change;
 }
 
 // The `window` attempts to prevent too many vias across a route by smoothing the transition
@@ -2404,6 +2434,15 @@ bool Router::solve() {
 			change = true;
 		}
 	}
+	if (change) {
+		printf("error: unstable layout\n");
+	}
+	if (unresolvedCycle[0]) {
+		printf("error: unresolved cycle 0\n");
+	}
+	if (unresolvedCycle[1]) {
+		printf("error: unresolved cycle 1\n");
+	}
 
 	// TODO(edward.bingham) Assigning the route constraints affects where
 	// contacts are relative to each other vertically. This changes the pin
@@ -2456,7 +2495,7 @@ bool Router::solve() {
 	// these cells are interfacing with.
 
 	//print();
-	return not change and not unresolvedCycle[0] and not unresolvedCycle[1] and not degenerative;
+	return not change and not unresolvedCycle[0] and not unresolvedCycle[1];
 }
 
 void Router::print() {
