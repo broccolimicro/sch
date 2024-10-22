@@ -615,7 +615,7 @@ bool Router::hasPinConstraint(int from, int to) {
 	return false;
 }
 
-bool Router::findCycle(int s, const vector<set<int> > &Ak, vector<vector<int> > &cycles) {
+bool Router::findCycle(int s, const vector<set<int> > &Ak, vector<pair<int, set<int> > > &cycles) {
 	vector<bool> blocked(Ak.size(), false);
 	vector<set<int> > B(Ak.size(), set<int>());
 
@@ -668,7 +668,14 @@ bool Router::findCycle(int s, const vector<set<int> > &Ak, vector<vector<int> > 
 			for (auto w = Ak[v].begin(); w != Ak[v].end(); w++) {
 				if (*w == s) {
 					// We found a cycle
-					cycles.push_back(path);
+					for (auto c0 = path.begin(); c0 != path.end(); c0++) {
+						cycles[*c0].first++;
+						for (auto c1 = path.begin(); c1 != path.end(); c1++) {
+							if (*c1 != *c0) {
+								cycles[*c0].second.insert(*c1);
+							}
+						}
+					}
 					found = true;
 				} else if (not blocked[*w]) {
 					stack.push_back(frame(path));
@@ -681,7 +688,7 @@ bool Router::findCycle(int s, const vector<set<int> > &Ak, vector<vector<int> > 
 	return found;
 }
 
-bool Router::findCycles(vector<vector<int> > &cycles) {
+bool Router::findCycles(vector<pair<int, set<int> > > &cycles) {
 	// DESIGN(edward.bingham) There can be multiple cycles with the same set of
 	// nodes as a result of multiple pin constraints. This function does not
 	// differentiate between those cycles. Doing so could introduce an
@@ -731,8 +738,6 @@ bool Router::findCycles(vector<vector<int> > &cycles) {
 		printf("}");
 	}
 	printf("}\n");*/
-	printf("cycles %d\n", (int)cycles.size());
-
 	return found;
 }
 
@@ -859,12 +864,11 @@ void Router::breakRoute(int route, set<int> cycleRoutes) {
 		const Pin &pin = this->pin(routes[route].pins[i].idx);
 		int distanceFromCenter = abs(pin.pos-center);
 
-		if ((sharedCount < 0 or count[i] < sharedCount) or
-		    (count[i] == sharedCount and ((sharedIsGate and pin.isContact()) or
-		    distanceFromCenter > sharedDistanceFromCenter))) {
-		//if (sharedCount < 0 or (count[i] < sharedCount or
-		//    (count[i] == sharedCount and ((sharedIsGate and pin.isContact()) or
-		//    (sharedIsGate == (pin.isGate()) and distanceFromCenter > sharedDistanceFromCenter))))) {
+		if ((sharedCount < 0 or count[i] < sharedCount)
+		  or (count[i] == sharedCount
+		    and ((sharedIsGate and pin.isContact())
+		      or (sharedIsGate == pin.isGate()
+		        and distanceFromCenter > sharedDistanceFromCenter)))) {
 			sharedPin = i;
 			sharedCount = count[i];
 			sharedIsGate = pin.isGate();
@@ -1033,71 +1037,24 @@ void Router::breakRoute(int route, set<int> cycleRoutes) {
 	}
 }
 
-void Router::breakCycles(vector<vector<int> > cycles) {
-	//int startingRoutes = (int)routes.size();
-
-	// count up cycle participation for heuristic
-	vector<vector<int> > cycleCount(routes.size(), vector<int>());
-	for (int i = 0; i < (int)cycles.size(); i++) {
-		for (int j = 0; j < (int)cycles[i].size(); j++) {
-			cycleCount[cycles[i][j]].push_back(i);
-		}
-	}
-
-	// compute pin constraint density for heuristic
-	vector<int> numIn(routes.size(), 0);
-	vector<int> numOut(routes.size(), 0);
-	for (auto i = pinConstraints.begin(); i != pinConstraints.end(); i++) {
-		for (int j = 0; j < (int)routes.size(); j++) {
-			if (routes[j].hasPin(this, Index(Model::PMOS, i->from))) {
-				numOut[j]++;
-			}
-			if (routes[j].hasPin(this, Index(Model::NMOS, i->to))) {
-				numIn[j]++;
+bool Router::breakCycles() {
+	bool change = false;
+	vector<pair<int, set<int> > > cycles(routes.size(), pair<int, set<int> >(0, set<int>()));
+	while (findCycles(cycles)) {
+		// compute pin constraint density for heuristic
+		vector<int> numIn(routes.size(), 0);
+		vector<int> numOut(routes.size(), 0);
+		for (auto i = pinConstraints.begin(); i != pinConstraints.end(); i++) {
+			for (int j = 0; j < (int)routes.size(); j++) {
+				if (routes[j].hasPin(this, Index(Model::PMOS, i->from))) {
+					numOut[j]++;
+				}
+				if (routes[j].hasPin(this, Index(Model::NMOS, i->to))) {
+					numIn[j]++;
+				}
 			}
 		}
-	}
 
-	//printf("Starting Cycles\n");
-	//for (int i = 0; i < (int)cycles.size(); i++) {
-	//	printf("cycle {");
-	//	for (int j = 0; j < (int)cycles[i].size(); j++) {
-	//		if (j != 0) {
-	//			printf(" ");
-	//		}
-	//		printf("%d", cycles[i][j]);
-	//	}
-	//	printf("}\n");
-	//}
-
-	//printf("NMOS\n");
-	//for (int i = 0; i < (int)this->stack[0].pins.size(); i++) {
-	//	printf("pin %d %d->%d->%d: %dx%d %d %d\n", this->stack[0].pins[i].device, this->stack[0].pins[i].leftNet, this->stack[0].pins[i].outNet, this->stack[0].pins[i].rightNet, this->stack[0].pins[i].width, this->stack[0].pins[i].height, this->stack[0].pins[i].off, this->stack[0].pins[i].pos);
-	//}
-
-	//printf("\nPMOS\n");
-	//for (int i = 0; i < (int)this->stack[1].pins.size(); i++) {
-	//	printf("pin %d %d->%d->%d: %dx%d %d %d\n", this->stack[1].pins[i].device, this->stack[1].pins[i].leftNet, this->stack[1].pins[i].outNet, this->stack[1].pins[i].rightNet, this->stack[1].pins[i].width, this->stack[1].pins[i].height, this->stack[1].pins[i].off, this->stack[1].pins[i].pos);
-	//}
-
-	//printf("\nRoutes\n");
-	//for (int i = 0; i < (int)routes.size(); i++) {
-	//	printf("wire %d %d->%d: ", routes[i].net, routes[i].left, routes[i].right);
-	//	for (int j = 0; j < (int)routes[i].pins.size(); j++) {
-	//		printf("(%d,%d) ", routes[i].pins[j].type, routes[i].pins[j].pin);
-	//	}
-	//	printf("\n");
-	//}
-
-	//printf("\nConstraints\n");
-	//for (int i = 0; i < (int)pinConstraints.size(); i++) {
-	//	printf("vert %d -> %d: %d\n", pinConstraints[i].from, pinConstraints[i].to, pinConstraints[i].off);
-	//}
-	//for (int i = 0; i < (int)routeConstraints.size(); i++) {
-	//	printf("horiz %d -- %d: %d\n", routeConstraints[i].wires[0], routeConstraints[i].wires[1], routeConstraints[i].off);
-	//}
-
-	while (cycles.size() > 0) {
 		// DESIGN(edward.bingham) We have multiple cycles and a route may
 		// participate in more than one. It's unclear whether we want to minimize
 		// the number of doglegs or not. Introducing a dogleg requires adding
@@ -1139,71 +1096,26 @@ void Router::breakCycles(vector<vector<int> > cycles) {
 		int maxCycleCount = -1;
 		int maxDensity = -1;
 		int route = -1;
-		for (int i = 0; i < (int)cycleCount.size(); i++) {
+		for (int i = 0; i < (int)cycles.size(); i++) {
 			int density = min(numIn[i], numOut[i]);
-			if (routes[i].net >= 0 and (((int)cycleCount[i].size() > maxCycleCount or
-					((int)cycleCount[i].size() == maxCycleCount and density > maxDensity)))) {
+			if (routes[i].net >= 0 and (((int)cycles[i].first > maxCycleCount or
+					((int)cycles[i].first == maxCycleCount and density > maxDensity)))) {
 				route = i;
-				maxCycleCount = cycleCount[i].size();
+				maxCycleCount = cycles[i].first;
 				maxDensity = density;
 			}
 		}
 
-		set<int> cycleRoutes;
-		for (int i = 0; i < (int)cycleCount[route].size(); i++) {
-			cycleRoutes.insert(cycles[cycleCount[route][i]].begin(), cycles[cycleCount[route][i]].end());
-		}
-		cycleRoutes.erase(route);
+		
+		breakRoute(route, cycles[route].second);
+		change = true;
 
-		//printf("Breaking Route %d: ", route);
-		//for (auto i = cycleRoutes.begin(); i != cycleRoutes.end(); i++) {
-		//	printf("%d ", *i);
-		//}
-		//printf("\n");
-		breakRoute(route, cycleRoutes);
-		//printf("wire %d %d->%d: ", routes[route].net, routes[route].left, routes[route].right);
-		//for (int j = 0; j < (int)routes[route].pins.size(); j++) {
-		//	printf("(%d,%d) ", routes[route].pins[j].type, routes[route].pins[j].pin);
-		//}
-		//printf("\n");
-		//printf("wire %d %d->%d: ", routes.back().net, routes.back().left, routes.back().right);
-		//for (int j = 0; j < (int)routes.back().pins.size(); j++) {
-		//	printf("(%d,%d) ", routes.back().pins[j].type, routes.back().pins[j].pin);
-		//}
-		//printf("\n");
-
-		// recompute cycles and cycleCount
-		while (cycleCount[route].size() > 0) {		
-			int cycle = cycleCount[route].back();
-			cycles.erase(cycles.begin()+cycle);
-			for (int i = 0; i < (int)cycleCount.size(); i++) {
-				for (int j = (int)cycleCount[i].size()-1; j >= 0; j--) {
-					if (cycleCount[i][j] > cycle) {
-						cycleCount[i][j]--;
-					} else if (cycleCount[i][j] == cycle) {
-						cycleCount[i].erase(cycleCount[i].begin()+j);
-					}
-				}
-			}
+		for (auto i = cycles.begin(); i != cycles.end(); i++) {
+			i->first = 0;
+			i->second.clear();
 		}
 	}
-
-	/*cycles = findCycles();
-	if (cycles.size() > 0) {
-		printf("error: cycles not broken %d -> %d\n", startingRoutes, (int)routes.size());
-		for (int i = 0; i < (int)cycles.size(); i++) {
-			printf("cycle {");
-			for (int j = 0; j < (int)cycles[i].size(); j++) {
-				if (j != 0) {
-					printf(" ");
-				}
-				printf("%d", cycles[i][j]);
-			}
-			printf("}\n");
-		}
-
-		printf("\n\n");
-	}*/
+	return change;
 }
 
 void Router::findAndBreakViaCycles() {
@@ -2240,17 +2152,6 @@ bool Router::assignRouteConstraints(bool reset) {
 	return change;
 }
 
-bool Router::findAndBreakPinCycles() {
-	bool change = false;
-	vector<vector<int> > cycles;
-	while (findCycles(cycles)) {
-		breakCycles(cycles);
-		cycles.clear();
-		change = true;
-	}
-	return change;
-}
-
 // The `window` attempts to prevent too many vias across a route by smoothing the transition
 void Router::lowerRoutes(int window) {
 	// TODO(edward.bingham) There's still an interaction between route lowering
@@ -2372,7 +2273,7 @@ bool Router::solve() {
 	buildRoutes();
 
 	buildPinConstraints(0, true);
-	findAndBreakPinCycles();
+	breakCycles();
 	drawRoutes();
 	buildRouteConstraints(true, true);
 	assignRouteConstraints();
@@ -2382,7 +2283,7 @@ bool Router::solve() {
 	alignPins(200, true);
 
 	buildPinConstraints(0, true);
-	findAndBreakPinCycles();
+	breakCycles();
 	drawRoutes();
 	buildRouteConstraints(true);
 	assignRouteConstraints();
@@ -2415,8 +2316,8 @@ bool Router::solve() {
 			if (debug) printf("buildPinConstraints()\n");
 			change = true;
 		}
-		if (findAndBreakPinCycles()) {
-			if (debug) printf("findAndBreakPinCycles()\n");
+		if (breakCycles()) {
+			if (debug) printf("breakCycles()\n");
 			change = true;
 		}
 		alignVirtualPins();
