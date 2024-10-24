@@ -299,6 +299,8 @@ struct Router {
 	void load(const Placement &place);
 	bool solve();
 
+	void annotateAreaPerim(Subckt &ckt);
+
 	// Print the solution description
 	void print();
 };

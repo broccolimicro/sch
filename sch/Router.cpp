@@ -323,8 +323,8 @@ int Router::pinWidth(Index p) const {
 	int device = pin(p).device;
 	if (device >= 0) {
 		// this pin is a transistor, use length of transistor
-		return tech->paint[tech->wires[0].draw].minWidth;
-		//return ckt->mos[device].size[0];
+		//return tech->paint[tech->wires[0].draw].minWidth;
+		return ckt->mos[device].size[0];
 	}
 	// this pin is a contact
 	return tech->paint[tech->wires[1].draw].minWidth;
@@ -2414,6 +2414,114 @@ bool Router::solve() {
 
 	//print();
 	return not change and not unresolvedCycle[0] and not unresolvedCycle[1];
+}
+
+void Router::annotateAreaPerim(Subckt &ckt) {
+	int poly = tech->wires[0].draw;
+	for (int type = 0; type < 2; type++) {
+		if (stack[type].pins.empty()) {
+			// there are no pins in the stack
+			continue;
+		}
+
+		auto pin = stack[type].pins.begin();
+		for (; pin != stack[type].pins.end() and pin->device < 0; pin++);
+		while (pin != stack[type].pins.end()) {
+			// DESIGN(edward.bingham) pin->device >= 0
+			auto mos = ckt.mos.begin()+pin->device;
+			int leftTerm = pin->leftNet == mos->drain ? 0 : 1;
+			int rightTerm = pin->rightNet == mos->source ? 1 : 0;
+
+			auto sub = tech->models[mos->model].stack.begin();
+			int diff = tech->subst[::flip(*sub)].draw;
+			vector<int> vias = tech->findVias(::flip(mos->model), 1);
+			if (not vias.empty()) {
+				int via = tech->vias[vias[0]].draw;
+				vec2i diffOverPoly = max(tech->getEnclosing(diff, poly), 0).swap(0,1);
+				vec2i diffOverVia = max(tech->getEnclosing(diff, via), 0).swap(0,1);
+
+				int area = 0;
+				int perim = pin->height;
+				auto curr = pin;
+				int gateCount = 1;
+				while (true) {
+					auto prev = std::prev(curr);
+					if (curr == stack[type].pins.begin() or (curr->device < 0 and prev->device < 0)) {
+						int l = (curr->device < 0 ? diffOverVia[0] : diffOverPoly[0]);
+						int h = curr->height;
+
+						area += l*h;
+						perim += l*2 + h;
+						break;
+					} else {
+						int split;
+						if (prev->height < curr->height) {
+							split = curr->pos - (curr->device < 0 ? diffOverVia[0] : diffOverPoly[0]);
+						} else {
+							split = prev->pos + prev->width + (prev->device < 0 ? diffOverVia[0] : diffOverPoly[0]);
+						}
+
+						int l1 = curr->pos - split;
+						int h1 = curr->height;
+						int l0 = split - (prev->pos + (prev->device < 0 ? 0 : prev->width));
+						int h0 = prev->height;
+
+						area += l1*h1 + l0*h0;
+						perim += 2*l1 + (h1-h0) + 2*l0;
+						if (prev->device >= 0) {
+							perim += h0;
+							gateCount++;
+							break;
+						}
+					}
+					curr = prev;
+				}
+				mos->area[leftTerm] = area/gateCount;
+				mos->perim[leftTerm] = perim/gateCount;
+
+				area = 0;
+				perim = pin->height;
+				curr = pin;
+				gateCount = 1;
+				while (true) {
+					auto next = std::next(curr);
+					if (curr == std::prev(stack[type].pins.end()) or (curr->device < 0 and next->device < 0)) {
+						int l = (curr->device < 0 ? diffOverVia[0] : diffOverPoly[0]);
+						int h = curr->height;
+
+						area += l*h;
+						perim += l*2 + h;
+						break;
+					} else {
+						int split;
+						if (curr->height < next->height) {
+							split = next->pos - (next->device < 0 ? diffOverVia[0] : diffOverPoly[0]);
+						} else {
+							split = curr->pos + curr->width + (curr->device < 0 ? diffOverVia[0] : diffOverPoly[0]);
+						}
+
+						int l0 = split - (curr->pos + (curr->device < 0 ? 0 : curr->width));
+						int h0 = curr->height;
+						int l1 = next->pos - split;
+						int h1 = next->height;
+
+						area += l1*h1 + l0*h0;
+						perim += 2*l1 + (h1-h0) + 2*l0;
+						if (next->device >= 0) {
+							perim += h1;
+							gateCount++;
+							break;
+						}
+					}
+					curr = next;
+				}
+				mos->area[rightTerm] = area/gateCount;
+				mos->perim[rightTerm] = perim/gateCount;
+			}
+
+			for (pin = std::next(pin); pin != stack[type].pins.end() and pin->device < 0; pin++);
+		}
+	}
 }
 
 void Router::print() {

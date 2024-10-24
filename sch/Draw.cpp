@@ -401,7 +401,7 @@ void drawCell(Layout &dst, const Router &rt) {
 
 	dst.nets.reserve(rt.ckt->nets.size());
 	for (int i = 0; i < (int)rt.ckt->nets.size(); i++) {
-		dst.nets.push_back(Port(rt.ckt->nets[i].name));
+		dst.nets.push_back(rt.ckt->nets[i].name);
 		dst.nets.back().isInput = rt.ckt->nets[i].remoteIO and rt.ckt->nets[i].isInput();
 		dst.nets.back().isOutput = rt.ckt->nets[i].remoteIO and rt.ckt->nets[i].isOutput();
 		// TODO(edward.bingham) information about power and ground
@@ -506,12 +506,10 @@ void drawCell(Layout &dst, const Router &rt) {
 				auto r = layer->geo.begin()+j;
 				for (int k = 0; k < (int)rt.ckt->nets.size(); k++) {
 					if (not nets[k] and r->net == k) {
-						dst.nets[k].label = dst.tech->wires[i].draw;
+						dst.label(dst.tech->wires[i].label, Label(k, r->center(), rt.ckt->nets[k].name));
 						if (find(rt.ckt->ports.begin(), rt.ckt->ports.end(), k) != rt.ckt->ports.end()) {
 							dst.push(dst.tech->wires[i].pin, *r);
-							dst.nets[k].label = dst.tech->wires[i].label;
 						}
-						dst.nets[k].pos = (r->ll+r->ur)/2;
 						nets[k] = true;
 					}
 				}
@@ -526,12 +524,10 @@ void drawCell(Layout &dst, const Router &rt) {
 				auto r = layer->geo.begin()+j;
 				for (int k = 0; k < (int)rt.ckt->nets.size(); k++) {
 					if (not nets[k] and r->net == k) {
-						dst.nets[k].label = dst.tech->subst[i].draw;
+						dst.label(dst.tech->subst[i].label, Label(k, r->center(), rt.ckt->nets[k].name));
 						if (find(rt.ckt->ports.begin(), rt.ckt->ports.end(), k) != rt.ckt->ports.end()) {
 							dst.push(dst.tech->subst[i].pin, *r);
-							dst.nets[k].label = dst.tech->subst[i].label;
 						}
-						dst.nets[k].pos = (r->ll+r->ur)/2;
 						nets[k] = true;
 					}
 				}

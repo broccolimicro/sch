@@ -24,19 +24,27 @@ using namespace phy;
 
 namespace sch {
 
-int routeCell(phy::Library &lib, const Netlist &lst, int idx, bool progress, bool debug) {
+int routeCell(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debug) {
 	bool place = true;
 	bool route = true;
 	Placement pl = Placement::solve(lst.subckts[idx]);
 	Router rt(*lib.tech, pl, progress, debug);
 	route = rt.solve();
 	drawCell(lib.macros[idx], rt);
+	rt.annotateAreaPerim(lst.subckts[idx]);
 	if (not place) {
 		return 1;
 	} else if (not route) {
 		return 2;
 	}
 	return 0;
+}
+
+Subckt extract(const Layout &geo) {
+	Subckt ckt;
+
+	vector<vector<int> > nets;
+	
 }
 
 }
