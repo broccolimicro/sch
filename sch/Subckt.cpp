@@ -302,14 +302,20 @@ void Subckt::connectRemote(int n0, int n1) {
 
 int Subckt::pushMos(int model, int type, int drain, int gate, int source, int base) {
 	int result = (int)mos.size();
-	for (auto i = nets[drain].remote.begin(); i != nets[drain].remote.end(); i++) {
-		nets[*i].drainOf[type].push_back(result);
+	if (drain >= 0) {
+		for (auto i = nets[drain].remote.begin(); i != nets[drain].remote.end(); i++) {
+			nets[*i].drainOf[type].push_back(result);
+		}
 	}
-	for (auto i = nets[source].remote.begin(); i != nets[source].remote.end(); i++) {
-		nets[*i].sourceOf[type].push_back(result);
+	if (source >= 0) {
+		for (auto i = nets[source].remote.begin(); i != nets[source].remote.end(); i++) {
+			nets[*i].sourceOf[type].push_back(result);
+		}
 	}
-	for (auto i = nets[gate].remote.begin(); i != nets[gate].remote.end(); i++) {
-		nets[*i].gateOf[type].push_back(result);
+	if (gate >= 0) {
+		for (auto i = nets[gate].remote.begin(); i != nets[gate].remote.end(); i++) {
+			nets[*i].gateOf[type].push_back(result);
+		}
 	}
 
 	mos.push_back(Mos(model, type, drain, gate, source, base));
@@ -356,7 +362,9 @@ void Subckt::pushInst(Instance ckt) {
 	int index = (int)inst.size();
 	inst.push_back(ckt);
 	for (auto p = inst.back().ports.begin(); p != inst.back().ports.end(); p++) {
-		nets[*p].portOf.push_back(index);
+		for (auto n = nets[*p].remote.begin(); n != nets[*p].remote.end(); n++) {
+			nets[*n].portOf.push_back(index);
+		}
 	}
 }
 
@@ -519,25 +527,65 @@ bool Subckt::areCoupled(const Segment &s0, const Segment &s1) const {
 
 void Subckt::apply(const Mapping &m) {
 	for (int i = 0; i < (int)ports.size(); i++) {
-		ports[i] = m.nets[ports[i]];
+		int idx = m.indexOf(ports[i]);
+		if (idx < 0) {
+			printf("error: %s not found in mapping\n", nets[ports[i]].name.c_str());
+		}
+		ports[i] = idx;
 	}
 
 	for (int i = 0; i < (int)mos.size(); i++) {
-		mos[i].gate = m.nets[mos[i].gate];
-		mos[i].source = m.nets[mos[i].source];
-		mos[i].drain = m.nets[mos[i].drain];
-		mos[i].base = m.nets[mos[i].base];
+		int gate = -1, source = -1, drain = -1, base = -1;
+		for (int j = 0; j < (int)m.nets.size(); j++) {
+			if (mos[i].gate == m.nets[j]) {
+				gate = j;
+			}
+			if (mos[i].source == m.nets[j]) {
+				source = j;
+			}
+			if (mos[i].drain == m.nets[j]) {
+				drain = j;
+			}
+			if (mos[i].base == m.nets[j]) {
+				base = j;
+			}
+		}
+
+		if (gate < 0) {
+			printf("error: gate %s not found in mapping\n", nets[mos[i].gate].name.c_str());
+		}
+		if (source < 0) {
+			printf("error: source %s not found in mapping\n", nets[mos[i].source].name.c_str());
+		}
+		if (drain < 0) {
+			printf("error: drain %s not found in mapping\n", nets[mos[i].drain].name.c_str());
+		}
+		if (base < 0) {
+			printf("error: base %s not found in mapping\n", nets[mos[i].base].name.c_str());
+		}
+		mos[i].gate = gate;
+		mos[i].source = source;
+		mos[i].drain = drain;
+		mos[i].base = base;
 	}
 
 	for (int i = 0; i < (int)nets.size(); i++) {
 		for (int j = 0; j < (int)nets[i].remote.size(); j++) {
-			nets[i].remote[j] = m.nets[nets[i].remote[j]];
+			int idx = m.indexOf(nets[i].remote[j]);
+			if (idx < 0) {
+				printf("error: %s not found in mapping\n", nets[nets[i].remote[j]].name.c_str());
+			}
+			nets[i].remote[j] = idx;
 		}
 	}
 
 	for (int i = 0; i < (int)inst.size(); i++) {
 		for (int j = 0; j < (int)inst[i].ports.size(); j++) {
-			inst[i].ports[j] = m.nets[inst[i].ports[j]];
+			int idx = m.indexOf(inst[i].ports[j]);
+			if (idx < 0) {
+				printf("error: %s not found in mapping\n", nets[inst[i].ports[j]].name.c_str());
+			}
+			inst[i].ports[j] = idx;
 		}
 	}
 

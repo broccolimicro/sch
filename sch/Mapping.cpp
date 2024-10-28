@@ -24,6 +24,15 @@ Mapping::Mapping(vector<int> nets) {
 Mapping::~Mapping() {
 }
 
+int Mapping::indexOf(int net) const {
+	for (int i = 0; i < (int)nets.size(); i++) {
+		if (nets[i] == net) {
+			return i;
+		}
+	}
+	return -1;
+}
+
 void Mapping::identity(const Subckt &ckt) {
 	nets.clear();
 
@@ -145,15 +154,15 @@ Mapping Segment::generate(Subckt &dst, const Subckt &src) const {
 		for (int type = 0; type < 2 and not isIO; type++) {
 			for (auto j = n->gateOf[type].begin(); j != n->gateOf[type].end() and not isIO; j++) {
 				auto pos = lower_bound(mos.begin(), mos.end(), *j);
-				isIO = (pos != mos.end() and *pos == *j);
+				isIO = (pos == mos.end() or *pos != *j);
 			}
 			for (auto j = n->sourceOf[type].begin(); j != n->sourceOf[type].end() and not isIO; j++) {
 				auto pos = lower_bound(mos.begin(), mos.end(), *j);
-				isIO = (pos != mos.end() and *pos == *j);
+				isIO = (pos == mos.end() or *pos != *j);
 			}
 			for (auto j = n->drainOf[type].begin(); j != n->drainOf[type].end() and not isIO; j++) {
 				auto pos = lower_bound(mos.begin(), mos.end(), *j);
-				isIO = (pos != mos.end() and *pos == *j);
+				isIO = (pos == mos.end() or *pos != *j);
 			}
 		}
 

@@ -6,6 +6,7 @@
 namespace sch {
 
 int routeCell(phy::Library &lib, Netlist &lst, int idx, bool progress=false, bool debug=false);
-Subckt extract(const Layout &geo);
+bool extract(Subckt &dst, Layout &src);
+bool extract(Netlist &net, phy::Library &lib);
 
 }

@@ -20,7 +20,8 @@ struct Mapping {
 
 	// list of nets from old subckt to include in new subckt
 	vector<int> nets;
-	
+
+	int indexOf(int net) const;	
 	void identity(const Subckt &ckt);
 	void apply(const Mapping &m);
 

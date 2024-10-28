@@ -290,7 +290,7 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 					// thickness as the via. However, we might want to make
 					// that wire min width once we get past the min spacing
 					// and/or notch size rules.
-					Rect bbox = layer->bbox();
+					Rect bbox = layer->second.bbox();
 					if (wire.pins[j].idx.type == Model::PMOS and bbox.ll[0] < pin.pos+width+minSpacing and pin.pos < bbox.ur[0]+minSpacing) {
 						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.pos, bbox.ll[1]), vec2i(posArr[i][j], width)));
 					} else if (wire.pins[j].idx.type == Model::NMOS and bbox.ll[0] < pin.pos+width+minSpacing and pin.pos-minSpacing < bbox.ur[0]) {
@@ -425,14 +425,14 @@ void drawCell(Layout &dst, const Router &rt) {
 			int width = dst.tech->paint[pinLayer].minWidth;
 			//int minSpacing = dst.tech->getSpacing(pinLayer, pinLayer);
 
-			vector<Layer> layers;
+			//vector<Layer> layers;
 			for (auto j = rt.routes.begin(); j != rt.routes.end(); j++) {
 				if (j->hasPin(&rt, Index(type, i))) {
 					auto layer = j->layout.find(pinLayer);
 					if (layer != j->layout.layers.end()) {
-						Layer l = layer->clamp(0, pin.pos, pin.pos+pin.width);
-						l.shift(vec2i(0, j->offset[Model::PMOS])*dir, dir);
-						layers.push_back(l);
+						//Layer l = layer->clamp(0, pin.pos, pin.pos+pin.width);
+						//l.shift(vec2i(0, j->offset[Model::PMOS])*dir, dir);
+						//layers.push_back(l);
 
 						int v = j->offset[Model::PMOS];
 						if (j->net >= 0) {
@@ -472,16 +472,13 @@ void drawCell(Layout &dst, const Router &rt) {
 
 	// fill in min-spacing violations between two wires on the same layer connected to the same net.
 	for (auto layer = dst.layers.begin(); layer != dst.layers.end(); layer++) {
-		if (layer->isRouting) {
-			layer->fillSpacing();
+		if (layer->second.isRouting) {
+			layer->second.fillSpacing();
 		}
-	}
-
-	for (int i = 0; i < (int)dst.layers.size(); i++) {
-		if (dst.layers[i].draw >= 0 and dst.tech->paint[dst.layers[i].draw].fill) {
-			Rect box = dst.layers[i].bbox();
-			dst.layers[i].clear();
-			dst.layers[i].push(box, true);
+		if (layer->first >= 0 and dst.tech->paint[layer->first].fill) {
+			Rect box = layer->second.bbox();
+			layer->second.clear();
+			layer->second.push(box, true);
 		}
 	}
 
@@ -492,43 +489,48 @@ void drawCell(Layout &dst, const Router &rt) {
 
 	dst.merge();
 
-	/*nlab = dst.tech->findPaint("nwell.label");
-	plab = dst.tech->findPaint("pwell.label");
-	nwell = dst.tech->findPaint("nwell.drawing");*/	
-
 	// Find best place to put the pin for the ports
-	vector<bool> nets;
-	nets.resize(rt.ckt->nets.size(), false);
-	for (int i = (int)dst.tech->wires.size()-1; i >= 0; i--) {
-		auto layer = dst.find(dst.tech->wires[i].draw);
+	vector<bool> labelled;
+	labelled.resize(rt.ckt->nets.size(), false);
+	for (auto wire = dst.tech->wires.rbegin(); wire != dst.tech->wires.rend(); wire++) {
+		auto layer = dst.find(wire->draw);
 		if (layer != dst.layers.end()) {
-			for (int j = (int)layer->geo.size()-1; j >= 0; j--) {
-				auto r = layer->geo.begin()+j;
-				for (int k = 0; k < (int)rt.ckt->nets.size(); k++) {
-					if (not nets[k] and r->net == k) {
-						dst.label(dst.tech->wires[i].label, Label(k, r->center(), rt.ckt->nets[k].name));
-						if (find(rt.ckt->ports.begin(), rt.ckt->ports.end(), k) != rt.ckt->ports.end()) {
-							dst.push(dst.tech->wires[i].pin, *r);
-						}
-						nets[k] = true;
+			for (auto r = layer->second.geo.begin(); r != layer->second.geo.end(); r++) {
+				if (r->net >= 0 and not labelled[r->net]) {
+					labelled[r->net] = true;
+					dst.label(wire->label, Label(r->net, r->center(), rt.ckt->nets[r->net].name));
+					if (find(rt.ckt->ports.begin(), rt.ckt->ports.end(), r->net) != rt.ckt->ports.end()) {
+						dst.push(wire->pin, *r);
 					}
 				}
 			}
 		}
 	}
 
-	for (int i = 0; i < (int)dst.tech->subst.size(); i++) {
-		auto layer = dst.find(dst.tech->subst[i].draw);
-		if (layer != dst.layers.end()) {
-			for (int j = (int)layer->geo.size()-1; j >= 0; j--) {
-				auto r = layer->geo.begin()+j;
-				for (int k = 0; k < (int)rt.ckt->nets.size(); k++) {
-					if (not nets[k] and r->net == k) {
-						dst.label(dst.tech->subst[i].label, Label(k, r->center(), rt.ckt->nets[k].name));
-						if (find(rt.ckt->ports.begin(), rt.ckt->ports.end(), k) != rt.ckt->ports.end()) {
-							dst.push(dst.tech->subst[i].pin, *r);
-						}
-						nets[k] = true;
+	for (auto sub = dst.tech->subst.begin(); sub != dst.tech->subst.end(); sub++) {
+		if (sub->draw < 0) {
+			auto layer = dst.find(sub->label);
+			if (layer != dst.layers.end()) {
+				for (auto r = layer->second.geo.begin(); r != layer->second.geo.end(); r++) {
+					if (r->net >= 0) {
+						dst.label(sub->label, Label(r->net, r->center(), rt.ckt->nets[r->net].name));
+						// substrate pins are only allowed to be drawn on a welltap. This is not a welltap
+						//if (find(rt.ckt->ports.begin(), rt.ckt->ports.end(), r->net) != rt.ckt->ports.end()) {
+						//	dst.push(sub->pin, *r);
+						//}
+					}
+				}
+			}
+		} else {
+			auto layer = dst.find(sub->draw);
+			if (layer != dst.layers.end()) {
+				for (auto r = layer->second.geo.begin(); r != layer->second.geo.end(); r++) {
+					if (r->net >= 0) {
+						dst.label(sub->label, Label(r->net, r->center(), rt.ckt->nets[r->net].name));
+						// substrate pins are only allowed to be drawn on a welltap. This is not a welltap
+						//if (find(rt.ckt->ports.begin(), rt.ckt->ports.end(), r->net) != rt.ckt->ports.end()) {
+						//	dst.push(sub->pin, *r);
+						//}
 					}
 				}
 			}
@@ -539,9 +541,9 @@ void drawCell(Layout &dst, const Router &rt) {
 void drawLayout(Layout &dst, const Layout &src, vec2i pos, vec2i dir) {
 	dst.box.bound(src.box.ll*dir + pos, src.box.ur*dir+pos);
 	for (auto layer = src.layers.begin(); layer != src.layers.end(); layer++) {
-		auto dstLayer = dst.at(layer->draw);
-		for (int i = 0; i < (int)layer->geo.size(); i++) {
-			dstLayer->push(layer->geo[i].shift(pos, dir));
+		auto dstLayer = dst.at(layer->first);
+		for (auto r = layer->second.geo.begin(); r != layer->second.geo.end(); r++) {
+			dstLayer->second.push(r->shift(pos, dir));
 		}
 	}
 }

@@ -196,6 +196,7 @@ struct Wire {
 	void resortPins(const Router *rt);
 	int getLevel(int i) const;
 	bool hasGate(const Router *rt) const;
+	int numSourceDrain(const Router *rt) const;
 	vector<bool> pinTypes() const;
 };
 

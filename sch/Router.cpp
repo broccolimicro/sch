@@ -231,6 +231,14 @@ bool Wire::hasGate(const Router *rt) const {
 	return false;
 }
 
+int Wire::numSourceDrain(const Router *rt) const {
+	int result = 0;
+	for (int i = 0; i < (int)pins.size(); i++) {
+		result += (rt->pin(pins[i].idx).device < 0);
+	}
+	return result;
+}
+
 vector<bool> Wire::pinTypes() const {
 	vector<bool> result(3,false);
 	for (int i = 0; i < (int)pins.size(); i++) {
@@ -2220,10 +2228,10 @@ void Router::lowerRoutes(int window) {
 	}*/
 
 	for (int i = 0; i < (int)routes.size(); i++) {
-		/*vector<bool> types = routes[i].pinTypes();
-		if ((not types[Model::PMOS] or not types[Model::NMOS]) and not routes[i].hasGate(this)) {
+		vector<bool> types = routes[i].pinTypes();
+		if ((not types[Model::PMOS] or not types[Model::NMOS]) and not routes[i].hasGate(this) and routes[i].numSourceDrain(this) > 1) {
 			continue;
-		}*/
+		}
 		for (int j = 0; j < (int)routes[i].pins.size(); j++) {
 			int level = this->pin(routes[i].pins[j].idx).layer;
 			if (j+1 < (int)routes[i].pins.size()) {
