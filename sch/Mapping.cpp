@@ -164,6 +164,10 @@ Mapping Segment::generate(Subckt &dst, const Subckt &src) const {
 				auto pos = lower_bound(mos.begin(), mos.end(), *j);
 				isIO = (pos == mos.end() or *pos != *j);
 			}
+			for (auto j = n->baseOf[type].begin(); j != n->baseOf[type].end() and not isIO; j++) {
+				auto pos = lower_bound(mos.begin(), mos.end(), *j);
+				isIO = (pos == mos.end() or *pos != *j);
+			}
 		}
 
 		int j = dst.pushNet(n->name, isIO);

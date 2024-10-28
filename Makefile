@@ -1,5 +1,7 @@
+PYTHON_RELEASE = python$(shell python3 -c "import sys;sys.stdout.write('{}.{}'.format(sys.version_info[0],sys.version_info[1]))")
+
 NAME          = sch
-DEPEND        = interpret_phy phy pgen
+DEPEND        = interpret_phy phy
 
 SRCDIR        = $(NAME)
 TESTDIR       = tests
@@ -7,6 +9,10 @@ GTEST        := ../../googletest
 GTEST_I      := -I$(GTEST)/googletest/include -I.
 GTEST_L      := -L$(GTEST)/build/lib -L.
 
+INCLUDE_PATHS = $(DEPEND:%=-I../%) -I../gdstk/build/include $(shell python3-config --includes) -I.
+LIBRARY_PATHS = $(DEPEND:%=-L../%) -L$(shell python3-config --prefix)/lib -L.
+LIBRARIES     = $(DEPEND:%=-l%) -l$(PYTHON_RELEASE)
+LIBFILES      = $(foreach dep,$(DEPEND),../$(dep)/lib$(dep).a)
 CXXFLAGS      = -std=c++17 -O2 -g -Wall -fmessage-length=0 $(DEPEND:%=-I../%) -I../gdstk/include -I.
 LDFLAGS       =  
 
@@ -67,8 +73,8 @@ build/$(SRCDIR)/%.o: $(SRCDIR)/%.cpp
 	@$(CXX) $(CXXFLAGS) $(LDFLAGS) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ -c $<
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -c -o $@ $<
 
-$(TEST_TARGET): $(TEST_OBJECTS) $(TARGET)
-	$(CXX) $(CXXFLAGS) $(GTEST_L) $(TEST_OBJECTS) -pthread -l$(NAME) -lgtest -o $(TEST_TARGET)
+$(TEST_TARGET): $(TEST_OBJECTS) $(TARGET) $(LIBFILES)
+	$(CXX) $(LIBRARY_PATHS) $(GTEST_L) $(CXXFLAGS) $(LDFLAGS) $(TEST_OBJECTS) -o $(TEST_TARGET) -pthread -l$(NAME) -lgtest $(LIBRARIES)
 
 build/$(TESTDIR)/%.o: $(TESTDIR)/%.cpp
 	@mkdir -p $(dir $@)

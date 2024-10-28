@@ -161,6 +161,8 @@ bool Net::dangling(bool remIO) const {
 		and sourceOf[1].empty()
 		and drainOf[0].empty()
 		and drainOf[1].empty()
+		and baseOf[0].empty()
+		and baseOf[1].empty()
 		and portOf.empty();
 }
 
@@ -236,6 +238,16 @@ int Subckt::pushNet(string name, bool isIO) {
 void Subckt::popNet(int index) {
 	nets.erase(nets.begin()+index);
 
+	for (auto n = nets.begin(); n != nets.end(); n++) {
+		for (int i = (int)n->remote.size()-1; i >= 0; i--) {
+			if (n->remote[i] > index) {
+				n->remote[i]--;
+			} else if (n->remote[i] == index) {
+				n->remote.erase(n->remote.begin()+i);
+			}
+		}
+	}
+
 	for (int i = (int)ports.size()-1; i >= 0; i--) {
 		if (ports[i] > index) {
 			ports[i]--;
@@ -290,6 +302,11 @@ void Subckt::connectRemote(int n0, int n1) {
 		sort(nets[n0].sourceOf[type].begin(), nets[n0].sourceOf[type].end());
 		nets[n0].sourceOf[type].erase(unique(nets[n0].sourceOf[type].begin(), nets[n0].sourceOf[type].end()), nets[n0].sourceOf[type].end());
 		nets[n1].sourceOf[type] = nets[n0].sourceOf[type];
+
+		nets[n0].baseOf[type].insert(nets[n0].baseOf[type].end(), nets[n1].baseOf[type].begin(), nets[n1].baseOf[type].end());
+		sort(nets[n0].baseOf[type].begin(), nets[n0].baseOf[type].end());
+		nets[n0].baseOf[type].erase(unique(nets[n0].baseOf[type].begin(), nets[n0].baseOf[type].end()), nets[n0].baseOf[type].end());
+		nets[n1].baseOf[type] = nets[n0].baseOf[type];
 	}
 	nets[n0].portOf.insert(nets[n0].portOf.end(), nets[n1].portOf.begin(), nets[n1].portOf.end());
 	sort(nets[n0].portOf.begin(), nets[n0].portOf.end());
@@ -317,6 +334,12 @@ int Subckt::pushMos(int model, int type, int drain, int gate, int source, int ba
 			nets[*i].gateOf[type].push_back(result);
 		}
 	}
+	if (base >= 0) {
+		for (auto i = nets[base].remote.begin(); i != nets[base].remote.end(); i++) {
+			nets[*i].baseOf[type].push_back(result);
+		}
+	}
+
 
 	mos.push_back(Mos(model, type, drain, gate, source, base));
 	return result;
@@ -352,6 +375,13 @@ void Subckt::popMos(int index) {
 					n->drainOf[type][j]--;
 				} else if (n->drainOf[type][j] == index) {
 					n->drainOf[type].erase(n->drainOf[type].begin()+j);
+				}
+			}
+			for (int j = (int)n->baseOf[type].size()-1; j >= 0; j--) {
+				if (n->baseOf[type][j] > index) {
+					n->baseOf[type][j]--;
+				} else if (n->baseOf[type][j] == index) {
+					n->baseOf[type].erase(n->baseOf[type].begin()+j);
 				}
 			}
 		}
@@ -529,7 +559,7 @@ void Subckt::apply(const Mapping &m) {
 	for (int i = 0; i < (int)ports.size(); i++) {
 		int idx = m.indexOf(ports[i]);
 		if (idx < 0) {
-			printf("error: %s not found in mapping\n", nets[ports[i]].name.c_str());
+			printf("error: %s not found in mapping\n", ports[i] < 0 ? "NULL" : nets[ports[i]].name.c_str());
 		}
 		ports[i] = idx;
 	}
@@ -552,16 +582,16 @@ void Subckt::apply(const Mapping &m) {
 		}
 
 		if (gate < 0) {
-			printf("error: gate %s not found in mapping\n", nets[mos[i].gate].name.c_str());
+			printf("error: gate %s not found in mapping\n", mos[i].gate < 0 ? "NULL" : nets[mos[i].gate].name.c_str());
 		}
 		if (source < 0) {
-			printf("error: source %s not found in mapping\n", nets[mos[i].source].name.c_str());
+			printf("error: source %s not found in mapping\n", mos[i].source < 0 ? "NULL" : nets[mos[i].source].name.c_str());
 		}
 		if (drain < 0) {
-			printf("error: drain %s not found in mapping\n", nets[mos[i].drain].name.c_str());
+			printf("error: drain %s not found in mapping\n", mos[i].drain < 0 ? "NULL" : nets[mos[i].drain].name.c_str());
 		}
 		if (base < 0) {
-			printf("error: base %s not found in mapping\n", nets[mos[i].base].name.c_str());
+			printf("error: base %s not found in mapping\n", mos[i].base < 0 ? "NULL" : nets[mos[i].base].name.c_str());
 		}
 		mos[i].gate = gate;
 		mos[i].source = source;
@@ -573,7 +603,7 @@ void Subckt::apply(const Mapping &m) {
 		for (int j = 0; j < (int)nets[i].remote.size(); j++) {
 			int idx = m.indexOf(nets[i].remote[j]);
 			if (idx < 0) {
-				printf("error: %s not found in mapping\n", nets[nets[i].remote[j]].name.c_str());
+				printf("error: %s not found in mapping\n", nets[i].remote[j] < 0 ? "NULL" : nets[nets[i].remote[j]].name.c_str());
 			}
 			nets[i].remote[j] = idx;
 		}
@@ -583,7 +613,7 @@ void Subckt::apply(const Mapping &m) {
 		for (int j = 0; j < (int)inst[i].ports.size(); j++) {
 			int idx = m.indexOf(inst[i].ports[j]);
 			if (idx < 0) {
-				printf("error: %s not found in mapping\n", nets[inst[i].ports[j]].name.c_str());
+				printf("error: %s not found in mapping\n", inst[i].ports[j] < 0 ? "NULL" : nets[inst[i].ports[j]].name.c_str());
 			}
 			inst[i].ports[j] = idx;
 		}
@@ -606,6 +636,8 @@ Mapping Subckt::canonicalize() {
 }
 
 int Subckt::compare(const Subckt &ckt) const {
+	// TODO(edward.bingham) This needs to consider device gates and bases, and
+	// needs to consider device size
 	if (nets.size() > ckt.nets.size()) {
 		return 1;
 	} else if (nets.size() < ckt.nets.size()) {
@@ -621,9 +653,15 @@ int Subckt::compare(const Subckt &ckt) const {
 			for (auto j = n0->sourceOf[type].begin(); j != n0->sourceOf[type].end(); j++) {
 				g0.push_back(mos[*j].drain);
 			}
+			for (auto j = n0->drainOf[type].begin(); j != n0->drainOf[type].end(); j++) {
+				g0.push_back(mos[*j].source);
+			}
 			sort(g0.begin(), g0.end());
 			for (auto j = n1->sourceOf[type].begin(); j != n1->sourceOf[type].end(); j++) {
 				g1.push_back(ckt.mos[*j].drain);
+			}
+			for (auto j = n1->drainOf[type].begin(); j != n1->drainOf[type].end(); j++) {
+				g1.push_back(ckt.mos[*j].source);
 			}
 			sort(g1.begin(), g1.end());
 
@@ -647,7 +685,7 @@ int Subckt::compare(const Subckt &ckt) const {
 }
 
 vector<vector<int> > Subckt::createPartitionKey(int net, const Partition &beta) const {
-	const int N = 3;
+	const int N = 2;
 	vector<vector<int> > result;
 	for (auto c = beta.cells.begin(); c != beta.cells.end(); c++) {
 		vector<int> score(2*N+1, 0);
@@ -657,10 +695,10 @@ vector<vector<int> > Subckt::createPartitionKey(int net, const Partition &beta) 
 				score[type*N + 0] += (std::find(c->begin(), c->end(), mos[*i].source) != c->end());
 			}
 			for (auto i = nets[net].sourceOf[type].begin(); i != nets[net].sourceOf[type].end(); i++) {
-				score[type*N + 1] += (std::find(c->begin(), c->end(), mos[*i].drain) != c->end());
+				score[type*N + 0] += (std::find(c->begin(), c->end(), mos[*i].drain) != c->end());
 			}
 			for (auto i = nets[net].gateOf[type].begin(); i != nets[net].gateOf[type].end(); i++) {
-				score[type*N + 2] += (std::find(c->begin(), c->end(), mos[*i].gate) != c->end());
+				score[type*N + 1] += (std::find(c->begin(), c->end(), mos[*i].gate) != c->end());
 			}
 		}
 		result.push_back(score);
@@ -691,6 +729,17 @@ array<int, 4> Subckt::lambda(const Partition::Cell &c0, const Partition::Cell &c
 				for (auto j = c1.begin(); j != c1.end(); j++) {
 					auto n1 = nets.begin()+*j;
 					if (n1->connectedTo(mos[*k].source)) {
+						result[0*2 + type]++;
+					}
+					if (n1->connectedTo(mos[*k].gate)) {
+						result[1*2 + type]++;
+					}
+				}
+			}
+			for (auto k = n0->sourceOf[type].begin(); k != n0->sourceOf[type].end(); k++) {
+				for (auto j = c1.begin(); j != c1.end(); j++) {
+					auto n1 = nets.begin()+*j;
+					if (n1->connectedTo(mos[*k].drain)) {
 						result[0*2 + type]++;
 					}
 					if (n1->connectedTo(mos[*k].gate)) {
@@ -757,8 +806,14 @@ int Subckt::comparePartitions(const Partition &pi0, const Partition &pi1) const 
 			for (auto j = n0->sourceOf[type].begin(); j != n0->sourceOf[type].end(); j++) {
 				g0.push_back(pi0.cellOf(mos[*j].drain));
 			}
+			for (auto j = n0->drainOf[type].begin(); j != n0->drainOf[type].end(); j++) {
+				g0.push_back(pi0.cellOf(mos[*j].drain));
+			}
 			sort(g0.begin(), g0.end());
 			for (auto j = n1->sourceOf[type].begin(); j != n1->sourceOf[type].end(); j++) {
+				g1.push_back(pi1.cellOf(mos[*j].drain));
+			}
+			for (auto j = n1->drainOf[type].begin(); j != n1->drainOf[type].end(); j++) {
 				g1.push_back(pi1.cellOf(mos[*j].drain));
 			}
 			sort(g1.begin(), g1.end());
@@ -819,6 +874,18 @@ void Subckt::printNet(int i) const {
 				printf(", ");
 			}
 			printf("%d", nets[i].drainOf[type][j]);
+		}
+		printf("}");
+	}
+
+	printf(" baseOf=");
+	for (int type = 0; type < 2; type++) {
+		printf("{");
+		for (int j = 0; j < (int)nets[i].baseOf[type].size(); j++) {
+			if (j != 0) {
+				printf(", ");
+			}
+			printf("%d", nets[i].baseOf[type][j]);
 		}
 		printf("}");
 	}

@@ -75,6 +75,7 @@ struct Net {
 	// Number of [NMOS, PMOS] sources or drains that this net is connected to
 	array<vector<int>, 2> sourceOf;
 	array<vector<int>, 2> drainOf;
+	array<vector<int>, 2> baseOf;
 
 	// index into Subckt::inst
 	vector<int> portOf;

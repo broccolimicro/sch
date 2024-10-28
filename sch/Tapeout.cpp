@@ -98,6 +98,20 @@ bool extract(Subckt &dst, Layout &src) {
 			continue;
 		}
 
+		for (auto sub = model->excl.begin(); sub != model->excl.end(); sub++) {
+			if (src.tech->subst[flip(*sub)].draw < 0) {
+				continue;
+			}
+
+			auto layer = src.find(src.tech->subst[flip(*sub)].draw);
+			if (layer == src.layers.end()) {
+				continue;
+			}
+			if (not diff.geo.empty()) {
+				diff = diff & ~layer->second;
+			}
+		}
+
 		int globalBase = -1;
 		if (well != src.layers.end()) {
 			for (auto l1 = well->second.lbl.begin(); l1 != well->second.lbl.end(); l1++) {
@@ -172,6 +186,8 @@ bool extract(Subckt &dst, Layout &src) {
 			dst.pushMos(*src.tech, modelID, model->type, port[0], gate, port[1], base, r0->ur-r0->ll);
 		}
 	}
+
+	dst.cleanDangling();
 
 	return true;
 }
