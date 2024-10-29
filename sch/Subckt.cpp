@@ -94,6 +94,32 @@ int Mos::right(bool flip) const {
 	return flip ? source : drain;
 }
 
+bool Mos::combineParallel(const Mos &m) {
+	if (m.model != model
+		or m.gate != gate
+		or m.base != base
+		or m.params != params) {
+		return false;
+	}
+
+	if (m.size[0] == size[0]
+		and ((m.source == source and m.drain == drain)
+			or (m.source == drain and m.drain == source))) {
+		size[1] += m.size[1];
+		area += m.area;
+		perim += m.perim;
+		return true;
+	}
+
+	return false;
+}
+
+Mos Mos::flip() const {
+	Mos result(*this);
+	swap(result.source, result.drain);
+	return result;
+}
+
 bool operator==(const Mos &m0, const Mos &m1) {
 	return m0.model == m1.model
 		and m0.type == m1.type
@@ -106,6 +132,20 @@ bool operator!=(const Mos &m0, const Mos &m1) {
 		or m0.type != m1.type 
 		or m0.size != m1.size 
 		or m0.params != m1.params;
+}
+
+bool operator<(const Mos &m0, const Mos &m1) {
+	return m0.model < m1.model
+			or (m0.model == m1.model
+				and (m0.base < m1.base
+					or (m0.base == m1.base
+						and (m0.drain < m1.drain
+							or (m0.drain == m1.drain
+								and (m0.gate < m1.gate
+									or (m0.gate == m1.gate
+										and (m0.size[0] < m1.size[0]
+											or (m0.size[0] == m1.size[0]
+												and (m0.size[1] < m1.size[1]))))))))));
 }
 
 Net::Net() {
@@ -555,6 +595,16 @@ bool Subckt::areCoupled(const Segment &s0, const Segment &s1) const {
 	return (hasAtoB and hasBtoA);
 }
 
+void Subckt::combineDevices() {
+	for (int i = (int)mos.size()-2; i >= 0; i--) {
+		for (int j = (int)mos.size()-1; j > i; j--) {
+			if (mos[i].combineParallel(mos[j])) {
+				popMos(j);
+			}
+		}
+	}
+}
+
 void Subckt::apply(const Mapping &m) {
 	for (int i = 0; i < (int)ports.size(); i++) {
 		int idx = m.indexOf(ports[i]);
@@ -649,19 +699,19 @@ int Subckt::compare(const Subckt &ckt) const {
 		auto n1 = ckt.nets.begin()+i;
 		
 		for (int type = 0; type < 2; type++) {
-			vector<int> g0, g1;
+			vector<Mos> g0, g1;
 			for (auto j = n0->sourceOf[type].begin(); j != n0->sourceOf[type].end(); j++) {
-				g0.push_back(mos[*j].drain);
+				g0.push_back(mos[*j]);
 			}
 			for (auto j = n0->drainOf[type].begin(); j != n0->drainOf[type].end(); j++) {
-				g0.push_back(mos[*j].source);
+				g0.push_back(mos[*j].flip());
 			}
 			sort(g0.begin(), g0.end());
 			for (auto j = n1->sourceOf[type].begin(); j != n1->sourceOf[type].end(); j++) {
-				g1.push_back(ckt.mos[*j].drain);
+				g1.push_back(ckt.mos[*j]);
 			}
 			for (auto j = n1->drainOf[type].begin(); j != n1->drainOf[type].end(); j++) {
-				g1.push_back(ckt.mos[*j].source);
+				g1.push_back(ckt.mos[*j].flip());
 			}
 			sort(g1.begin(), g1.end());
 
@@ -669,7 +719,7 @@ int Subckt::compare(const Subckt &ckt) const {
 			for (int j = 0; j < m; j++) {
 				if (g0[j] < g1[j]) {
 					return -1;
-				} else if (g0[j] > g1[j]) {
+				} else if (g1[j] < g0[j]) {
 					return 1;
 				}
 			}
@@ -802,19 +852,35 @@ int Subckt::comparePartitions(const Partition &pi0, const Partition &pi1) const 
 		auto n1 = nets.begin()+pi1.cells[i].back();
 		
 		for (int type = 0; type < 2; type++) {
-			vector<int> g0, g1;
+			vector<Mos> g0, g1;
 			for (auto j = n0->sourceOf[type].begin(); j != n0->sourceOf[type].end(); j++) {
-				g0.push_back(pi0.cellOf(mos[*j].drain));
+				Mos add = mos[*j];
+				add.drain = pi0.cellOf(add.drain);
+				add.gate = pi0.cellOf(add.gate);
+				add.base = pi0.cellOf(add.base);
+				g0.push_back(add);
 			}
 			for (auto j = n0->drainOf[type].begin(); j != n0->drainOf[type].end(); j++) {
-				g0.push_back(pi0.cellOf(mos[*j].drain));
+				Mos add = mos[*j].flip();
+				add.drain = pi0.cellOf(add.drain);
+				add.gate = pi0.cellOf(add.gate);
+				add.base = pi0.cellOf(add.base);
+				g0.push_back(add);
 			}
 			sort(g0.begin(), g0.end());
 			for (auto j = n1->sourceOf[type].begin(); j != n1->sourceOf[type].end(); j++) {
-				g1.push_back(pi1.cellOf(mos[*j].drain));
+				Mos add = mos[*j];
+				add.drain = pi1.cellOf(add.drain);
+				add.gate = pi1.cellOf(add.gate);
+				add.base = pi1.cellOf(add.base);
+				g1.push_back(add);
 			}
 			for (auto j = n1->drainOf[type].begin(); j != n1->drainOf[type].end(); j++) {
-				g1.push_back(pi1.cellOf(mos[*j].drain));
+				Mos add = mos[*j].flip();
+				add.drain = pi1.cellOf(add.drain);
+				add.gate = pi1.cellOf(add.gate);
+				add.base = pi1.cellOf(add.base);
+				g1.push_back(add);
 			}
 			sort(g1.begin(), g1.end());
 
@@ -822,7 +888,7 @@ int Subckt::comparePartitions(const Partition &pi0, const Partition &pi1) const 
 			for (int j = 0; j < m; j++) {
 				if (g0[j] < g1[j]) {
 					return -1;
-				} else if (g0[j] > g1[j]) {
+				} else if (g1[j] < g0[j]) {
 					return 1;
 				}
 			}

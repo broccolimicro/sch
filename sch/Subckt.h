@@ -56,10 +56,16 @@ struct Mos {
 	void setSize(const Tech &tech, vec2i size);
 	int left(bool flip = false) const;
 	int right(bool flip = false) const;
+
+	bool combineParallel(const Mos &m);
+
+	Mos flip() const;
 };
 
 bool operator==(const Mos &m0, const Mos &m1);
 bool operator!=(const Mos &m0, const Mos &m1);
+
+bool operator<(const Mos &m0, const Mos &m1);
 
 // This structure represents a single variable/net.
 struct Net {
@@ -143,6 +149,8 @@ struct Subckt {
 	Segment segment(int net, set<int> *covered=nullptr);
 	vector<Segment> segment();
 	bool areCoupled(const Segment &m0, const Segment &m1) const;
+
+	void combineDevices();
 
 	void apply(const Mapping &m);
 	Mapping canonicalize();
