@@ -96,6 +96,7 @@ void Netlist::mapCells(bool progress) {
 				printf("  %s...", subckts[i].name.c_str());
 				fflush(stdout);
 			}
+			subckts[i].splitDevices(*tech);
 
 			auto segments = subckts[i].segment();
 
@@ -112,7 +113,7 @@ void Netlist::mapCells(bool progress) {
 				int index = insert(cell);
 
 				subckts[i].extract(*s);
-				subckts[i].pushInst(Instance(subckts[index], m, index));
+				subckts[i].push(Instance(subckts[index], m, index));
 
 				//print();
 				for (auto s1 = s+1; s1 != segments.end(); s1++) {

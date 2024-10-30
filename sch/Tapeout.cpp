@@ -48,10 +48,10 @@ bool extract(Subckt &dst, Layout &src) {
 	dst.name = src.name;
 	for (auto net = src.nets.begin(); net != src.nets.end(); net++) {
 		if (net->names.empty()) {
-			dst.pushNet("_" + to_string(dst.nets.size()), net->isInput or net->isOutput);
+			dst.push(Net("_" + to_string(dst.nets.size()), net->isInput or net->isOutput));
 		} else {
 			sort(net->names.begin(), net->names.end());
-			dst.pushNet(net->names[0], net->isInput or net->isOutput);
+			dst.push(Net(net->names[0], net->isInput or net->isOutput));
 		}
 	}
 
@@ -150,7 +150,7 @@ bool extract(Subckt &dst, Layout &src) {
 				}
 			}
 			if (not found) {
-				portIDs.push_back(dst.pushNet("_" + to_string(dst.nets.size()), false));
+				portIDs.push_back(dst.push(Net("_" + to_string(dst.nets.size()), false)));
 			}
 		}
 
@@ -176,14 +176,14 @@ bool extract(Subckt &dst, Layout &src) {
 				base = globalBase;
 			}
 			if (base < 0) {
-				base = dst.pushNet("_" + to_string(dst.nets.size()), false);
+				base = dst.push(Net("_" + to_string(dst.nets.size()), false));
 				globalBase = base;
 			}
 
 			while ((int)port.size() < 2) {
-				port.push_back(dst.pushNet("_" + to_string(dst.nets.size()), false));
+				port.push_back(dst.push(Net("_" + to_string(dst.nets.size()), false)));
 			}
-			dst.pushMos(*src.tech, modelID, model->type, port[0], gate, port[1], base, r0->ur-r0->ll);
+			dst.push(Mos(*src.tech, modelID, model->type, port[0], gate, port[1], base, r0->ur-r0->ll));
 		}
 	}
 

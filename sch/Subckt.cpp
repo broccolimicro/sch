@@ -51,6 +51,9 @@ Mos::Mos(const Tech &tech, int model, int type, int drain, int gate, int source,
 	this->gate = gate;
 	this->source = source;
 	this->base = base;
+	this->size = vec2i(0,0);
+	this->area = vec2i(0,0);
+	this->perim = vec2i(0,0);
 	setSize(tech, size);
 }
 
@@ -122,16 +125,22 @@ Mos Mos::flip() const {
 
 bool operator==(const Mos &m0, const Mos &m1) {
 	return m0.model == m1.model
-		and m0.type == m1.type
-		and m0.size == m1.size
-		and m0.params == m1.params;
+	and m0.base == m1.base
+	and m0.source == m1.source
+	and m0.drain == m1.drain
+	and m0.gate == m1.gate
+	and m0.size[0] == m1.size[0]
+	and m0.size[1] == m1.size[1];
 }
 
 bool operator!=(const Mos &m0, const Mos &m1) {
 	return m0.model != m1.model
-		or m0.type != m1.type 
-		or m0.size != m1.size 
-		or m0.params != m1.params;
+	or m0.base != m1.base
+	or m0.source != m1.source
+	or m0.drain != m1.drain
+	or m0.gate != m1.gate
+	or m0.size[0] != m1.size[0]
+	or m0.size[1] != m1.size[1];
 }
 
 bool operator<(const Mos &m0, const Mos &m1) {
@@ -139,13 +148,31 @@ bool operator<(const Mos &m0, const Mos &m1) {
 			or (m0.model == m1.model
 				and (m0.base < m1.base
 					or (m0.base == m1.base
-						and (m0.drain < m1.drain
-							or (m0.drain == m1.drain
-								and (m0.gate < m1.gate
-									or (m0.gate == m1.gate
-										and (m0.size[0] < m1.size[0]
-											or (m0.size[0] == m1.size[0]
-												and (m0.size[1] < m1.size[1]))))))))));
+						and (m0.source < m1.source
+							or (m0.source == m1.source
+								and (m0.drain < m1.drain
+									or (m0.drain == m1.drain
+										and (m0.gate < m1.gate
+											or (m0.gate == m1.gate
+												and (m0.size[0] < m1.size[0]
+													or (m0.size[0] == m1.size[0]
+														and (m0.size[1] < m1.size[1]))))))))))));
+}
+
+bool operator>(const Mos &m0, const Mos &m1) {
+	return m1.model < m0.model
+			or (m1.model == m0.model
+				and (m1.base < m0.base
+					or (m1.base == m0.base
+						and (m1.source < m0.source
+							or (m1.source == m0.source
+								and (m1.drain < m0.drain
+									or (m1.drain == m0.drain
+										and (m1.gate < m0.gate
+											or (m1.gate == m0.gate
+												and (m1.size[0] < m0.size[0]
+													or (m1.size[0] == m0.size[0]
+														and (m1.size[1] < m0.size[1]))))))))))));
 }
 
 Net::Net() {
@@ -252,7 +279,7 @@ int Subckt::findNet(string name, bool create) {
 		}
 	}
 	if (create) {
-		return pushNet(name);
+		return push(Net(name));
 	}
 	return -1;
 }
@@ -265,14 +292,51 @@ string Subckt::netName(int net) const {
 	return nets[net].name;
 }
 
-int Subckt::pushNet(string name, bool isIO) {
+int Subckt::push(Net n) {
 	int result = (int)nets.size();
-	nets.push_back(Net(name, isIO));
+	nets.push_back(n);
 	nets.back().remote.push_back(result);
-	if (isIO) {
+	if (n.isIO) {
 		ports.push_back(result);
 	}
 	return result;
+}
+
+int Subckt::push(Mos m) {
+	int result = (int)mos.size();
+	if (m.drain >= 0) {
+		for (auto i = nets[m.drain].remote.begin(); i != nets[m.drain].remote.end(); i++) {
+			nets[*i].drainOf[m.type].push_back(result);
+		}
+	}
+	if (m.source >= 0) {
+		for (auto i = nets[m.source].remote.begin(); i != nets[m.source].remote.end(); i++) {
+			nets[*i].sourceOf[m.type].push_back(result);
+		}
+	}
+	if (m.gate >= 0) {
+		for (auto i = nets[m.gate].remote.begin(); i != nets[m.gate].remote.end(); i++) {
+			nets[*i].gateOf[m.type].push_back(result);
+		}
+	}
+	if (m.base >= 0) {
+		for (auto i = nets[m.base].remote.begin(); i != nets[m.base].remote.end(); i++) {
+			nets[*i].baseOf[m.type].push_back(result);
+		}
+	}
+
+	mos.push_back(m);
+	return result;
+}
+
+void Subckt::push(Instance ckt) {
+	int index = (int)inst.size();
+	inst.push_back(ckt);
+	for (auto p = inst.back().ports.begin(); p != inst.back().ports.end(); p++) {
+		for (auto n = nets[*p].remote.begin(); n != nets[*p].remote.end(); n++) {
+			nets[*n].portOf.push_back(index);
+		}
+	}
 }
 
 void Subckt::popNet(int index) {
@@ -323,74 +387,6 @@ void Subckt::popNet(int index) {
 	}
 }
 
-void Subckt::connectRemote(int n0, int n1) {
-	nets[n0].remote.push_back(n1);
-	nets[n1].remote.push_back(n0);
-
-	for (int type = 0; type < 2; type++) {
-		nets[n0].gateOf[type].insert(nets[n0].gateOf[type].end(), nets[n1].gateOf[type].begin(), nets[n1].gateOf[type].end());
-		sort(nets[n0].gateOf[type].begin(), nets[n0].gateOf[type].end());
-		nets[n0].gateOf[type].erase(unique(nets[n0].gateOf[type].begin(), nets[n0].gateOf[type].end()), nets[n0].gateOf[type].end());
-		nets[n1].gateOf[type] = nets[n0].gateOf[type];
-
-		nets[n0].drainOf[type].insert(nets[n0].drainOf[type].end(), nets[n1].drainOf[type].begin(), nets[n1].drainOf[type].end());
-		sort(nets[n0].drainOf[type].begin(), nets[n0].drainOf[type].end());
-		nets[n0].drainOf[type].erase(unique(nets[n0].drainOf[type].begin(), nets[n0].drainOf[type].end()), nets[n0].drainOf[type].end());
-		nets[n1].drainOf[type] = nets[n0].drainOf[type];
-
-		nets[n0].sourceOf[type].insert(nets[n0].sourceOf[type].end(), nets[n1].sourceOf[type].begin(), nets[n1].sourceOf[type].end());
-		sort(nets[n0].sourceOf[type].begin(), nets[n0].sourceOf[type].end());
-		nets[n0].sourceOf[type].erase(unique(nets[n0].sourceOf[type].begin(), nets[n0].sourceOf[type].end()), nets[n0].sourceOf[type].end());
-		nets[n1].sourceOf[type] = nets[n0].sourceOf[type];
-
-		nets[n0].baseOf[type].insert(nets[n0].baseOf[type].end(), nets[n1].baseOf[type].begin(), nets[n1].baseOf[type].end());
-		sort(nets[n0].baseOf[type].begin(), nets[n0].baseOf[type].end());
-		nets[n0].baseOf[type].erase(unique(nets[n0].baseOf[type].begin(), nets[n0].baseOf[type].end()), nets[n0].baseOf[type].end());
-		nets[n1].baseOf[type] = nets[n0].baseOf[type];
-	}
-	nets[n0].portOf.insert(nets[n0].portOf.end(), nets[n1].portOf.begin(), nets[n1].portOf.end());
-	sort(nets[n0].portOf.begin(), nets[n0].portOf.end());
-	nets[n0].portOf.erase(unique(nets[n0].portOf.begin(), nets[n0].portOf.end()), nets[n0].portOf.end());
-	nets[n1].portOf = nets[n0].portOf;
-
-	nets[n0].remoteIO = nets[n0].remoteIO or nets[n1].remoteIO;
-	nets[n1].remoteIO = nets[n0].remoteIO;
-}
-
-int Subckt::pushMos(int model, int type, int drain, int gate, int source, int base) {
-	int result = (int)mos.size();
-	if (drain >= 0) {
-		for (auto i = nets[drain].remote.begin(); i != nets[drain].remote.end(); i++) {
-			nets[*i].drainOf[type].push_back(result);
-		}
-	}
-	if (source >= 0) {
-		for (auto i = nets[source].remote.begin(); i != nets[source].remote.end(); i++) {
-			nets[*i].sourceOf[type].push_back(result);
-		}
-	}
-	if (gate >= 0) {
-		for (auto i = nets[gate].remote.begin(); i != nets[gate].remote.end(); i++) {
-			nets[*i].gateOf[type].push_back(result);
-		}
-	}
-	if (base >= 0) {
-		for (auto i = nets[base].remote.begin(); i != nets[base].remote.end(); i++) {
-			nets[*i].baseOf[type].push_back(result);
-		}
-	}
-
-
-	mos.push_back(Mos(model, type, drain, gate, source, base));
-	return result;
-}
-
-int Subckt::pushMos(const Tech &tech, int model, int type, int drain, int gate, int source, int base, vec2i size) {
-	int result = pushMos(model, type, drain, gate, source, base);
-	mos[result].setSize(tech, size);
-	return result;
-}
-
 void Subckt::popMos(int index) {
 	mos.erase(mos.begin() + index);
 
@@ -428,14 +424,38 @@ void Subckt::popMos(int index) {
 	}
 }
 
-void Subckt::pushInst(Instance ckt) {
-	int index = (int)inst.size();
-	inst.push_back(ckt);
-	for (auto p = inst.back().ports.begin(); p != inst.back().ports.end(); p++) {
-		for (auto n = nets[*p].remote.begin(); n != nets[*p].remote.end(); n++) {
-			nets[*n].portOf.push_back(index);
-		}
+void Subckt::connectRemote(int n0, int n1) {
+	nets[n0].remote.push_back(n1);
+	nets[n1].remote.push_back(n0);
+
+	for (int type = 0; type < 2; type++) {
+		nets[n0].gateOf[type].insert(nets[n0].gateOf[type].end(), nets[n1].gateOf[type].begin(), nets[n1].gateOf[type].end());
+		sort(nets[n0].gateOf[type].begin(), nets[n0].gateOf[type].end());
+		nets[n0].gateOf[type].erase(unique(nets[n0].gateOf[type].begin(), nets[n0].gateOf[type].end()), nets[n0].gateOf[type].end());
+		nets[n1].gateOf[type] = nets[n0].gateOf[type];
+
+		nets[n0].drainOf[type].insert(nets[n0].drainOf[type].end(), nets[n1].drainOf[type].begin(), nets[n1].drainOf[type].end());
+		sort(nets[n0].drainOf[type].begin(), nets[n0].drainOf[type].end());
+		nets[n0].drainOf[type].erase(unique(nets[n0].drainOf[type].begin(), nets[n0].drainOf[type].end()), nets[n0].drainOf[type].end());
+		nets[n1].drainOf[type] = nets[n0].drainOf[type];
+
+		nets[n0].sourceOf[type].insert(nets[n0].sourceOf[type].end(), nets[n1].sourceOf[type].begin(), nets[n1].sourceOf[type].end());
+		sort(nets[n0].sourceOf[type].begin(), nets[n0].sourceOf[type].end());
+		nets[n0].sourceOf[type].erase(unique(nets[n0].sourceOf[type].begin(), nets[n0].sourceOf[type].end()), nets[n0].sourceOf[type].end());
+		nets[n1].sourceOf[type] = nets[n0].sourceOf[type];
+
+		nets[n0].baseOf[type].insert(nets[n0].baseOf[type].end(), nets[n1].baseOf[type].begin(), nets[n1].baseOf[type].end());
+		sort(nets[n0].baseOf[type].begin(), nets[n0].baseOf[type].end());
+		nets[n0].baseOf[type].erase(unique(nets[n0].baseOf[type].begin(), nets[n0].baseOf[type].end()), nets[n0].baseOf[type].end());
+		nets[n1].baseOf[type] = nets[n0].baseOf[type];
 	}
+	nets[n0].portOf.insert(nets[n0].portOf.end(), nets[n1].portOf.begin(), nets[n1].portOf.end());
+	sort(nets[n0].portOf.begin(), nets[n0].portOf.end());
+	nets[n0].portOf.erase(unique(nets[n0].portOf.begin(), nets[n0].portOf.end()), nets[n0].portOf.end());
+	nets[n1].portOf = nets[n0].portOf;
+
+	nets[n0].remoteIO = nets[n0].remoteIO or nets[n1].remoteIO;
+	nets[n1].remoteIO = nets[n0].remoteIO;
 }
 
 void Subckt::extract(const Segment &seg) {
@@ -605,6 +625,54 @@ void Subckt::combineDevices() {
 	}
 }
 
+void Subckt::splitDevices(const Tech &tech) {
+	// check devices against sizing constraints and bins
+	for (int i = (int)mos.size()-1; i >= 0; i--) {
+		auto model = tech.models.begin() + mos[i].model;
+		if (model->bins.empty()) {
+			continue;
+		}
+		int diff = tech.subst[flip(model->stack[0])].draw;
+		int minWidth = tech.paint[diff].minWidth;
+
+		int bin = -1;
+		for (bin = (int)model->bins.size()-1;
+			bin >= 0 and model->bins[bin].first > mos[i].size[1];
+			bin--);
+
+		if (model->bins[bin].second >= mos[i].size[1]) {
+			continue;
+		}
+
+		printf("%d -> (%d %d)\n", mos[i].size[1], model->bins[bin].first, model->bins[bin].second);
+
+		int N = 2;
+		for (; mos[i].size[1]/N > model->bins[bin].second; N++);
+
+		int s0 = mos[i].size[1]/N;
+
+		int b0 = -1;
+		for (b0 = (int)model->bins.size()-1;
+			b0 >= 0 and model->bins[b0].first > s0;
+			b0--);
+		
+		if (model->bins[b0].second < s0) {
+			s0 = model->bins[b0].second;
+		}
+		if (s0 < model->bins[0].first) {
+			s0 = model->bins[0].first;
+		}
+		if (s0 < minWidth) {
+			s0 = minWidth;
+		}
+
+		while (mos[i].size[1] > model->bins[b0].second) {
+			mos[push(mos[i])].size[1] = s0;
+			mos[i].size[1] -= s0;
+		}
+	}
+}
+
 void Subckt::apply(const Mapping &m) {
 	for (int i = 0; i < (int)ports.size(); i++) {
 		int idx = m.indexOf(ports[i]);
@@ -681,6 +749,26 @@ void Subckt::apply(const Mapping &m) {
 Mapping Subckt::canonicalize() {
 	Mapping lbl = canonicalLabels(*this);
 	apply(lbl);
+	for (int i = 0; i < (int)mos.size(); i++) {
+		if (mos[i].drain < mos[i].source) {
+			std::swap(mos[i].source, mos[i].drain);
+		}
+	}
+	sort(mos.begin(), mos.end());
+	for (auto n = nets.begin(); n != nets.end(); n++) {
+		for (int type = 0; type < 2; type++) {
+			n->sourceOf[type].clear();	
+			n->drainOf[type].clear();	
+			n->gateOf[type].clear();	
+			n->baseOf[type].clear();
+		}
+	}
+	for (int i = 0; i < (int)mos.size(); i++) {
+		nets[mos[i].source].sourceOf[mos[i].type].push_back(i);
+		nets[mos[i].drain].drainOf[mos[i].type].push_back(i);
+		nets[mos[i].gate].gateOf[mos[i].type].push_back(i);
+		nets[mos[i].base].baseOf[mos[i].type].push_back(i);
+	}
 	id = std::hash<Subckt>{}(*this);
 	return lbl;
 }
@@ -694,61 +782,145 @@ int Subckt::compare(const Subckt &ckt) const {
 		return -1;
 	}
 
-	for (int i = 0; i < (int)nets.size(); i++) {
-		auto n0 = nets.begin()+i;
-		auto n1 = ckt.nets.begin()+i;
-		
-		for (int type = 0; type < 2; type++) {
-			vector<Mos> g0, g1;
-			for (auto j = n0->sourceOf[type].begin(); j != n0->sourceOf[type].end(); j++) {
-				g0.push_back(mos[*j]);
-			}
-			for (auto j = n0->drainOf[type].begin(); j != n0->drainOf[type].end(); j++) {
-				g0.push_back(mos[*j].flip());
-			}
-			sort(g0.begin(), g0.end());
-			for (auto j = n1->sourceOf[type].begin(); j != n1->sourceOf[type].end(); j++) {
-				g1.push_back(ckt.mos[*j]);
-			}
-			for (auto j = n1->drainOf[type].begin(); j != n1->drainOf[type].end(); j++) {
-				g1.push_back(ckt.mos[*j].flip());
-			}
-			sort(g1.begin(), g1.end());
+	set<int> s0;
+	set<int> s1;
 
-			int m = (int)min(g0.size(), g1.size());
-			for (int j = 0; j < m; j++) {
-				if (g0[j] < g1[j]) {
-					return -1;
-				} else if (g1[j] < g0[j]) {
-					return 1;
+	vector<Mos> m0, m1;
+	for (int i = 0; i < (int)nets.size(); i++) {
+
+		for (int type = 0; type < 2; type++) {
+			for (auto j = nets[i].sourceOf[type].begin(); j != nets[i].sourceOf[type].end(); j++) {
+				if (s0.find(*j) == s0.end()) {
+					s0.insert(*j);
+					m0.push_back(mos[*j]);
+				}
+			}
+			for (auto j = nets[i].drainOf[type].begin(); j != nets[i].drainOf[type].end(); j++) {
+				if (s0.find(*j) == s0.end()) {
+					s0.insert(*j);
+					m0.push_back(mos[*j]);
+					std::swap(m0.back().source, m0.back().drain);	
 				}
 			}
 
-			if (m < (int)g0.size()) {
+			for (auto j = ckt.nets[i].sourceOf[type].begin(); j != ckt.nets[i].sourceOf[type].end(); j++) {
+				if (s1.find(*j) == s1.end()) {
+					s1.insert(*j);
+					m1.push_back(ckt.mos[*j]);
+				}
+			}
+			for (auto j = ckt.nets[i].drainOf[type].begin(); j != ckt.nets[i].drainOf[type].end(); j++) {
+				if (s1.find(*j) == s1.end()) {
+					s1.insert(*j);
+					m1.push_back(ckt.mos[*j]);
+					std::swap(m1.back().source, m1.back().drain);	
+				}
+			}
+		}
+
+		sort(m0.begin(), m0.end());
+		sort(m1.begin(), m1.end());
+
+		for (int j = 0; j < (int)m0.size() and j < (int)m1.size(); j++) {
+			if (m0[j] < m1[j]) {
 				return -1;
-			} else if (m < (int)g1.size()) {
+			} else if (m0[j] > m1[j]) {
 				return 1;
 			}
 		}
+
+		if (m0.size() < m1.size()) {
+			return -1;
+		} else if (m0.size() > m1.size()) {
+			return 1;
+		}
+		m0.clear();
+		m1.clear();
 	}
+
 	return 0;
+
+
+	/*if (mos.size() > ckt.mos.size()) {
+		return 1;
+	} else if (mos.size() < ckt.mos.size()) {
+		return -1;
+	}
+
+	vector<Mos> m0 = mos;
+	vector<Mos> m1 = ckt.mos;
+
+	for (int i = 0; i < (int)m0.size(); i++) {
+		if (m0[i].drain < m0[i].source) {
+			std::swap(m0[i].source, m0[i].drain);
+		}
+		if (m1[i].drain < m1[i].source) {
+			std::swap(m1[i].source, m1[i].drain);
+		}
+	}
+
+	sort(m0.begin(), m0.end());
+	sort(m1.begin(), m1.end());
+	if (m0 == m1) {
+		return 0;
+	} else if (m0 < m1) {
+		return -1;
+	} else {
+		return 1;
+	}*/
 }
 
-vector<vector<int> > Subckt::createPartitionKey(int net, const Partition &beta) const {
-	const int N = 2;
-	vector<vector<int> > result;
+vector<Subckt::PartitionKey> Subckt::createPartitionKey(int net, const Partition &beta) const {
+	vector<Subckt::PartitionKey> result;
 	for (auto c = beta.cells.begin(); c != beta.cells.end(); c++) {
-		vector<int> score(2*N+1, 0);
-		score[2*N + 0] = nets[net].isIO or not nets[net].gateOf[0].empty() or not nets[net].gateOf[1].empty();
+		Subckt::PartitionKey score;
+		// remote nets
 		for (int type = 0; type < 2; type++) {
-			for (auto i = nets[net].drainOf[type].begin(); i != nets[net].drainOf[type].end(); i++) {
-				score[type*N + 0] += (std::find(c->begin(), c->end(), mos[*i].source) != c->end());
-			}
 			for (auto i = nets[net].sourceOf[type].begin(); i != nets[net].sourceOf[type].end(); i++) {
-				score[type*N + 0] += (std::find(c->begin(), c->end(), mos[*i].drain) != c->end());
+				if (std::find(c->begin(), c->end(), mos[*i].drain) != c->end()) {
+					if (std::find(c->begin(), c->end(), mos[*i].gate) != c->end()) {
+						if (mos[*i].model >= (int)score.sdg.size()) {
+							score.sdg.resize(mos[*i].model+1,0);
+						}
+						score.sdg[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
+					} else {
+						if (mos[*i].model >= (int)score.sd.size()) {
+							score.sd.resize(mos[*i].model+1,0);
+						}
+						score.sd[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
+					}
+				}
+			}
+			for (auto i = nets[net].drainOf[type].begin(); i != nets[net].drainOf[type].end(); i++) {
+				if (std::find(c->begin(), c->end(), mos[*i].source) != c->end()) {
+					if (std::find(c->begin(), c->end(), mos[*i].gate) != c->end()) {
+						if (mos[*i].model >= (int)score.sdg.size()) {
+							score.sdg.resize(mos[*i].model+1,0);
+						}
+						score.sdg[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
+					} else {
+						if (mos[*i].model >= (int)score.sd.size()) {
+							score.sd.resize(mos[*i].model+1,0);
+						}
+						score.sd[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
+					}
+				}
 			}
 			for (auto i = nets[net].gateOf[type].begin(); i != nets[net].gateOf[type].end(); i++) {
-				score[type*N + 1] += (std::find(c->begin(), c->end(), mos[*i].gate) != c->end());
+				int count = 0;
+				count += (std::find(c->begin(), c->end(), mos[*i].source) != c->end());
+				count += (std::find(c->begin(), c->end(), mos[*i].drain) != c->end());
+				if (count == 1) {
+					if (mos[*i].model >= (int)score.g1.size()) {
+						score.g1.resize(mos[*i].model+1,0);
+					}
+					score.g1[mos[*i].model] += mos[*i].size[0]*mos[*i].size[1];
+				} else if (count == 2) {
+					if (mos[*i].model >= (int)score.g2.size()) {
+						score.g2.resize(mos[*i].model+1,0);
+					}
+					score.g2[mos[*i].model] += mos[*i].size[0]*mos[*i].size[1];
+				}
 			}
 		}
 		result.push_back(score);
@@ -765,17 +937,64 @@ vector<vector<int> > Subckt::createPartitionKey(int net, const Partition &beta) 
 //   2. number of connections from drain in c0 to source in c1 through pmos
 //   3. number of connections from drain in c0 to gate in c1 through nmos
 //   4. number of connections from drain in c0 to gate in c1 through pmos
-array<int, 4> Subckt::lambda(const Partition::Cell &c0, const Partition::Cell &c1) const {
-	array<int, 4> result;
+Subckt::PartitionKey Subckt::lambda(const Partition::Cell &c0, const Partition::Cell &c1) const {
+	Subckt::PartitionKey result;
 	if (c0.size() == 1 and c1.size() == 1 and c0[0] == c1[0]) {
 		return result;
 	}
 
-	for (auto i = c0.begin(); i != c0.end(); i++) {
-		auto n0 = nets.begin()+*i;
+	for (auto j = c0.begin(); j != c0.end(); j++) {
+		auto n0 = nets.begin()+*j;
 
 		for (int type = 0; type < 2; type++) {
-			for (auto k = n0->drainOf[type].begin(); k != n0->drainOf[type].end(); k++) {
+			for (auto i = n0->sourceOf[type].begin(); i != n0->sourceOf[type].end(); i++) {
+				if (std::find(c1.begin(), c1.end(), mos[*i].drain) != c1.end()) {
+					if (std::find(c1.begin(), c1.end(), mos[*i].gate) != c1.end()) {
+						if (mos[*i].model >= (int)result.sdg.size()) {
+							result.sdg.resize(mos[*i].model+1,0);
+						}
+						result.sdg[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
+					} else {
+						if (mos[*i].model >= (int)result.sd.size()) {
+							result.sd.resize(mos[*i].model+1,0);
+						}
+						result.sd[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
+					}
+				}
+			}
+			for (auto i = n0->drainOf[type].begin(); i != n0->drainOf[type].end(); i++) {
+				if (std::find(c1.begin(), c1.end(), mos[*i].source) != c1.end()) {
+					if (std::find(c1.begin(), c1.end(), mos[*i].gate) != c1.end()) {
+						if (mos[*i].model >= (int)result.sdg.size()) {
+							result.sdg.resize(mos[*i].model+1,0);
+						}
+						result.sdg[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
+					} else {
+						if (mos[*i].model >= (int)result.sd.size()) {
+							result.sd.resize(mos[*i].model+1,0);
+						}
+						result.sd[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
+					}
+				}
+			}
+			for (auto i = n0->gateOf[type].begin(); i != n0->gateOf[type].end(); i++) {
+				int count = 0;
+				count += (std::find(c1.begin(), c1.end(), mos[*i].source) != c1.end());
+				count += (std::find(c1.begin(), c1.end(), mos[*i].drain) != c1.end());
+				if (count == 1) {
+					if (mos[*i].model >= (int)result.g1.size()) {
+						result.g1.resize(mos[*i].model+1,0);
+					}
+					result.g1[mos[*i].model] += mos[*i].size[0]*mos[*i].size[1];
+				} else if (count == 2) {
+					if (mos[*i].model >= (int)result.g2.size()) {
+						result.g2.resize(mos[*i].model+1,0);
+					}
+					result.g2[mos[*i].model] += mos[*i].size[0]*mos[*i].size[1];
+				}
+			}
+
+			/*for (auto k = n0->drainOf[type].begin(); k != n0->drainOf[type].end(); k++) {
 				for (auto j = c1.begin(); j != c1.end(); j++) {
 					auto n1 = nets.begin()+*j;
 					if (n1->connectedTo(mos[*k].source)) {
@@ -796,7 +1015,7 @@ array<int, 4> Subckt::lambda(const Partition::Cell &c0, const Partition::Cell &c
 						result[1*2 + type]++;
 					}
 				}
-			}
+			}*/
 		}
 	}
 	return result;
@@ -808,11 +1027,11 @@ struct lambda_sort {
     }
 };
 
-vector<array<int, 4> > Subckt::lambda(Partition pi) const {
+vector<Subckt::PartitionKey> Subckt::lambda(Partition pi) const {
 	// consistent sort order
 	sort(pi.cells.begin(), pi.cells.end(), lambda_sort());
 
-	vector<array<int, 4> > result;
+	vector<Subckt::PartitionKey> result;
 	result.reserve(pi.cells.size()*pi.cells.size());
 	for (auto cell = pi.cells.begin(); cell != pi.cells.end(); cell++) {
 		result.push_back(lambda(*cell, *cell));
@@ -829,15 +1048,10 @@ vector<array<int, 4> > Subckt::lambda(Partition pi) const {
 }
 
 int Subckt::comparePartitions(const Partition &pi0, const Partition &pi1) const {
-	/*if (pi0.size() > pi1.size()) {
-		return 1;
-	} else if (pi0.size() < pi1.size()) {
-		return -1;
-	}*/
-
 	/*if (not partitionIsDiscrete(pi0) or not partitionIsDiscrete(pi1) or pi0.size() != pi1.size()) {
 		printf("comparePartitions assumptions violated\n");
 	}*/
+
 	// implement G^pi0 <=> G^pi1
 	// The naive way would be to apply pi0 to G to create G0 and apply pi1 to G
 	// to create G1, then represent G0 and G1 as sorted adjacency lists and
@@ -847,59 +1061,100 @@ int Subckt::comparePartitions(const Partition &pi0, const Partition &pi1) const 
 	// The goal is to iterate through each mapping in lexographic order to
 	// generate the relevant edges to compare. This would prevent us from
 	// applying the whole mapping if we can determine order sooner.
-	for (int i = 0; i < (int)nets.size(); i++) {
-		auto n0 = nets.begin()+pi0.cells[i].back();
-		auto n1 = nets.begin()+pi1.cells[i].back();
-		
-		for (int type = 0; type < 2; type++) {
-			vector<Mos> g0, g1;
-			for (auto j = n0->sourceOf[type].begin(); j != n0->sourceOf[type].end(); j++) {
-				Mos add = mos[*j];
-				add.drain = pi0.cellOf(add.drain);
-				add.gate = pi0.cellOf(add.gate);
-				add.base = pi0.cellOf(add.base);
-				g0.push_back(add);
-			}
-			for (auto j = n0->drainOf[type].begin(); j != n0->drainOf[type].end(); j++) {
-				Mos add = mos[*j].flip();
-				add.drain = pi0.cellOf(add.drain);
-				add.gate = pi0.cellOf(add.gate);
-				add.base = pi0.cellOf(add.base);
-				g0.push_back(add);
-			}
-			sort(g0.begin(), g0.end());
-			for (auto j = n1->sourceOf[type].begin(); j != n1->sourceOf[type].end(); j++) {
-				Mos add = mos[*j];
-				add.drain = pi1.cellOf(add.drain);
-				add.gate = pi1.cellOf(add.gate);
-				add.base = pi1.cellOf(add.base);
-				g1.push_back(add);
-			}
-			for (auto j = n1->drainOf[type].begin(); j != n1->drainOf[type].end(); j++) {
-				Mos add = mos[*j].flip();
-				add.drain = pi1.cellOf(add.drain);
-				add.gate = pi1.cellOf(add.gate);
-				add.base = pi1.cellOf(add.base);
-				g1.push_back(add);
-			}
-			sort(g1.begin(), g1.end());
 
-			int m = (int)min(g0.size(), g1.size());
-			for (int j = 0; j < m; j++) {
-				if (g0[j] < g1[j]) {
-					return -1;
-				} else if (g1[j] < g0[j]) {
-					return 1;
+	if (pi0.cells.size() > pi1.cells.size()) {
+		return 1;
+	} else if (pi0.cells.size() < pi1.cells.size()) {
+		return -1;
+	}
+
+	vector<int> cell0(pi0.cells.size(), -1);
+	vector<int> cell1(pi0.cells.size(), -1);
+	for (int i = 0; i < (int)pi0.cells.size(); i++) {
+		for (int j = 0; j < (int)pi0.cells[i].size(); j++) {
+			cell0[pi0.cells[i][j]] = i;
+		}
+	}
+	for (int i = 0; i < (int)pi1.cells.size(); i++) {
+		for (int j = 0; j < (int)pi1.cells[i].size(); j++) {
+			cell1[pi1.cells[i][j]] = i;
+		}
+	}
+
+	vector<bool> s0(mos.size(), false);
+	vector<bool> s1(mos.size(), false);
+
+	vector<Mos> m0, m1;
+	for (int i = 0; i < (int)pi0.cells.size(); i++) {
+		int n0 = pi0.cells[i].back();
+		int n1 = pi1.cells[i].back();
+
+		for (int type = 0; type < 2; type++) {
+			for (auto j = nets[n0].sourceOf[type].begin(); j != nets[n0].sourceOf[type].end(); j++) {
+				if (not s0[*j]) {
+					s0[*j] = true;
+					m0.push_back(mos[*j]);
+					m0.back().gate = cell0[m0.back().gate];
+					m0.back().source = cell0[m0.back().source];
+					m0.back().drain = cell0[m0.back().drain];
+					m0.back().base = cell0[m0.back().base];	
+				}
+			}
+			for (auto j = nets[n0].drainOf[type].begin(); j != nets[n0].drainOf[type].end(); j++) {
+				if (not s0[*j]) {
+					s0[*j] = true;
+					m0.push_back(mos[*j]);
+					m0.back().gate = cell0[m0.back().gate];
+					m0.back().source = cell0[m0.back().source];
+					m0.back().drain = cell0[m0.back().drain];
+					m0.back().base = cell0[m0.back().base];
+					std::swap(m0.back().source, m0.back().drain);	
 				}
 			}
 
-			if (m < (int)g0.size()) {
+			for (auto j = nets[n1].sourceOf[type].begin(); j != nets[n1].sourceOf[type].end(); j++) {
+				if (not s1[*j]) {
+					s1[*j] = true;
+					m1.push_back(mos[*j]);
+					m1.back().gate = cell1[m1.back().gate];
+					m1.back().source = cell1[m1.back().source];
+					m1.back().drain = cell1[m1.back().drain];
+					m1.back().base = cell1[m1.back().base];	
+				}
+			}
+			for (auto j = nets[n1].drainOf[type].begin(); j != nets[n1].drainOf[type].end(); j++) {
+				if (not s1[*j]) {
+					s1[*j] = true;
+					m1.push_back(mos[*j]);
+					m1.back().gate = cell1[m1.back().gate];
+					m1.back().source = cell1[m1.back().source];
+					m1.back().drain = cell1[m1.back().drain];
+					m1.back().base = cell1[m1.back().base];
+					std::swap(m1.back().source, m1.back().drain);	
+				}
+			}
+		}
+
+		sort(m0.begin(), m0.end());
+		sort(m1.begin(), m1.end());
+
+		for (int j = 0; j < (int)m0.size() and j < (int)m1.size(); j++) {
+			if (m0[j] < m1[j]) {
 				return -1;
-			} else if (m < (int)g1.size()) {
+			} else if (m0[j] > m1[j]) {
 				return 1;
 			}
 		}
+
+		if (m0.size() < m1.size()) {
+			return -1;
+		} else if (m0.size() > m1.size()) {
+			return 1;
+		}
+		m0.clear();
+		m1.clear();
 	}
+
 	return 0;
 }
 
@@ -980,6 +1235,34 @@ void Subckt::print() const {
 		printMos(i);
 	}
 	printf("\n");
+}
+
+bool operator==(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1) {
+	return k0.sd == k1.sd and k0.sdg == k1.sdg and k0.g1 == k1.g1 and k0.g2 == k1.g2;
+}
+
+bool operator!=(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1) {
+	return k0.sd != k1.sd or k0.sdg != k1.sdg or k0.g1 != k1.g1 or k0.g2 != k1.g2;
+}
+
+bool operator<(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1) {
+	return k0.sd < k1.sd
+		or (k0.sd == k1.sd
+			and (k0.sdg < k1.sdg
+				or (k0.sdg == k1.sdg
+					and (k0.g1 < k1.g1
+						or (k0.g1 == k1.g1
+							and (k0.g2 < k1.g2))))));
+}
+
+bool operator>(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1) {
+	return k1.sd < k0.sd
+		or (k1.sd == k0.sd
+			and (k1.sdg < k0.sdg
+				or (k1.sdg == k0.sdg
+					and (k1.g1 < k0.g1
+						or (k1.g1 == k0.g1
+							and (k1.g2 < k0.g2))))));
 }
 
 bool operator==(const Subckt &c0, const Subckt &c1) {

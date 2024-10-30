@@ -170,7 +170,7 @@ Mapping Segment::generate(Subckt &dst, const Subckt &src) const {
 			}
 		}
 
-		int j = dst.pushNet(n->name, isIO);
+		int j = dst.push(Net(n->name, isIO));
 		if (j >= (int)m1.nets.size()) {
 			m1.nets.resize(j+1, -1);
 		}
@@ -199,7 +199,7 @@ Mapping Segment::generate(Subckt &dst, const Subckt &src) const {
 			printf("internal %s:%d: cell net map missing nets\n", __FILE__, __LINE__);
 		}
 
-		dst.pushMos(d->model, d->type, drain, gate, source, base);
+		dst.push(Mos(d->model, d->type, drain, gate, source, base));
 		dst.mos.back().size = d->size;
 		dst.mos.back().area = d->area;
 		dst.mos.back().perim = d->perim;

@@ -32,10 +32,10 @@ struct Partition {
 
 	template <typename Graph>
 	Partition refineCell(const Graph &g, int ci, const Partition &beta) const {
-		map<Cells, Cell> partitions;
+		map<vector<typename Graph::PartitionKey>, Cell> partitions;
 		for (auto v = cells[ci].begin(); v != cells[ci].end(); v++) {
 			partitions.insert(
-				pair<Cells, Cell>(
+				pair<vector<typename Graph::PartitionKey>, Cell>(
 					g.createPartitionKey(*v, beta),
 					Cell()
 				)
@@ -75,10 +75,10 @@ struct Partition {
 	}
 };
 
+template <typename Graph>
 struct Frame {
 	Frame() {}
 
-	template <typename Graph>
 	Frame(const Graph &g) {
 		part = Partition::unit(g.verts());
 		part.refine(g, part);
@@ -96,14 +96,13 @@ struct Frame {
 	
 	int v;
 
-	vector<array<int, 4> > l;
+	vector<typename Graph::PartitionKey> l;
 
 	bool inc() {
 		v = part.cells[ci][vi];
 		return (++vi < (int)part.cells[ci].size());
 	}
 
-	template <typename Graph>
 	bool pop(const Graph &g) {
 		if (part.refine(g, part.pop(ci, vi)) or part.isDiscrete(ci)) {
 			ci = part.next();
@@ -114,16 +113,13 @@ struct Frame {
 		return ci < 0;
 	}
 
-	template <typename Graph>
 	bool isLessThan(const Graph &g, const Frame &frame) const {
 		int m = (int)min(l.size(), frame.l.size());
 		for (int i = 0; i < m; i++) {
-			for (int j = 0; j < 4; j++) {
-				if (l[i][j] < frame.l[i][j]) {
-					return false;
-				} else if (l[i][j] > frame.l[i][j]) {
-					return true;
-				}
+			if (l[i] < frame.l[i]) {
+				return false;
+			} else if (l[i] > frame.l[i]) {
+				return true;
 			}
 		}
 
@@ -174,8 +170,8 @@ vector<int> canonicalLabels(const Graph &g) {
 	// prune automorphisms from the search tree.
 	// map<vector<int>, vector<int> > stored;
 
-	vector<Frame> best;
-	vector<Frame> frames(1, Frame(g));
+	vector<Frame<Graph> > best;
+	vector<Frame<Graph> > frames(1, Frame<Graph>(g));
 	if (frames.back().part.isDiscrete()) {
 		best = frames;
 		frames.pop_back();
@@ -183,7 +179,7 @@ vector<int> canonicalLabels(const Graph &g) {
 
 	int explored = 0;
 	while (not frames.empty()) {
-		Frame next = frames.back();
+		Frame<Graph> next = frames.back();
 		if (not frames.back().inc()) {
 			frames.pop_back();
 		}

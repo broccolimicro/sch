@@ -14,9 +14,9 @@ Subckt genRand(int n, bool dev=false, bool swap=false) {
 	vector<int> nets;
 	nets.resize(n*n, 0);
 	for (int i = 0; i < n*n; i++) {
-		nets[i] = ckt.pushNet("n" + to_string(i));
+		nets[i] = ckt.push(sch::Net("n" + to_string(i)));
 	}
-	int base = ckt.pushNet("base");
+	int base = ckt.push(sch::Net("base"));
 
 	std::default_random_engine rand(0/*std::random_device{}()*/);
 	shuffle(nets.begin(), nets.end(), rand);
@@ -26,18 +26,23 @@ Subckt genRand(int n, bool dev=false, bool swap=false) {
 	for (int i = 0; i < n; i++) {
 		for (int j = 0; j < n; j++) {
 			int select = swap ? rand()%2 : 0;
-			ckt.pushMos(-1, Model::NMOS, (select ? nets[((i+1)%n)*n+j] : nets[i*n+j]), nets[i*n+j], (select ? nets[i*n+j] : nets[((i+1)%n)*n+j]), base);
+			ckt.push(Mos(0, Model::NMOS, (select ? nets[((i+1)%n)*n+j] : nets[i*n+j]), nets[i*n+j], (select ? nets[i*n+j] : nets[((i+1)%n)*n+j]), base));
+			ckt.mos.back().size = vec2i(1,1);
 			select = swap ? rand()%2 : 0;
-			ckt.pushMos(-1, Model::NMOS, (select ? nets[((i+n-1)%n)*n+j] : nets[i*n+j]), nets[i*n+j], (select ? nets[i*n+j] : nets[((i+n-1)%n)*n+j]), base);
+			ckt.push(Mos(0, Model::NMOS, (select ? nets[((i+n-1)%n)*n+j] : nets[i*n+j]), nets[i*n+j], (select ? nets[i*n+j] : nets[((i+n-1)%n)*n+j]), base));
+			ckt.mos.back().size = vec2i(1,1);
 			select = swap ? rand()%2 : 0;
-			ckt.pushMos(-1, Model::NMOS, (select ? nets[i*n+(j+1)%n] : nets[i*n+j]), nets[i*n+j], (select ? nets[i*n+j] : nets[i*n+(j+1)%n]), base);
+			ckt.push(Mos(0, Model::NMOS, (select ? nets[i*n+(j+1)%n] : nets[i*n+j]), nets[i*n+j], (select ? nets[i*n+j] : nets[i*n+(j+1)%n]), base));
+			ckt.mos.back().size = vec2i(1,1);
 			select = swap ? rand()%2 : 0;
-			ckt.pushMos(-1, Model::NMOS, (select ? nets[i*n+(j+n-1)%n] : nets[i*n+j]), nets[i*n+j], (select ? nets[i*n+j] : nets[i*n+(j+n-1)%n]), base);
+			ckt.push(Mos(0, Model::NMOS, (select ? nets[i*n+(j+n-1)%n] : nets[i*n+j]), nets[i*n+j], (select ? nets[i*n+j] : nets[i*n+(j+n-1)%n]), base));
+			ckt.mos.back().size = vec2i(1,1);
 		}
 	}
 
 	if (dev) {
-		ckt.pushMos(-1, Model::NMOS, nets[rand()%25], nets[rand()%25], nets[rand()%25], base);
+		ckt.push(Mos(0, Model::NMOS, nets[rand()%25], nets[rand()%25], nets[rand()%25], base));
+		ckt.mos.back().size = vec2i(1,1);
 	}
 	return ckt;
 }

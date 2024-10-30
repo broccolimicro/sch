@@ -62,9 +62,6 @@ struct Mos {
 	Mos flip() const;
 };
 
-bool operator==(const Mos &m0, const Mos &m1);
-bool operator!=(const Mos &m0, const Mos &m1);
-
 bool operator<(const Mos &m0, const Mos &m1);
 
 // This structure represents a single variable/net.
@@ -116,6 +113,19 @@ struct Instance {
 };
 
 struct Subckt {
+	struct PartitionKey {
+		// TODO(edward.bingham) need to handle "base"
+
+		// For a given transistor model
+		// total gate width/length from net to cell for gates not in cell
+		vector<int> sd;
+		// total gate width/length from net to cell for gates in cell
+		vector<int> sdg;
+		// total area from net to gates in cell
+		vector<int> g1;
+		vector<int> g2;
+	};
+
 	Subckt(bool isCell=false);
 	~Subckt();
 
@@ -135,13 +145,13 @@ struct Subckt {
 	int findNet(string name, bool create=false);
 	string netName(int net) const;
 
-	int pushNet(string name, bool isIO=false);
+	int push(Net n);
+	int push(Mos m);
+	void push(Instance ckt);
 	void popNet(int index);
-	void connectRemote(int n0, int n1);
-	int pushMos(int model, int type, int drain, int gate, int source, int base=-1);
-	int pushMos(const Tech &tech, int model, int type, int drain, int gate, int source, int base, vec2i size);
 	void popMos(int index);
-	void pushInst(Instance ckt);
+	
+	void connectRemote(int n0, int n1);
 
 	void extract(const Segment &m);
 	void cleanDangling(bool remIO=false);
@@ -151,15 +161,16 @@ struct Subckt {
 	bool areCoupled(const Segment &m0, const Segment &m1) const;
 
 	void combineDevices();
+	void splitDevices(const Tech &tech);
 
 	void apply(const Mapping &m);
 	Mapping canonicalize();
 	int compare(const Subckt &ckt) const;
 
 
-	vector<vector<int> > createPartitionKey(int v, const Partition &beta) const;
-	array<int, 4> lambda(const Partition::Cell &c0, const Partition::Cell &c1) const;
-	vector<array<int, 4> > lambda(Partition pi) const;
+	vector<PartitionKey> createPartitionKey(int v, const Partition &beta) const;
+	PartitionKey lambda(const Partition::Cell &c0, const Partition::Cell &c1) const;
+	vector<PartitionKey> lambda(Partition pi) const;
 	int comparePartitions(const Partition &pi0, const Partition &pi1) const;
 	int verts() const;
 
@@ -168,6 +179,11 @@ struct Subckt {
 	void printMos(int i) const;
 	void print() const;
 };
+
+bool operator==(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1);
+bool operator!=(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1);
+bool operator<(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1);
+bool operator>(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1);
 
 bool operator==(const Subckt &c0, const Subckt &c1);
 bool operator!=(const Subckt &c0, const Subckt &c1);
