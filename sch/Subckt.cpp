@@ -877,50 +877,30 @@ vector<Subckt::PartitionKey> Subckt::createPartitionKey(int net, const Partition
 		// remote nets
 		for (int type = 0; type < 2; type++) {
 			for (auto i = nets[net].sourceOf[type].begin(); i != nets[net].sourceOf[type].end(); i++) {
-				if (std::find(c->begin(), c->end(), mos[*i].drain) != c->end()) {
-					if (std::find(c->begin(), c->end(), mos[*i].gate) != c->end()) {
-						if (mos[*i].model >= (int)score.sdg.size()) {
-							score.sdg.resize(mos[*i].model+1,0);
-						}
-						score.sdg[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
-					} else {
-						if (mos[*i].model >= (int)score.sd.size()) {
-							score.sd.resize(mos[*i].model+1,0);
-						}
-						score.sd[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
-					}
-				}
+				bool hasDrain = std::find(c->begin(), c->end(), mos[*i].drain) != c->end();
+				bool hasGate = std::find(c->begin(), c->end(), mos[*i].gate) != c->end();
+				bool hasBase = std::find(c->begin(), c->end(), mos[*i].base) != c->end();
+				score.addS(hasDrain, hasGate, hasBase, mos[*i].model, (1000*mos[*i].size[1])/mos[*i].size[0]);
 			}
 			for (auto i = nets[net].drainOf[type].begin(); i != nets[net].drainOf[type].end(); i++) {
-				if (std::find(c->begin(), c->end(), mos[*i].source) != c->end()) {
-					if (std::find(c->begin(), c->end(), mos[*i].gate) != c->end()) {
-						if (mos[*i].model >= (int)score.sdg.size()) {
-							score.sdg.resize(mos[*i].model+1,0);
-						}
-						score.sdg[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
-					} else {
-						if (mos[*i].model >= (int)score.sd.size()) {
-							score.sd.resize(mos[*i].model+1,0);
-						}
-						score.sd[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
-					}
-				}
+				bool hasSource = std::find(c->begin(), c->end(), mos[*i].source) != c->end();
+				bool hasGate = std::find(c->begin(), c->end(), mos[*i].gate) != c->end();
+				bool hasBase = std::find(c->begin(), c->end(), mos[*i].base) != c->end();
+				score.addS(hasSource, hasGate, hasBase, mos[*i].model, (1000*mos[*i].size[1])/mos[*i].size[0]);
 			}
 			for (auto i = nets[net].gateOf[type].begin(); i != nets[net].gateOf[type].end(); i++) {
-				int count = 0;
-				count += (std::find(c->begin(), c->end(), mos[*i].source) != c->end());
-				count += (std::find(c->begin(), c->end(), mos[*i].drain) != c->end());
-				if (count == 1) {
-					if (mos[*i].model >= (int)score.g1.size()) {
-						score.g1.resize(mos[*i].model+1,0);
-					}
-					score.g1[mos[*i].model] += mos[*i].size[0]*mos[*i].size[1];
-				} else if (count == 2) {
-					if (mos[*i].model >= (int)score.g2.size()) {
-						score.g2.resize(mos[*i].model+1,0);
-					}
-					score.g2[mos[*i].model] += mos[*i].size[0]*mos[*i].size[1];
-				}
+				int sdCount = 0;
+				sdCount += (std::find(c->begin(), c->end(), mos[*i].source) != c->end());
+				sdCount += (std::find(c->begin(), c->end(), mos[*i].drain) != c->end());
+				bool hasBase = std::find(c->begin(), c->end(), mos[*i].base) != c->end();
+				score.addG(sdCount, hasBase, mos[*i].model, mos[*i].size[0]*mos[*i].size[1]);
+			}
+			for (auto i = nets[net].baseOf[type].begin(); i != nets[net].baseOf[type].end(); i++) {
+				int sdCount = 0;
+				sdCount += (std::find(c->begin(), c->end(), mos[*i].source) != c->end());
+				sdCount += (std::find(c->begin(), c->end(), mos[*i].drain) != c->end());
+				bool hasGate = std::find(c->begin(), c->end(), mos[*i].gate) != c->end();
+				score.addB(sdCount, hasGate, mos[*i].model, mos[*i].size[0]*mos[*i].size[1]);
 			}
 		}
 		result.push_back(score);
@@ -948,50 +928,30 @@ Subckt::PartitionKey Subckt::lambda(const Partition::Cell &c0, const Partition::
 
 		for (int type = 0; type < 2; type++) {
 			for (auto i = n0->sourceOf[type].begin(); i != n0->sourceOf[type].end(); i++) {
-				if (std::find(c1.begin(), c1.end(), mos[*i].drain) != c1.end()) {
-					if (std::find(c1.begin(), c1.end(), mos[*i].gate) != c1.end()) {
-						if (mos[*i].model >= (int)result.sdg.size()) {
-							result.sdg.resize(mos[*i].model+1,0);
-						}
-						result.sdg[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
-					} else {
-						if (mos[*i].model >= (int)result.sd.size()) {
-							result.sd.resize(mos[*i].model+1,0);
-						}
-						result.sd[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
-					}
-				}
+				bool hasDrain = std::find(c1.begin(), c1.end(), mos[*i].drain) != c1.end();
+				bool hasGate = std::find(c1.begin(), c1.end(), mos[*i].gate) != c1.end();
+				bool hasBase = std::find(c1.begin(), c1.end(), mos[*i].base) != c1.end();
+				result.addS(hasDrain, hasGate, hasBase, mos[*i].model, (1000*mos[*i].size[1])/mos[*i].size[0]);
 			}
 			for (auto i = n0->drainOf[type].begin(); i != n0->drainOf[type].end(); i++) {
-				if (std::find(c1.begin(), c1.end(), mos[*i].source) != c1.end()) {
-					if (std::find(c1.begin(), c1.end(), mos[*i].gate) != c1.end()) {
-						if (mos[*i].model >= (int)result.sdg.size()) {
-							result.sdg.resize(mos[*i].model+1,0);
-						}
-						result.sdg[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
-					} else {
-						if (mos[*i].model >= (int)result.sd.size()) {
-							result.sd.resize(mos[*i].model+1,0);
-						}
-						result.sd[mos[*i].model] += (1000*mos[*i].size[1])/mos[*i].size[0];
-					}
-				}
+				bool hasSource = std::find(c1.begin(), c1.end(), mos[*i].source) != c1.end();
+				bool hasGate = std::find(c1.begin(), c1.end(), mos[*i].gate) != c1.end();
+				bool hasBase = std::find(c1.begin(), c1.end(), mos[*i].base) != c1.end();
+				result.addS(hasSource, hasGate, hasBase, mos[*i].model, (1000*mos[*i].size[1])/mos[*i].size[0]);
 			}
 			for (auto i = n0->gateOf[type].begin(); i != n0->gateOf[type].end(); i++) {
-				int count = 0;
-				count += (std::find(c1.begin(), c1.end(), mos[*i].source) != c1.end());
-				count += (std::find(c1.begin(), c1.end(), mos[*i].drain) != c1.end());
-				if (count == 1) {
-					if (mos[*i].model >= (int)result.g1.size()) {
-						result.g1.resize(mos[*i].model+1,0);
-					}
-					result.g1[mos[*i].model] += mos[*i].size[0]*mos[*i].size[1];
-				} else if (count == 2) {
-					if (mos[*i].model >= (int)result.g2.size()) {
-						result.g2.resize(mos[*i].model+1,0);
-					}
-					result.g2[mos[*i].model] += mos[*i].size[0]*mos[*i].size[1];
-				}
+				int sdCount = 0;
+				sdCount += (std::find(c1.begin(), c1.end(), mos[*i].source) != c1.end());
+				sdCount += (std::find(c1.begin(), c1.end(), mos[*i].drain) != c1.end());
+				bool hasBase = std::find(c1.begin(), c1.end(), mos[*i].base) != c1.end();
+				result.addG(sdCount, hasBase, mos[*i].model, mos[*i].size[0]*mos[*i].size[1]);
+			}
+			for (auto i = n0->baseOf[type].begin(); i != n0->baseOf[type].end(); i++) {
+				int sdCount = 0;
+				sdCount += (std::find(c1.begin(), c1.end(), mos[*i].source) != c1.end());
+				sdCount += (std::find(c1.begin(), c1.end(), mos[*i].drain) != c1.end());
+				bool hasGate = std::find(c1.begin(), c1.end(), mos[*i].gate) != c1.end();
+				result.addB(sdCount, hasGate, mos[*i].model, mos[*i].size[0]*mos[*i].size[1]);
 			}
 
 			/*for (auto k = n0->drainOf[type].begin(); k != n0->drainOf[type].end(); k++) {
@@ -1222,7 +1182,7 @@ void Subckt::printNet(int i) const {
 }
 
 void Subckt::printMos(int i) const {
-	printf("%s(%d) d=%s(%d) g=%s(%d) s=%s(%d) b=%s(%d)\n", (mos[i].type == 0 ? "nmos" : "pmos"), i, nets[mos[i].drain].name.c_str(), mos[i].drain, nets[mos[i].gate].name.c_str(), mos[i].gate, nets[mos[i].source].name.c_str(), mos[i].source, nets[mos[i].base].name.c_str(), mos[i].base);
+	printf("%s[%d](%d) d=%s(%d) g=%s(%d) s=%s(%d) b=%s(%d) w=%d l=%d\n", (mos[i].type == 0 ? "nmos" : "pmos"), mos[i].model, i, nets[mos[i].drain].name.c_str(), mos[i].drain, nets[mos[i].gate].name.c_str(), mos[i].gate, nets[mos[i].source].name.c_str(), mos[i].source, nets[mos[i].base].name.c_str(), mos[i].base, mos[i].size[1], mos[i].size[0]);
 }
 
 void Subckt::print() const {
@@ -1237,32 +1197,83 @@ void Subckt::print() const {
 	printf("\n");
 }
 
+void Subckt::PartitionKey::add(int key, int model, int score) {
+	auto pos = scores.insert(pair<pair<int, int>, int>(pair<int, int>(key, model), 0));
+	pos.first->second += score;
+}
+
+void Subckt::PartitionKey::addS(bool hasOther, bool hasGate, bool hasBase, int model, int score) {
+	int type = -1;
+	if (hasOther and hasGate and hasBase) {
+		type = S2GB;
+	} else if (hasOther and hasGate) {
+		type = S2G;
+	} else if (hasOther and hasBase) {
+		type = S2B;
+	} else if (hasOther) {
+		type = S2;
+	} else if (hasGate and hasBase) {
+		type = S1GB;
+	} else if (hasGate) {
+		type = S1G;
+	} else if (hasBase) {
+		type = S1B;
+	} else {
+		return;
+	}
+	add(type, model, score);
+}
+
+void Subckt::PartitionKey::addG(int sdCount, bool hasBase, int model, int score) {
+	int type = -1;
+	if (sdCount == 2 and hasBase) {
+		type = G2B;
+	} else if (sdCount == 2 and not hasBase) {
+		type = G2;
+	} else if (sdCount == 1 and hasBase) {
+		type = G1B;
+	} else if (sdCount == 1 and not hasBase) {
+		type = G1;
+	} else if (sdCount == 0 and hasBase) {
+		type = GB;
+	} else {
+		return;
+	}
+	add(type, model, score);
+}
+
+void Subckt::PartitionKey::addB(int sdCount, bool hasGate, int model, int score) {
+	int type = -1;
+	if (sdCount == 2 and hasGate) {
+		type = B2G;
+	} else if (sdCount == 2 and not hasGate) {
+		type = B2;
+	} else if (sdCount == 1 and hasGate) {
+		type = B1G;
+	} else if (sdCount == 1 and not hasGate) {
+		type = B1;
+	} else if (sdCount == 0 and hasGate) {
+		type = BG;
+	} else {
+		return;
+	}
+	add(type, model, score);
+}
+
 bool operator==(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1) {
-	return k0.sd == k1.sd and k0.sdg == k1.sdg and k0.g1 == k1.g1 and k0.g2 == k1.g2;
+	return k0.scores == k1.scores;
 }
 
 bool operator!=(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1) {
-	return k0.sd != k1.sd or k0.sdg != k1.sdg or k0.g1 != k1.g1 or k0.g2 != k1.g2;
+	return k0.scores != k1.scores;
 }
 
 bool operator<(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1) {
-	return k0.sd < k1.sd
-		or (k0.sd == k1.sd
-			and (k0.sdg < k1.sdg
-				or (k0.sdg == k1.sdg
-					and (k0.g1 < k1.g1
-						or (k0.g1 == k1.g1
-							and (k0.g2 < k1.g2))))));
+	return k0.scores < k1.scores;
 }
 
 bool operator>(const Subckt::PartitionKey &k0, const Subckt::PartitionKey &k1) {
-	return k1.sd < k0.sd
-		or (k1.sd == k0.sd
-			and (k1.sdg < k0.sdg
-				or (k1.sdg == k0.sdg
-					and (k1.g1 < k0.g1
-						or (k1.g1 == k0.g1
-							and (k1.g2 < k0.g2))))));
+	return k0.scores > k1.scores;
 }
 
 bool operator==(const Subckt &c0, const Subckt &c1) {

@@ -117,13 +117,33 @@ struct Subckt {
 		// TODO(edward.bingham) need to handle "base"
 
 		// For a given transistor model
-		// total gate width/length from net to cell for gates not in cell
-		vector<int> sd;
-		// total gate width/length from net to cell for gates in cell
-		vector<int> sdg;
-		// total area from net to gates in cell
-		vector<int> g1;
-		vector<int> g2;
+		enum {
+			S2=0, // total gate width/length from net to cell for gates not in cell
+			S2G=1, // total gate width/length from net to cell for gates in cell
+			S2B=2,
+			S2GB=3,
+			S1G=4,
+			S1B=5,
+			S1GB=6,
+			G1=7,
+			G1B=8,
+			G2=9, // total area from net to gates in cell
+			G2B=10,
+			GB=11,
+			BG=12,
+			B1G=13,
+			B2G=14,
+			B1=15,
+			B2=16
+		};
+
+		// key type, model -> score
+		map<pair<int, int>, int> scores;
+
+		void add(int key, int model, int score);
+		void addS(bool hasOther, bool hasGate, bool hasBase, int model, int score);
+		void addG(int sdCount, bool hasBase, int model, int score);
+		void addB(int sdCount, bool hasGate, int model, int score);
 	};
 
 	Subckt(bool isCell=false);
