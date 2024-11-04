@@ -97,4 +97,57 @@ RouteGroupConstraint::RouteGroupConstraint(int wire, Index pin) {
 RouteGroupConstraint::~RouteGroupConstraint() {
 }
 
+StackConstraint::StackConstraint() {
+	pins[0] = Index(-1,-1);
+	pins[1] = Index(-1,-1);
+	select = -1;
+	off[0] = 0;
+	off[1] = 0;
+}
+
+StackConstraint::StackConstraint(Index a, Index b, int off0, int off1, int select) {
+	this->pins[0] = a;
+	this->pins[1] = b;
+	this->select = select;
+	this->off[0] = off0;
+	this->off[1] = off1;
+}
+
+StackConstraint::~StackConstraint() {
+}
+
+bool operator==(const StackConstraint &c0, const StackConstraint &c1) {
+	return c0.pins[0] == c1.pins[0] and c0.pins[1] == c1.pins[1];
+}
+
+bool operator<(const StackConstraint &c0, const StackConstraint &c1) {
+	return c0.pins[0] < c1.pins[0] or (c0.pins[0] == c1.pins[0] and c0.pins[1] < c1.pins[1]);
+}
+
+ContactConstraint::ContactConstraint() {
+	pin = Index(-1,-1);
+	select = -1;
+	off[0] = 0;
+	off[1] = 0;
+}
+
+ContactConstraint::ContactConstraint(Index i, int off0, int off1, int select) {
+	this->pin = i;
+	this->select = select;
+	this->off[0] = off0;
+	this->off[1] = off1;
+}
+
+ContactConstraint::~ContactConstraint() {
+}
+
+bool operator==(const ContactConstraint &c0, const ContactConstraint &c1) {
+	return c0.pin == c1.pin;
+}
+
+bool operator<(const ContactConstraint &c0, const ContactConstraint &c1) {
+	return c0.pin < c1.pin;
+}
+
+
 }

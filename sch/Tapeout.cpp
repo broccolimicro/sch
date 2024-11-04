@@ -27,7 +27,7 @@ namespace sch {
 int routeCell(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debug) {
 	bool place = true;
 	bool route = true;
-	Placement pl = Placement::solve(lst.subckts[idx]);
+	Placement pl = Placement::solve(*lib.tech, lst.subckts[idx]);
 	Router rt(*lib.tech, pl, progress, debug);
 	route = rt.solve();
 	drawCell(lib.macros[idx], rt);

@@ -10,9 +10,10 @@ struct Placer;
 // This represents a single transistor placement in the stack
 struct Device {
 	// index into Subckt::mos
-	// if negative, then this represents a "dummy transistor," which is an
-	// empty slot in the transistor stack (also a diffusion break)
 	int device;
+
+	int pos;
+	int length;
 
 	// if flip is false, then [source gate drain]
 	// if flip is true, then [drain gate source]
@@ -38,12 +39,18 @@ struct Device {
 // Then flip
 // [a b c][c d e][e f g][g h i]
 struct Placement {
-	Placement(const Subckt &ckt, int b, int l, int w, int g, std::default_random_engine &rand);
-	Placement(const Placement &p);
+	Placement(const Tech &tech, const Subckt &ckt, int l, int w, int g, std::default_random_engine &rand);
 	~Placement();
 
 	// These are needed to be able to compute the cost of the ordering
-	const Subckt &ckt;
+	const Subckt *ckt;
+	vector<bool> wired;
+
+	int gateToContact;
+	int contactWidth;
+	int seqDist;
+	int parDist;
+	int brkDist;
 
 	// The cost function for the transistor stack ordering is:
 	//
@@ -75,7 +82,7 @@ struct Placement {
 	// These are the coefficients on B, L, W, and G that are used in the cost
 	// function for the transistor stack ordering. Resonable values for these are:
 	// b=12, l=1, w=1, g=10
-	int b, l, w, g;
+	int l, w, g;
 
 	// This is the minimum width over all legal placements. It is computed in
 	// the constructor Placement::Placement() and cached in this structure as an
@@ -93,11 +100,11 @@ struct Placement {
 	// index into the placement.
 	array<vector<Device>, 2> stack;
 
+	int dist(const Device &d0, const Device &d1);
+
 	void move(vec4i choice);	
 	int score();
-	static Placement solve(const Subckt &ckt, int starts=100, int b=12, int l=1, int w=1, int g=10, float step=2.0, float rate=0.02);
-
-	Placement &operator=(const Placement &p);
+	static Placement solve(const Tech &tech, const Subckt &ckt, int starts=100, int l=1, int w=10, int g=2, float step=2.0, float rate=0.02);
 };
 
 }

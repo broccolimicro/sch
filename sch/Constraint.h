@@ -181,4 +181,32 @@ struct RouteGroupConstraint {
 	Index pin;
 };
 
+struct StackConstraint {
+	StackConstraint();
+	StackConstraint(Index a, Index b, int off0=0, int off1=0, int select=-1);
+	~StackConstraint();
+
+	// index into Stack
+	array<Index, 2> pins;
+
+	// from = this->pins[select], to = this->pins[1-select]
+	// If select < 0, then we apply this constraint if the pins overlap eachother and we select the direction of the constraint based upon their current position. If their positions are equal, then we pick based upon the n and p offsets
+	int select;
+
+	// pre-computed spacing information. This is the offset from one
+	// Wire::layout's origin to the other Wire::layout's origin along
+	// the vertical axis
+	array<int, 2> off;
+};
+
+struct ContactConstraint {
+	ContactConstraint();
+	ContactConstraint(Index i, int off0, int off1, int select=-1);
+	~ContactConstraint();
+
+	Index pin;
+	int select;
+	array<int, 2> off;
+};
+
 }
