@@ -223,6 +223,13 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 	vector<vector<int> > posArr;
 	posArr.resize(dst.tech->vias.size());
 
+	int rightOfCell = std::numeric_limits<int>::min();
+	for (int i = 0; i < (int)rt.stack.size(); i++) {
+		if (not rt.stack[i].pins.empty() and rightOfCell < rt.stack[i].pins.back().offset[0]) {
+			rightOfCell = rt.stack[i].pins.back().offset[0];
+		}
+	}
+
 	for (int i = 0; i < (int)dst.tech->vias.size(); i++) {
 		posArr[i].reserve(wire.pins.size());
 
@@ -233,14 +240,18 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 			int prevLevel = wire.getLevel(j-1);
 			int nextLevel = wire.getLevel(j);
 
-			int viaPos = pin.pos;
+			int viaPos = pin.offset[0];
 			if (pinLevel != prevLevel or pinLevel != nextLevel) {
-				viaPos = clamp(viaPos, wire.pins[j].left, wire.pins[j].right);
+				int right = std::numeric_limits<int>::max();
+				if (wire.pins[j].offset[1] != std::numeric_limits<int>::min()) {
+					right = rightOfCell - wire.pins[j].offset[1];
+				}
+				viaPos = clamp(viaPos, wire.pins[j].offset[0], right);
 			}
-			if (wire.pins[j].left > wire.pins[j].right) {
+			//if (wire.pins[j].offset[0] > rightOfCell-wire.pins[j].offset[1]) {
 				//printf("error: pin violation on pin %d\n", j);
 				//printf("pinPos=%d left=%d right=%d viaPos=%d\n", pin.pos, wire.pins[j].left, wire.pins[j].right, viaPos);
-			}
+			//}
 
 			posArr[i].push_back(viaPos);
 		}
@@ -291,12 +302,12 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 					// that wire min width once we get past the min spacing
 					// and/or notch size rules.
 					Rect bbox = layer->second.bbox();
-					if (wire.pins[j].idx.type == Model::PMOS and bbox.ll[0] < pin.pos+width+minSpacing and pin.pos < bbox.ur[0]+minSpacing) {
-						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.pos, bbox.ll[1]), vec2i(posArr[i][j], width)));
-					} else if (wire.pins[j].idx.type == Model::NMOS and bbox.ll[0] < pin.pos+width+minSpacing and pin.pos-minSpacing < bbox.ur[0]) {
-						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.pos, 0), vec2i(posArr[i][j], bbox.ur[1])));
+					if (wire.pins[j].idx.type == Model::PMOS and bbox.ll[0] < pin.offset[0]+width+minSpacing and pin.offset[0] < bbox.ur[0]+minSpacing) {
+						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.offset[0], bbox.ll[1]), vec2i(posArr[i][j], width)));
+					} else if (wire.pins[j].idx.type == Model::NMOS and bbox.ll[0] < pin.offset[0]+width+minSpacing and pin.offset[0]-minSpacing < bbox.ur[0]) {
+						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.offset[0], 0), vec2i(posArr[i][j], bbox.ur[1])));
 					} else {
-						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.pos, 0), vec2i(posArr[i][j], width)));
+						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.offset[0], 0), vec2i(posArr[i][j], width)));
 					}
 				}
 
@@ -344,7 +355,7 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 }
 
 void drawPin(Layout &dst, const Subckt &ckt, const Stack &stack, int pinID, vec2i pos, vec2i dir) {
-	pos[0] += stack.pins[pinID].pos;
+	pos[0] += stack.pins[pinID].offset[0];
 	if (stack.pins[pinID].isContact()) {
 		int model = -1;
 		for (int i = pinID-1; i >= 0 and model < 0; i--) {
@@ -363,7 +374,7 @@ void drawPin(Layout &dst, const Subckt &ckt, const Stack &stack, int pinID, vec2
 			drawViaStack(dst, stack.pins[pinID].outNet, stack.pins[pinID].baseNet, -model-1, 1, vec2i(1,1), vec2i(stack.pins[pinID].width, stack.pins[pinID].height), pos, dir);
 		} else {
 			const Pin &pin = stack.pins[pinID];
-			pos[0] += pin.pos;
+			pos[0] += pin.offset[0];
 			int level = pin.layer;
 			int layer = dst.tech->wires[level].draw;
 			int width = dst.tech->paint[layer].minWidth;
@@ -380,7 +391,7 @@ void drawStack(Layout &dst, const Subckt &ckt, const Stack &stack) {
 	// Draw the stacks
 	for (auto i = stack.pins.begin(); i != stack.pins.end(); i++) {
 		vec2i dir = vec2i(1, stack.type == Model::NMOS ? -1 : 1);
-		drawLayout(dst, i->layout, vec2i(i->pos, 0), dir);
+		drawLayout(dst, i->layout, vec2i(i->offset[0], 0), dir);
 		if (i != stack.pins.begin() and (i->device >= 0 or (i-1)->device >= 0)) {
 			int height = min(i->height, (i-1)->height);
 			int model = -1;
@@ -390,7 +401,7 @@ void drawStack(Layout &dst, const Subckt &ckt, const Stack &stack) {
 				model = ckt.mos[(i-1)->device].model;
 			}
 
-			drawDiffusion(dst, model, -1, vec2i((i-1)->pos, 0), vec2i(i->pos, height)*dir, dir);
+			drawDiffusion(dst, model, -1, vec2i((i-1)->offset[0], 0), vec2i(i->offset[0], height)*dir, dir);
 		}
 	}
 }
@@ -466,7 +477,7 @@ void drawCell(Layout &dst, const Router &rt) {
 			}*/
 
 			// Draw the vertical route from the pin to the wire.
- 			dst.push(dst.tech->wires[pinLevel], Rect(pin.outNet, vec2i(pin.pos, bottom)*dir, vec2i(pin.pos+width, top)*dir));
+ 			dst.push(dst.tech->wires[pinLevel], Rect(pin.outNet, vec2i(pin.offset[0], bottom)*dir, vec2i(pin.offset[0]+width, top)*dir));
 		}
 	}
 

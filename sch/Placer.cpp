@@ -187,6 +187,7 @@ int Placement::score() {
 }
 
 Placement Placement::solve(const Tech &tech, const Subckt &ckt, int starts, int l, int w, int g, float step, float rate) {
+	//printf("Running Placement\n");
 	std::default_random_engine rand(0/*std::random_device{}()*/);
 	Placement best(tech, ckt, l, w, g, rand);
 	if (ckt.mos.size() == 0) {
@@ -214,8 +215,7 @@ Placement Placement::solve(const Tech &tech, const Subckt &ckt, int starts, int 
 
 	// Check multiple possible initial placements to avoid local minima
 	for (int i = 0; i < starts; i++) {
-		//printf("start %d/%d\r", i, starts);
-		//fflush(stdout);
+		//printf("start %d/%d\n", i, starts);
 
 		// Run simulated annealing to find closest minimum
 		Placement curr(tech, ckt, l, w, g, rand);
@@ -253,6 +253,7 @@ Placement Placement::solve(const Tech &tech, const Subckt &ckt, int starts, int 
 			//printf("%f %f %d<%d\n", currStep, rate, newScore, score);
 		} while ((float)score*currStep - (float)newScore > 0.01);
 
+		//printf("done %d/%d\n", score, bestScore);
 		if (score < bestScore) {
 			bestScore = score;
 			best = curr;

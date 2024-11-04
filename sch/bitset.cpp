@@ -56,6 +56,23 @@ bitset &bitset::operator&=(const bitset &b) {
 	return *this;
 }
 
+bool bitset::isSubsetOf(const bitset &b) const {
+	int m = min((int)data.size(), (int)b.data.size());
+	for (int i = 0; i < m; i++) {
+		if ((data[i] & b.data[i]) != data[i]) {
+			return false;
+		}
+	}
+
+	for (int i = m; i < (int)data.size(); i++) {
+		if (data[i] != 0) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 bool bitset::empty() const {
 	for (auto i = data.begin(); i != data.end(); i++) {
 		if (*i != 0) {

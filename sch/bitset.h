@@ -17,6 +17,8 @@ struct bitset {
 	bitset &operator|=(const bitset &b);
 	bitset &operator&=(const bitset &b);
 
+	bool isSubsetOf(const bitset &b) const;
+
 	bool empty() const;
 };
 
