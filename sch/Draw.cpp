@@ -223,13 +223,6 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 	vector<vector<int> > posArr;
 	posArr.resize(dst.tech->vias.size());
 
-	int rightOfCell = std::numeric_limits<int>::min();
-	for (int i = 0; i < (int)rt.stack.size(); i++) {
-		if (not rt.stack[i].pins.empty() and rightOfCell < rt.stack[i].pins.back().offset[0]) {
-			rightOfCell = rt.stack[i].pins.back().offset[0];
-		}
-	}
-
 	for (int i = 0; i < (int)dst.tech->vias.size(); i++) {
 		posArr[i].reserve(wire.pins.size());
 
@@ -242,11 +235,7 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 
 			int viaPos = pin.offset[0];
 			if (pinLevel != prevLevel or pinLevel != nextLevel) {
-				int right = std::numeric_limits<int>::max();
-				if (wire.pins[j].offset[1] != std::numeric_limits<int>::min()) {
-					right = rightOfCell - wire.pins[j].offset[1];
-				}
-				viaPos = clamp(viaPos, wire.pins[j].offset[0], right);
+				viaPos = clamp(viaPos, wire.pins[j].offset[0], wire.pins[j].bound[0]);
 			}
 			//if (wire.pins[j].offset[0] > rightOfCell-wire.pins[j].offset[1]) {
 				//printf("error: pin violation on pin %d\n", j);
