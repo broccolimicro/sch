@@ -247,7 +247,7 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 	}
 
 	for (int i = 0; i < (int)dst.tech->vias.size(); i++) {
-		vector<Layout> vias;
+		vector<pair<Layout, Rect> > vias;
 		vias.reserve(wire.pins.size());
 		int height = 0;
 		for (int j = 0; j < (int)wire.pins.size(); j++) {
@@ -281,8 +281,10 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 				//}
 
 				// Draw the via
+				vec2i viall(posArr[i][j], 0);
+				vec2i viasz(width, height);
 				Layout next(*dst.tech);
-				drawVia(next, wire.net, pin.baseNet, i, axis, vec2i(width, height), true, vec2i(posArr[i][j], 0));
+				drawVia(next, wire.net, pin.baseNet, i, axis, viasz, true, viall);
 				auto layer = next.find(pinLayer);
 				if (layer != next.layers.end()) {
 					// TODO(edward.bingham) This draws the wire from the pin
@@ -302,19 +304,20 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 
 				int off = numeric_limits<int>::min();
 				// Check if we need to merge the vias
-				if (not vias.empty() and minOffset(&off, 0, vias.back(), 0, next, 0, Layout::IGNORE, Layout::DEFAULT) and off > 0) {
-					Rect box = vias.back().box.bound(next.box);
-					vias.back().clear();
-					drawVia(vias.back(), wire.net, pin.baseNet, i, axis, vec2i(box.ur[0]-box.ll[0], height), true, vec2i(box.ll[0], 0));
+				if (not vias.empty() and minOffset(&off, 0, vias.back().first, 0, next, 0, Layout::IGNORE, Layout::DEFAULT) and off > 0) {
+					Rect box = vias.back().second.bound(Rect(-1, viall, viall+viasz));
+					vias.back().first.clear();
+					drawVia(vias.back().first, wire.net, pin.baseNet, i, axis, vec2i(box.ur[0]-box.ll[0], height), true, vec2i(box.ll[0], 0));
+					vias.back().second = box;
 				} else {
-					vias.push_back(next);
+					vias.push_back(pair<Layout, Rect>(next, Rect(-1, viall, viall+viasz)));
 				}
 			}
 		}
 
 		// add all of the new vias to the final layout
 		for (int i = 0; i < (int)vias.size(); i++) {
-			drawLayout(dst, vias[i], pos, dir);
+			drawLayout(dst, vias[i].first, pos, dir);
 		}
 	}
 

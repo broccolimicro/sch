@@ -269,7 +269,7 @@ struct Router {
 	void findAndBreakViaCycles();
 	void alignVirtualPins();
 	void buildContacts();
-	void buildHorizConstraints();
+	void buildStackConstraints(bool reset=false);
 	bool buildPinOffsets(int type, vector<Index> start=vector<Index>(), bool reset=false);
 	void drawRoutes();
 	void createRouteConstraint(int i, int j);

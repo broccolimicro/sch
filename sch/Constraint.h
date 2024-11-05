@@ -199,6 +199,9 @@ struct StackConstraint {
 	array<int, 2> off;
 };
 
+bool operator==(const StackConstraint &c0, const StackConstraint &c1);
+bool operator<(const StackConstraint &c0, const StackConstraint &c1);
+
 struct ContactConstraint {
 	ContactConstraint();
 	ContactConstraint(Index i, int off0, int off1, int select=-1);
@@ -209,4 +212,6 @@ struct ContactConstraint {
 	array<int, 2> off;
 };
 
+bool operator==(const ContactConstraint &c0, const ContactConstraint &c1);
+bool operator<(const ContactConstraint &c0, const ContactConstraint &c1);
 }

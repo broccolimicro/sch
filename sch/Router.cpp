@@ -1369,11 +1369,15 @@ void Router::buildContacts() {
 	}
 }
 
-void Router::buildHorizConstraints() {
-	stackConstraints.clear();
-	for (auto route = routes.begin(); route != routes.end(); route++) {
-		for (auto ct = route->pins.begin(); ct != route->pins.end(); ct++) {
-			ct->constraints.clear();
+void Router::buildStackConstraints(bool reset) {
+	vector<StackConstraint> oldStack;
+	std::swap(oldStack, stackConstraints);
+	vector<vector<vector<ContactConstraint> > > oldCt;
+	oldCt.resize(routes.size());
+	for (int i = 0; i < (int)routes.size(); i++) {
+		oldCt[i].resize(routes[i].pins.size());
+		for (int j = 0; j < (int)routes[i].pins.size(); j++) {
+			std::swap(routes[i].pins[j].constraints, oldCt[i][j]);
 		}
 	}
 
@@ -1384,10 +1388,10 @@ void Router::buildHorizConstraints() {
 	
 	for (int t0 = 0; t0 < (int)stack.size(); t0++) {
 		for (int i0 = 0; i0 < (int)stack[t0].pins.size(); i0++) {
-			Pin &to = stack[t0].pins[i0];
-			for (int t1 = 0; t1 < (int)stack.size(); t1++) {
-				for (int i1 = 0; i1 < (t0 == t1 ? i0 : (int)stack[t1].pins.size()); i1++) {
-					Pin &from = stack[t1].pins[i1];
+			Pin &from = stack[t0].pins[i0];
+			for (int t1 = t0; t1 < (int)stack.size(); t1++) {
+				for (int i1 = (t0 == t1 ? i0+1 : 0); i1 < (int)stack[t1].pins.size(); i1++) {
+					Pin &to = stack[t1].pins[i1];
 					int substrateMode = Layout::IGNORE;
 					int routingMode = Layout::MERGENET;
 					if (t0 == t1) {
@@ -1401,7 +1405,7 @@ void Router::buildHorizConstraints() {
 					bool fromto = minOffset(&off[0], 0, from.layout, 0, to.layout, 0, substrateMode, routingMode, false);
 					bool tofrom = minOffset(&off[1], 0, to.layout, 0, from.layout, 0, substrateMode, routingMode, false);
 					if (fromto or tofrom) {
-						stackConstraints.push_back(StackConstraint(Index(t1, i1), Index(t0, i0), off[0], off[1], t0 == t1 ? 0 : -1));
+						stackConstraints.push_back(StackConstraint(Index(t0, i0), Index(t1, i1), off[0], off[1], t0 == t1 ? 0 : -1));
 					}
 				}
 			}
@@ -1414,8 +1418,8 @@ void Router::buildHorizConstraints() {
 
 				for (auto ct = route->pins.begin(); ct != route->pins.end(); ct++) {
 					array<int, 2> off={0,0};
-					bool pinct = minOffset(&off[0], 0, to.layout, 0, ct->layout, 0, Layout::IGNORE, routingMode);
-					bool ctpin = minOffset(&off[1], 0, ct->layout, 0, to.layout, 0, Layout::IGNORE, routingMode);
+					bool pinct = minOffset(&off[0], 0, from.layout, 0, ct->layout, 0, Layout::IGNORE, routingMode);
+					bool ctpin = minOffset(&off[1], 0, ct->layout, 0, from.layout, 0, Layout::IGNORE, routingMode);
 
 					if (pinct or ctpin) {
 						ct->constraints.push_back(ContactConstraint(Index(t0, i0), off[0], off[1], -1));
@@ -1424,10 +1428,46 @@ void Router::buildHorizConstraints() {
 			}
 		}
 	}
+
+	if (not reset) {
+		// TODO(edward.bingham) Do I need to think about constraints that have been
+		// eliminated as a function of the layers?
+		int i = (int)stackConstraints.size()-1;
+		int j = (int)oldStack.size()-1;
+		while (i >= 0 and j >= 0) {
+			if (stackConstraints[i] == oldStack[j]) {
+				stackConstraints[i].select = oldStack[j].select;
+				i--;
+				j--;
+			} else if (stackConstraints[i] < oldStack[j]) {
+				j--;
+			} else if (oldStack[j] < stackConstraints[i]) {
+				i--;
+			}
+		}
+
+		for (int i = 0; i < (int)routes.size(); i++) {
+			for (int j = 0; j < (int)routes[i].pins.size(); j++) {
+				int k = (int)routes[i].pins[j].constraints.size()-1;
+				int l = (int)oldCt[i][j].size()-1;
+				while (k >= 0 and l >= 0) {
+					if (routes[i].pins[j].constraints[k] == oldCt[i][j][l]) {
+						routes[i].pins[j].constraints[k].select = oldCt[i][j][l].select;
+						k--;
+						l--;
+					} else if (routes[i].pins[j].constraints[k] < oldCt[i][j][l]) {
+						l--;
+					} else if (oldCt[i][j][l] < routes[i].pins[j].constraints[k]) {
+						k--;
+					}
+				}
+			}
+		}
+	}
 }
 
 // depends on:
-// buildHorizConstraints() - these constraints determine the
+// buildStackConstraints() - these constraints determine the
 //                           position of the pins
 bool Router::buildPinOffsets(int type, vector<Index> start, bool reset) {
 	bool change = false;
@@ -2498,7 +2538,6 @@ int Router::computeCost() {
 // invariant across different routing solutions
 void Router::load(const Placement &place, bool createIO) {
 	// Save the resulting placement to the Subckt
-	printf("loading placement\n");
 	for (int type = 0; type < (int)stack.size(); type++) {
 		stack[type].type = type;
 		stack[type].pins.clear();
@@ -2512,7 +2551,6 @@ void Router::load(const Placement &place, bool createIO) {
 		}
 	}
 
-	printf("drawing pins\n");
 	// Draw the pins
 	for (int type = 0; type < (int)stack.size(); type++) {
 		for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
@@ -2529,7 +2567,6 @@ void Router::load(const Placement &place, bool createIO) {
 
 	// Create cell-edge IO pins if desired
 	if (createIO) {
-		printf("create IO\n");
 		for (int i = 0; i < (int)ckt->nets.size(); i++) {
 			if (ckt->nets[i].isIO) {
 				/*bool found = false;
@@ -2549,7 +2586,6 @@ void Router::load(const Placement &place, bool createIO) {
 	}
 
 	// Create initial routes
-	printf("generating routes\n");
 	routes.clear();
 	routes.reserve(ckt->nets.size()+2);
 	for (int i = 0; i < (int)ckt->nets.size(); i++) {
@@ -2580,13 +2616,11 @@ void Router::load(const Placement &place, bool createIO) {
 		}
 	}
 
-	printf("buildContacts\n");
 	// Draw the contacts
 	buildContacts();
 
-	printf("buildHorizConstraints\n");
 	// Determine the horizontal constraints between pins and contacts
-	buildHorizConstraints();
+	buildStackConstraints(true);
 }
 
 bool Router::solve() {
@@ -2600,13 +2634,21 @@ bool Router::solve() {
 	buildRouteConstraints(true, true);
 	assignRouteConstraints();
 	alignVirtualPins();
-	buildPinOffsets(0, vector<Index>(), true);
-	buildPinOffsets(1, vector<Index>(), true);
-	
-	lowerRoutes();
+
+	for (int i = 0; i < 10; i++) {
+		assignStackConstraints();
+		buildPinOffsets(0, vector<Index>(), true);
+		buildPinOffsets(1, vector<Index>(), true);
+		drawRoutes();
+		
+		buildRouteConstraints();
+		assignRouteConstraints();
+	}
+
+	/*lowerRoutes();
 	buildGroupConstraints();
 
-	buildHorizConstraints();
+	buildStackConstraints();
 	assignRouteConstraints();
 	buildPinOffsets(0, vector<Index>(), true);
 	buildPinOffsets(1, vector<Index>(), true);
@@ -2620,7 +2662,7 @@ bool Router::solve() {
 	assignStackConstraints();
 	buildPinOffsets(0, vector<Index>(), false);
 	buildPinOffsets(1, vector<Index>(), false);
-	drawRoutes();
+	drawRoutes();*/
 
 /*	buildPinOffsets(0);
 
