@@ -2014,16 +2014,133 @@ void Router::alignPins() {
 			rightOfCell = stack[i].pins.back().offset[0];
 		}
 	}
-
 	vector<bitset> prev = pinOrderMap();
+	
+	/*array<map<int, vector<int> >, 3> index;
+	for (int = 0; i < (int)stackConstraints.size(); i++) {
+		auto pos = index[stackConstraints[i].pins[0].type].insert(pair<int, vector<int> >(stackConstraints[i].pins[0].pin, vector<int>()));
+		pos.first->second.push_back(i);
+		pos = index[stackConstraints[i].pins[1].type].insert(pair<int, vector<int> >(stackConstraints[i].pins[1].pin, vector<int>()));
+		pos.first->second.push_back(i);
+	}
+
+	// Align pins (prefer gates first)
 	while (true) {
+		array<Index, 2> mos = {Index(0,-1),Index(1,-1)};
+		int score = -1;
+		for (int i = 0; i < (int)stack[Model::PMOS].pins.size(); i++) {
+			Pin &pini = stack[Model::PMOS].pins[i];
+			for (int j = 0; j < (int)stack[Model::NMOS].pins.size(); j++) {
+				Pin &pinj = stack[Model::NMOS].pins[j];
+				if (pini.outNet != pinj.outNet) {
+					continue;
+				}
+
+				int li = pini.offset[0];
+				int ri = std::numeric_limits<int>::max();
+				if (pini.offset[1] != std::numeric_limits<int>::min()) {
+					ri = rightOfCell-pini.offset[1];
+				}
+				int lj = pinj.offset[0];
+				int rj = std::numeric_limits<int>::max();
+				if (pinj.offset[1] != std::numeric_limits<int>::min()) {
+					rj = rightOfCell-pinj.offset[1];
+				}
+
+				int cost = max(li-rj, lj-ri);
+				if (mos[0].pin < 0 or cost < score) {
+					mos[Model::PMOS].pin = i;
+					mos[Model::NMOS].pin = j;
+				}
+			}
+		}
+
+		if (mos[0].pin < 0 or score > 0) {
+			break;
+		}
+
+		set<int> todo;
+		vector<Index> from;
+		vector<Index> to;
+		auto pcon = index[Model::PMOS].find(mos[Model::PMOS]);
+		auto ncon = index[Model::NMOS].find(mos[Model::NMOS]);
+		if (pcon == index[Model::PMOS].end() or ncon == index[Model::NMOS].end()) {
+			break;
+		}
+
+		for 
+
+		for (auto i = stackConstraints.begin(); i != stackConstraints.end(); i++) {
+			for (int type = 0; type < 2; type++) {
+				for (int k = 0; k < 2; k++) {
+					if (i->select >= 0 and i->pins[k] == mos[type]) {
+						for (auto j = stackConstraints.begin(); j != stackConstraints.end(); j++) {
+							if (j->pins[k] == mos[1-type] and j->pins[1-k] == i->pins[1-k]) {
+								if (j->select < 0) {
+									j->select = i->select;
+
+									from.push_back(j->pins[j->select]);
+									to.push_back(j->pins[1-j->select]);
+									int aIdx = offset[j->pins[j->select].type]+j->pins[j->select].pin;
+									int bIdx = offset[j->pins[1-j->select].type]+j->pins[1-j->select].pin;
+									prev[bIdx].set(aIdx, true);
+									prev[bIdx] |= prev[aIdx];
+									todo.insert(bIdx);
+								}
+								break;
+							} else if (j->pins[k] == i->pins[1-k] and j->pins[1-k] == mos[1-type]) {
+								if (j->select < 0) {
+									j->select = 1-i->select;
+
+									from.push_back(j->pins[j->select]);
+									to.push_back(j->pins[1-j->select]);
+									int aIdx = offset[j->pins[j->select].type]+j->pins[j->select].pin;
+									int bIdx = offset[j->pins[1-j->select].type]+j->pins[1-j->select].pin;
+									prev[bIdx].set(aIdx, true);
+									prev[bIdx] |= prev[aIdx];
+									todo.insert(bIdx);
+								}
+								break;
+							}
+						}
+						break;
+					} 
+				}
+			}
+		}
+
+		buildPinOffsets(0, from);
+		buildPinOffsets(1, to);
+		propagateOrderMap(prev, todo);
+		
+		rightOfCell = std::numeric_limits<int>::min();
+		for (int i = 0; i < (int)stack.size(); i++) {
+			if (not stack[i].pins.empty() and rightOfCell < stack[i].pins.back().offset[0]) {
+				rightOfCell = stack[i].pins.back().offset[0];
+			}
+		}
+	}*/
+
+
+	// Interleave routes
+	while (true) {
+		if (debug) print();
 		int score = -1;
 		map<int, int> best;
 
 		array<int, 2> x = {0,0};
 
 		for (auto r0 = routes.begin(); r0 != routes.end(); r0++) {
+			vector<bool> types0 = r0->pinTypes();
+			if (r0->net < 0 or not types0[Model::PMOS] or not types0[Model::NMOS]) {
+				continue;
+			}
+
 			for (auto r1 = routes.begin(); r1 != routes.end(); r1++) {
+				vector<bool> types1 = r1->pinTypes();
+				if (r1->net < 0 or not types1[Model::PMOS] or not types1[Model::NMOS]) {
+					continue;
+				}
 				// do these routes overlap?
 
 				vector<bitset> test = prev;
@@ -2053,15 +2170,15 @@ void Router::alignPins() {
 							}
 
 							if (cnst->select >= 0) {
-								// these pins have already been deconflicted? This shouldn't happen
-								break;
+								// these pins have already been deconflicted
+								continue;
 							}
 							
 							int minCost = std::numeric_limits<int>::max();
 							int select = -1;
 							for (int s = 0; s < 2; s++) {
-								Index from = s == 0 ? i->idx : j->idx;
-								Index to = s == 0 ? j->idx : i->idx;
+								Index from = cnst->pins[s];
+								Index to = cnst->pins[1-s];
 
 								int fromIdx = offset[from.type]+from.pin;
 								int toIdx = offset[to.type]+to.pin;
@@ -2071,16 +2188,17 @@ void Router::alignPins() {
 								}
 								error = false;
 
-								int amin = s == 0 ? pini.offset[0] : pinj.offset[0];
-								int bmax = s == 0 ? pinj.offset[1] : pini.offset[1];
-								if (bmax == std::numeric_limits<int>::min()) {
-									bmax = std::numeric_limits<int>::max();
-								} else {
-									bmax = rightOfCell - bmax;
+								Pin &a = pin(from);
+								Pin &b = pin(to);
+
+								int amin = a.offset[0];
+								int bmax = std::numeric_limits<int>::max();
+								if (b.offset[1] != std::numeric_limits<int>::min()) {
+									bmax = rightOfCell - b.offset[1];
 								}
 
 								// what is the cost to overlap these two pins?
-								int cost = max(0, amin - bmax + cnst->off[s]);
+								int cost = amin - bmax + cnst->off[s];
 								if (cost < minCost) {
 									minCost = cost;
 									select = s;
@@ -2090,7 +2208,7 @@ void Router::alignPins() {
 							if (select < 0) {
 								error = true;
 							} else {
-								total += minCost;
+								total += max(0, minCost);
 								assignments.insert(pair<int, int>(cnst-stackConstraints.begin(), select));
 							}
 						}
@@ -2115,11 +2233,11 @@ void Router::alignPins() {
 		set<int> todo;
 		vector<Index> from;
 		vector<Index> to;
-		printf("Interleaving Routes %d and %d\n", x[0], x[1]);
+		if (debug) printf("Interleaving Routes %d and %d\n", x[0], x[1]);
 		for (auto m = best.begin(); m != best.end(); m++) {
 			auto cnst = stackConstraints.begin()+m->first;
 			cnst->select = m->second;
-			printf("\tsetting (%d %d) -> (%d %d)\n", cnst->pins[cnst->select].type, cnst->pins[cnst->select].pin, cnst->pins[1-cnst->select].type, cnst->pins[1-cnst->select].pin);
+			if (debug) printf("\tsetting (%d %d) -> (%d %d)\n", cnst->pins[cnst->select].type, cnst->pins[cnst->select].pin, cnst->pins[1-cnst->select].type, cnst->pins[1-cnst->select].pin);
 
 			from.push_back(cnst->pins[cnst->select]);
 			to.push_back(cnst->pins[1-cnst->select]);
@@ -2141,8 +2259,10 @@ void Router::alignPins() {
 			}
 		}
 	}
+	if (debug) print();
 
-	printf("Checking remaining constraints\n");
+	// Order remaining pins
+	if (debug) printf("Checking remaining constraints\n");
 	while (true) {
 		auto cnst = stackConstraints.end();
 		int select = -1;
@@ -2207,7 +2327,7 @@ void Router::alignPins() {
 			break;
 		}
 
-		printf("setting (%d %d) -> (%d %d)\n", cnst->pins[select].type, cnst->pins[select].pin, cnst->pins[1-select].type, cnst->pins[1-select].pin);
+		if (debug) printf("setting (%d %d) -> (%d %d)\n", cnst->pins[select].type, cnst->pins[select].pin, cnst->pins[1-select].type, cnst->pins[1-select].pin);
 		cnst->select = select;
 		buildPinOffsets(0, vector<Index>(1, cnst->pins[select]));
 		buildPinOffsets(1, vector<Index>(1, cnst->pins[1-select]));
@@ -2635,34 +2755,17 @@ bool Router::solve() {
 	assignRouteConstraints();
 	alignVirtualPins();
 
-	for (int i = 0; i < 10; i++) {
-		assignStackConstraints();
-		buildPinOffsets(0, vector<Index>(), true);
-		buildPinOffsets(1, vector<Index>(), true);
-		drawRoutes();
-		
-		buildRouteConstraints();
-		assignRouteConstraints();
-	}
-
-	/*lowerRoutes();
+	lowerRoutes();
 	buildGroupConstraints();
 
 	buildStackConstraints();
-	assignRouteConstraints();
+	assignStackConstraints();
 	buildPinOffsets(0, vector<Index>(), true);
 	buildPinOffsets(1, vector<Index>(), true);
-
-	buildPinConstraints(0, true);
-	breakCycles();
 	drawRoutes();
-	buildRouteConstraints(true, true);
+	
+	buildRouteConstraints();
 	assignRouteConstraints();
-
-	assignStackConstraints();
-	buildPinOffsets(0, vector<Index>(), false);
-	buildPinOffsets(1, vector<Index>(), false);
-	drawRoutes();*/
 
 /*	buildPinOffsets(0);
 
