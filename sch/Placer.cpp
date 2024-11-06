@@ -132,6 +132,8 @@ int Placement::score() {
 		));
 
 	int width = max(stack[0].empty() ? 0 : stack[0].back().pos, stack[1].empty() ? 0 : stack[1].back().pos);
+	int width0 = min(stack[0].empty() ? 0 : stack[0].back().pos, stack[1].empty() ? 0 : stack[1].back().pos);
+	int buffer = (width - width0);
 
 	vector<bool> hasGate(nets.size(), false);
 	for (int type = 0; type < (int)stack.size(); type++) {
@@ -166,6 +168,44 @@ int Placement::score() {
 		}
 	}
 
+	// loop through both stacks and check for pin alignments that minimize
+	// distance within the window (width-min(right...))
+	int aligned = 0;
+	array<int, 2> idx = {0,0};
+	while (idx[0] < (int)stack[0].size() and idx[1] < (int)stack[1].size()) {
+		int score = -1;
+		int best = -1;
+		int type = -1;
+		for (int i = 0; i < 2; i++) {
+			for (int j = idx[i]; j < (int)stack[i].size(); j++) {
+				int cost = abs(stack[i][j].pos - stack[1-i][idx[1-i]].pos);
+				if (cost > buffer) {
+					break;
+				}
+				if (ckt->mos[stack[i][j].device].gate == ckt->mos[stack[1-i][idx[1-i]].device].gate) {
+					if (score < 0 or cost < score) {
+						score = cost;
+						type = i;
+						best = j;
+					}
+					break;
+				}
+			}
+		}
+
+		if (score >= 0) {
+			aligned++;
+			aligned += ckt->mos[stack[type][best].device].left(stack[type][best].flip) == ckt->mos[stack[1-type][idx[1-type]].device].left(stack[1-type][idx[1-type]].flip);
+			aligned += ckt->mos[stack[type][best].device].right(stack[type][best].flip) == ckt->mos[stack[1-type][idx[1-type]].device].right(stack[1-type][idx[1-type]].flip);
+			idx[type] = best+1;
+			idx[1-type]++;
+		} else if (stack[0][idx[0]].pos < stack[1][idx[1]].pos) {
+			idx[0]++;
+		} else {
+			idx[1]++;
+		}
+	}
+
 	int overlap = 0;
 	int extent = 0;
 	for (int i = 0; i < (int)nets.size(); i++) {
@@ -183,7 +223,7 @@ int Placement::score() {
 	// compute minimum and maximum number of overlapping routes
 	// compute total minimum extent of routes
 	// compute width of current placement
-	return max(0, l*extent + w*width + g*overlap);
+	return max(0, w*width + (l*extent + g*overlap)/(aligned+1));
 }
 
 Placement Placement::solve(const Tech &tech, const Subckt &ckt, int starts, int l, int w, int g, float step, float rate) {
