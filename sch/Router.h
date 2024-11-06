@@ -181,6 +181,7 @@ struct Wire {
 	bool hasGate(const Router *rt) const;
 	int numSourceDrain(const Router *rt) const;
 	vector<bool> pinTypes() const;
+	void buildContacts(const Router *rt);
 };
 
 // This structure keeps track of all of the pins in the pull up or pull down
@@ -267,7 +268,8 @@ struct Router {
 	bool breakRoute(int route, set<int> cycleRoutes);
 	bool breakCycles();
 	void findAndBreakViaCycles();
-	void alignVirtualPins();
+	Index createVirtualPin(int net);
+	void alignVirtualPin(Index Idx);
 	void buildContacts();
 	void buildStackConstraints(bool reset=false);
 	bool buildPinOffsets(int type, vector<Index> start=vector<Index>(), bool reset=false);

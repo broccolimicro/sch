@@ -151,13 +151,12 @@ Wire::~Wire() {
 void Wire::addPin(const Router *rt, Contact ct) {
 	auto pos = lower_bound(pins.begin(), pins.end(), ct.idx, CompareIndex(rt));
 	pins.insert(pos, ct);
-	auto stack = rt->stack.begin()+ct.idx.type;
-	auto pin = stack->pins.begin()+ct.idx.pin;
-	if (left < 0 or pin->offset[0] < left) {
-		left = pin->offset[0];
+	const Pin &pin = rt->pin(ct.idx);
+	if (left < 0 or pin.offset[0] < left) {
+		left = pin.offset[0];
 	}
-	if (right < 0 or pin->offset[0]+pin->width > right) {
-		right = pin->offset[0] + pin->width;
+	if (right < 0 or pin.offset[0]+pin.width > right) {
+		right = pin.offset[0] + pin.width;
 	}
 }
 
@@ -223,6 +222,23 @@ vector<bool> Wire::pinTypes() const {
 		result[pins[i].idx.type] = true;
 	}
 	return result;
+}
+
+void Wire::buildContacts(const Router *rt) {
+	if (net < 0) {
+		return;
+	}
+
+	for (int j = 0; j < (int)pins.size(); j++) {
+		const Pin &pin = rt->pin(pins[j].idx);
+		int prevLevel = getLevel(j-1);
+		int nextLevel = getLevel(j);
+		int maxLevel = max(pin.layer, max(nextLevel, prevLevel));
+		int minLevel = min(pin.layer, min(nextLevel, prevLevel));
+
+		pins[j].layout.clear();
+		drawViaStack(pins[j].layout, net, pin.baseNet, minLevel, maxLevel, vec2i(0, 0), vec2i(0,0), vec2i(0,0));
+	}
 }
 
 Stack::Stack() {
@@ -939,18 +955,14 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 		// way at the end of the cell. I also need to create functionality for
 		// saving the vertical position of the pin so the drawing functionality
 		// knows where to draw the vertical path.
-		Index idx(2, (int)this->stack[2].pins.size());
-		this->stack[2].pins.push_back(Pin(*tech, routes[route].net, -1));
-		drawPin(this->stack[2].pins.back().layout, *ckt, this->stack[2], idx.pin);
-		this->stack[2].pins.back().offset[0] = 0;
+		Index idx = createVirtualPin(routes[route].net);
 		this->stack[2].pins.back().lo = routes[route].offset[Model::PMOS];
 		this->stack[2].pins.back().hi = routes[route].offset[Model::PMOS];
-		Contact virtPin(*tech, idx);
 		
 		// TODO(edward.bingham) draw contacts for virtual pins
 		// TODO(edward.bingham) add horizontal constraints for virtual pins
-		wp.addPin(this, virtPin);
-		wn.addPin(this, virtPin);
+		wp.addPin(this, Contact(*tech, idx));
+		wn.addPin(this, Contact(*tech, idx));
 	}
 
 	//printf("Step 2: w={");
@@ -1069,6 +1081,9 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 			drawStack(wn.layout, *ckt, this->stack[flip(wn.net)]);
 		}
 	}
+
+	wp.buildContacts(this);
+	wn.buildContacts(this);
 
 	routes[route] = wp;
 	routes.push_back(wn);
@@ -1248,7 +1263,58 @@ void Router::findAndBreakViaCycles() {
 	}*/
 }
 
-void Router::alignVirtualPins() {
+Index Router::createVirtualPin(int net) {
+	Index fromId(2, (int)this->stack[2].pins.size());
+	stack[2].pins.push_back(Pin(*tech, net, -1));
+	Pin &from = stack[2].pins.back();
+
+	drawPin(from.layout, *ckt, stack[2], fromId.pin);
+
+	// Add the new stack constraints
+	Index toId;
+	for (toId.type = 0; toId.type < (int)stack.size(); toId.type++) {
+		for (toId.pin = 0; toId.pin < (int)stack[toId.type].pins.size(); toId.pin++) {
+			if (toId == fromId) {
+				continue;
+			}
+			Pin &to = pin(toId);
+
+			array<int, 2> off={0,0};
+			bool fromto = minOffset(&off[0], 0, from.layout, 0, to.layout, 0, Layout::IGNORE, Layout::MERGENET, false);
+			bool tofrom = minOffset(&off[1], 0, to.layout, 0, from.layout, 0, Layout::IGNORE, Layout::MERGENET, false);
+			if (fromto or tofrom) {
+				if (fromId < toId) {
+					stackConstraints.push_back(StackConstraint(fromId, toId, off[0], off[1], -1));
+				} else if (toId < fromId) {
+					stackConstraints.push_back(StackConstraint(toId, fromId, off[1], off[0], -1));
+				}
+			}
+		}
+	}
+	sort(stackConstraints.begin(), stackConstraints.end());
+
+	// Add the new contact constraints
+	for (auto route = routes.begin(); route != routes.end(); route++) {
+		int routingMode = Layout::MERGENET;
+		if (route->net < 0 or route->net == net) {
+			continue;
+		}
+
+		for (auto ct = route->pins.begin(); ct != route->pins.end(); ct++) {
+			array<int, 2> off={0,0};
+			bool pinct = minOffset(&off[0], 0, from.layout, 0, ct->layout, 0, Layout::IGNORE, routingMode);
+			bool ctpin = minOffset(&off[1], 0, ct->layout, 0, from.layout, 0, Layout::IGNORE, routingMode);
+
+			if (pinct or ctpin) {
+				ct->constraints.push_back(ContactConstraint(fromId, off[0], off[1], -1));
+				sort(ct->constraints.begin(), ct->constraints.end());
+			}
+		}
+	}
+	return fromId;
+}
+
+void Router::alignVirtualPin(Index idx) {
 	// TODO(edward.bingham) Find a list of potential ranges for each pin. This is
 	// determined by the other pins and their hi and lo values. I also need to
 	// think about routes.  Ranges should be defined in terms of pins... but
@@ -1258,114 +1324,138 @@ void Router::alignVirtualPins() {
 	// placements change... There is a cyclic dependency
 
 	// TODO(edward.bingham) I need to compare virtual pins against eachother as well
-	vector<map<pair<int, Index>, array<int, 2> > > constraints;
-	constraints.resize(stack[2].pins.size());
-	for (int i = 0; i < (int)stack[2].pins.size(); i++) {
-		for (int type = 0; type < 2; type++) {
-			for (int j = 0; j < (int)stack[type].pins.size(); j++) {
-				if (j == i) {
-					continue;
-				}
+	// blocked intervals: offset -> index into stack constraints
+	// left side of interval
+	map<int, vector<int> > left;
+	// right side of interval
+	map<int, vector<int> > right;
+	for (auto cnst = stackConstraints.begin(); cnst != stackConstraints.end(); cnst++) {
+		if (cnst->pins[0] == idx or cnst->pins[1] == idx) {
+			int i = cnst->pins[0] == idx ? 0 : 1;
+			int j = 1-i;
 
-				array<int, 2> off={0,0};
-				bool fromto = minOffset(&off[0], 0, stack[2].pins[i].layout, 0, stack[type].pins[j].layout, 0, Layout::DEFAULT, Layout::DEFAULT);
-				bool tofrom = minOffset(&off[1], 0, stack[type].pins[j].layout, 0, stack[2].pins[i].layout, 0, Layout::DEFAULT, Layout::DEFAULT);
-
-				// TODO(edward.bingham) lo and hi values don't include route or contact height
-				if ((fromto or tofrom) and stack[2].pins[i].lo < stack[type].pins[j].hi and stack[type].pins[j].lo < stack[2].pins[i].hi) {
-					constraints[i].insert(pair<pair<int, Index>, array<int, 2> >(pair<int, Index>(stack[type].pins[j].offset[0], Index(type, j)), off));
-				}
+			Pin &pi = pin(cnst->pins[i]);
+			Pin &pj = pin(cnst->pins[j]);
+			if (pi.lo <= pj.hi and pj.lo <= pi.hi) {
+				// left constraint is from this to j
+				auto lpos = left.insert(pair<int, vector<int> >(pj.offset[0]-cnst->off[i], vector<int>()));
+				// right constraint is from j to this
+				auto rpos = right.insert(pair<int, vector<int> >(pj.offset[0]+cnst->off[j], vector<int>()));
+				lpos.first->second.push_back(cnst-stackConstraints.begin());
+				rpos.first->second.push_back(cnst-stackConstraints.begin());
 			}
 		}
 	}
 
-	vector<map<int, array<Index, 2> > > ranges;
-	ranges.resize(constraints.size());
-	for (int i = 0; i < (int)constraints.size(); i++) {
-		auto k = constraints[i].begin();
+	// merge overlapping intervals
+	auto lpos = std::next(left.begin());
+	auto rpos = right.begin();
+	while (lpos != left.end() and rpos != right.end()) {
+		auto plpos = std::prev(lpos);
+		auto nrpos = std::next(rpos);
+		if (lpos->first <= rpos->first) {
+			// these intervals overlap
+			plpos->second.insert(plpos->second.end(), lpos->second.begin(), lpos->second.end());
+			nrpos->second.insert(nrpos->second.end(), rpos->second.begin(), rpos->second.end());
+			lpos = left.erase(lpos);
+			rpos = right.erase(rpos);
+		} else {
+			lpos++;
+			rpos++;
+		}
+	}
+
+	// identify viable ranges for virtual pin placement
+	// cost -> [left constraints, right constraints]
+	vector<int> lbest;
+	vector<int> rbest;
+	int best = -1;
+
+	lpos = left.begin();
+	rpos = right.end();
+	while (true) {
+		vector<int> lcnst;
+		vector<int> rcnst;
+		int lbnd = std::numeric_limits<int>::min();
+		int rbnd = std::numeric_limits<int>::max();
+		if (rpos != right.end()) {
+			lbnd = rpos->first;
+			lcnst = rpos->second;
+		}
+		if (lpos != left.end()) {
+			rbnd = lpos->first;
+			rcnst = lpos->second;
+		}
+
 		int cost = 0;
 		for (auto route = routes.begin(); route != routes.end(); route++) {
-			if (route->hasPin(this, Index(2, i))) {
-				if (route->left > k->first.first) {
-					cost += route->left - k->first.first;
+			if (route->hasPin(this, idx)) {
+				if (route->left > rbnd) {
+					cost += route->left - rbnd;
+				}
+				if (route->right < lbnd) {
+					cost += lbnd - route->right;
 				}
 			}
 		}
-		ranges[i].insert(pair<int, array<Index, 2> >(cost, array<Index, 2>({Index(-1,-1), k->first.second})));
-		for (auto j = constraints[i].begin(); j != constraints[i].end(); j++) {
-			auto k = j;
-			k++;
-			if (k == constraints[i].end()) {
-				int cost = 0;
-				for (auto route = routes.begin(); route != routes.end(); route++) {
-					if (route->hasPin(this, Index(2, i))) {
-						if (route->right < j->first.first) {
-							cost += j->first.first - route->right;
-						}
-					}
-				}
-				ranges[i].insert(pair<int, array<Index, 2> >(cost, array<Index, 2>({j->first.second, Index(-1,-1)})));
 
-				continue;
-			} else {
-				int space = k->first.first - j->first.first;
-				int blocked = k->second[0] + j->second[1];
-				if (blocked < space) {
-					int cost = 0;
-					for (auto route = routes.begin(); route != routes.end(); route++) {
-						if (route->hasPin(this, Index(2, i))) {
-							if (route->left > k->first.first) {
-								cost += route->left - k->first.first;
-							} else if (route->right < j->first.first) {
-								cost += j->first.first - route->right;
-							}
-						}
-					}
+		if (best < 0 or cost < best) {
+			lbest = lcnst;
+			rbest = rcnst;
+			best = cost;
+			break;
+		}
 
-					ranges[i].insert(pair<int, array<Index, 2> >(cost, array<Index, 2>({j->first.second, k->first.second})));
-				}
-			}
+		if (lpos == left.end()) {
+			break;
+		} else {
+			lpos++;
+		}
+
+		if (rpos == right.end()) {
+			rpos = right.begin();
+		} else {
+			rpos++;
 		}
 	}
 
-	// Instead of saving an offset for this pin, we should resolve stack constraints, create group constraints, etc.
-	for (int i = 0; i < (int)ranges.size(); i++) {
-		auto j = ranges[i].begin();
-		if (j->second[0].type >= 0) {
-			array<int, 2> off = {0,0};
-			auto cnst = constraints[i].find(pair<int, Index>(pin(j->second[0]).offset[0], j->second[0]));
-			if (cnst != constraints[i].end()) {
-				off = cnst->second;
-			}
-			stackConstraints.push_back(StackConstraint(j->second[0], Index(2, i), off[1], off[0], 0));
-		}
-		if (j->second[1].type >= 0) {
-			array<int, 2> off = {0,0};
-			auto cnst = constraints[i].find(pair<int, Index>(pin(j->second[1]).offset[0], j->second[1]));
-			if (cnst != constraints[i].end()) {
-				off = cnst->second;
-			}
-			stackConstraints.push_back(StackConstraint(Index(2, i), j->second[1], off[0], off[1], 0));
-		}
+	if (best < 0) {
+		return;
 	}
+
+	vector<Index> from;
+	vector<Index> to;
+	for (auto i = lbest.begin(); i != lbest.end(); i++) {
+		auto cnst = stackConstraints.begin() + *i;
+		if (cnst->pins[0] == idx) {
+			cnst->select = 1;
+		} else if (cnst->pins[1] == idx) {
+			cnst->select = 0;
+		}
+		from.push_back(cnst->pins[cnst->select]);
+		to.push_back(cnst->pins[1-cnst->select]);
+	}
+
+	for (auto i = rbest.begin(); i != rbest.end(); i++) {
+		auto cnst = stackConstraints.begin() + *i;
+		if (cnst->pins[0] == idx) {
+			cnst->select = 0;
+		} else if (cnst->pins[1] == idx) {
+			cnst->select = 1;
+		}
+		from.push_back(cnst->pins[cnst->select]);
+		to.push_back(cnst->pins[1-cnst->select]);
+	}
+
+	buildPinOffsets(0, from);
+	buildPinOffsets(1, to);
+
+	// TODO(edward.bingham) create pin constraints
 }
 
 void Router::buildContacts() {
 	for (int i = 0; i < (int)routes.size(); i++) {
-		if (routes[i].net < 0) {
-			continue;
-		}
-
-		for (int j = 0; j < (int)routes[i].pins.size(); j++) {
-			Pin &pin = this->pin(routes[i].pins[j].idx);
-			int prevLevel = routes[i].getLevel(j-1);
-			int nextLevel = routes[i].getLevel(j);
-			int maxLevel = max(pin.layer, max(nextLevel, prevLevel));
-			int minLevel = min(pin.layer, min(nextLevel, prevLevel));
-
-			routes[i].pins[j].layout.clear();
-			drawViaStack(routes[i].pins[j].layout, routes[i].net, pin.baseNet, minLevel, maxLevel, vec2i(0, 0), vec2i(0,0), vec2i(0,0));
-		}
+		routes[i].buildContacts(this);
 	}
 }
 
@@ -2753,7 +2843,9 @@ bool Router::solve() {
 	drawRoutes();
 	buildRouteConstraints(true, true);
 	assignRouteConstraints();
-	alignVirtualPins();
+	for (int i = 0; i < (int)stack[2].pins.size(); i++) {
+		alignVirtualPin(Index(2, i));
+	}
 
 	lowerRoutes();
 	buildGroupConstraints();
