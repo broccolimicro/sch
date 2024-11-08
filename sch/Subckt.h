@@ -215,6 +215,24 @@ bool operator>=(const Subckt &c0, const Subckt &c1);
 }
 
 template<>
+struct std::hash<sch::Mos> {
+	void appendHash(std::size_t &h0, std::size_t h1) const {
+    h0 ^= (h1 + 0x9e3779b9 + (h0<<6) + (h0>>2));
+	}
+
+	std::size_t operator()(const sch::Mos &mos) const noexcept {
+		std::size_t result = std::hash<size_t>{}(mos.model);
+		appendHash(result, std::hash<int>{}(mos.gate));
+		appendHash(result, std::hash<int>{}(mos.source));
+		appendHash(result, std::hash<int>{}(mos.drain));
+		appendHash(result, std::hash<int>{}(mos.base));
+		appendHash(result, std::hash<int>{}(mos.size[0]));
+		appendHash(result, std::hash<int>{}(mos.size[1]));
+		return result;
+	}
+};
+
+template<>
 struct std::hash<sch::Subckt> {
 	void appendHash(std::size_t &h0, std::size_t h1) const {
     h0 ^= (h1 + 0x9e3779b9 + (h0<<6) + (h0>>2));
@@ -223,21 +241,32 @@ struct std::hash<sch::Subckt> {
 	std::size_t operator()(const sch::Subckt &ckt) const noexcept {
 		std::size_t result = std::hash<size_t>{}(ckt.nets.size());
 
+		set<int> s0;
+		vector<sch::Mos> m0;
 		for (int i = 0; i < (int)ckt.nets.size(); i++) {
 			appendHash(result, std::hash<int>{}(i));
 			for (int type = 0; type < 2; type++) {
-				appendHash(result, std::hash<int>{}(type));
-				appendHash(result, std::hash<size_t>{}(ckt.nets[i].sourceOf[type].size()));
-
-				vector<int> g0;
 				for (auto j = ckt.nets[i].sourceOf[type].begin(); j != ckt.nets[i].sourceOf[type].end(); j++) {
-					g0.push_back(ckt.mos[*j].drain);
+					if (s0.find(*j) == s0.end()) {
+						s0.insert(*j);
+						m0.push_back(ckt.mos[*j]);
+					}
 				}
-				std::sort(g0.begin(), g0.end());
+				for (auto j = ckt.nets[i].drainOf[type].begin(); j != ckt.nets[i].drainOf[type].end(); j++) {
+					if (s0.find(*j) == s0.end()) {
+						s0.insert(*j);
+						m0.push_back(ckt.mos[*j]);
+						std::swap(m0.back().source, m0.back().drain);
+					}
+				}
+				std::sort(m0.begin(), m0.end());
 
-				for (int j = 0; j < (int)g0.size(); j++) {
-					appendHash(result, std::hash<int>{}(g0[j]));
+				appendHash(result, std::hash<int>{}(type));
+				appendHash(result, std::hash<size_t>{}(m0.size()));
+				for (int j = 0; j < (int)m0.size(); j++) {
+					appendHash(result, std::hash<sch::Mos>{}(m0[j]));
 				}
+				m0.clear();
 			}
 		}
 		return result;
