@@ -107,4 +107,27 @@ struct Placement {
 	static Placement solve(const Tech &tech, const Subckt &ckt, int starts=100, int l=1, int w=10, int g=10, float step=2.0, float rate=0.02);
 };
 
+/*struct Link {
+	array<vec2i, 2> anchor;
+	array<int, 2> cell;
+};
+
+struct Cell {
+	int cell;
+
+	vec2f pos, vel, acc;
+	float rpos, rvel, racc;
+	vec2i size;
+};
+
+struct CellPlacement {
+	CellPlacement(const Tech &tech, const Netlist &net, int top);
+	~CellPlacement();
+
+	const Netlist *net;
+
+	vector<Cell> cells;
+	vector<Link> links;
+};*/
+
 }

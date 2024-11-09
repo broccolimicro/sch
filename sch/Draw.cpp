@@ -9,7 +9,7 @@ int clamp(int value, int lo, int hi) {
 	return value < lo ? lo : (value > hi ? hi : value);
 }
 
-void drawDiffusion(Layout &dst, int model, int net, vec2i ll, vec2i ur, vec2i dir) {
+void drawDiffusion(Layout &dst, int model, int base, vec2i ll, vec2i ur, vec2i dir) {
 	int curr = -1;
 	for (auto layer = dst.tech->models[model].stack.begin(); layer != dst.tech->models[model].stack.end(); layer++) {
 		int prev = curr;
@@ -28,7 +28,12 @@ void drawDiffusion(Layout &dst, int model, int net, vec2i ll, vec2i ur, vec2i di
 			ur += overhang*dir;
 		}
 		
-		dst.push(dst.tech->subst[flip(*layer)], Rect(-1, ll, ur));
+		int net = -1;
+		if (dst.tech->subst[flip(*layer)].isWell) {
+			net = base;
+		}
+
+		dst.push(dst.tech->subst[flip(*layer)], Rect(net, ll, ur));
 	}
 }
 
@@ -283,6 +288,7 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 				// Draw the via
 				vec2i viall(posArr[i][j], 0);
 				vec2i viasz(width, height);
+				vec2i viaur = viall+viasz;
 				Layout next(*dst.tech);
 				drawVia(next, wire.net, pin.baseNet, i, axis, viasz, true, viall);
 				auto layer = next.find(pinLayer);
@@ -293,24 +299,28 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 					// that wire min width once we get past the min spacing
 					// and/or notch size rules.
 					Rect bbox = layer->second.bbox();
+
+					vec2i ll(min(pin.offset[0], viall[0]), 0);
+					vec2i ur(max(pin.offset[0]+width, viaur[0]), height);
 					if (wire.pins[j].idx.type == Model::PMOS and bbox.ll[0] < pin.offset[0]+width+minSpacing and pin.offset[0] < bbox.ur[0]+minSpacing) {
-						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.offset[0], bbox.ll[1]), vec2i(posArr[i][j], width)));
-					} else if (wire.pins[j].idx.type == Model::NMOS and bbox.ll[0] < pin.offset[0]+width+minSpacing and pin.offset[0]-minSpacing < bbox.ur[0]) {
-						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.offset[0], 0), vec2i(posArr[i][j], bbox.ur[1])));
-					} else {
-						dst.push(dst.tech->wires[pinLevel], Rect(wire.net, vec2i(pin.offset[0], 0), vec2i(posArr[i][j], width)));
+						ll[1] = bbox.ll[1];
 					}
+					if (wire.pins[j].idx.type == Model::NMOS and bbox.ll[0] < pin.offset[0]+width+minSpacing and pin.offset[0]-minSpacing < bbox.ur[0]) {
+						ur[1] = bbox.ur[1];
+					}
+
+					dst.push(dst.tech->wires[pinLevel], Rect(wire.net, ll, ur));
 				}
 
 				int off = numeric_limits<int>::min();
 				// Check if we need to merge the vias
 				if (not vias.empty() and minOffset(&off, 0, vias.back().first, 0, next, 0, Layout::IGNORE, Layout::DEFAULT) and off > 0) {
-					Rect box = vias.back().second.bound(Rect(-1, viall, viall+viasz));
+					Rect box = vias.back().second.bound(Rect(-1, viall, viaur));
 					vias.back().first.clear();
 					drawVia(vias.back().first, wire.net, pin.baseNet, i, axis, vec2i(box.ur[0]-box.ll[0], height), true, vec2i(box.ll[0], 0));
 					vias.back().second = box;
 				} else {
-					vias.push_back(pair<Layout, Rect>(next, Rect(-1, viall, viall+viasz)));
+					vias.push_back(pair<Layout, Rect>(next, Rect(-1, viall, viaur)));
 				}
 			}
 		}
@@ -393,7 +403,7 @@ void drawStack(Layout &dst, const Subckt &ckt, const Stack &stack) {
 				model = ckt.mos[(i-1)->device].model;
 			}
 
-			drawDiffusion(dst, model, -1, vec2i((i-1)->offset[0], 0), vec2i(i->offset[0], height)*dir, dir);
+			drawDiffusion(dst, model, i->baseNet, vec2i((i-1)->offset[0], 0), vec2i(i->offset[0], height)*dir, dir);
 		}
 	}
 }
@@ -475,13 +485,8 @@ void drawCell(Layout &dst, const Router &rt) {
 
 	// fill in min-spacing violations between two wires on the same layer connected to the same net.
 	for (auto layer = dst.layers.begin(); layer != dst.layers.end(); layer++) {
-		if (layer->second.isRouting) {
+		if (layer->second.isRouting or (layer->first >= 0 and dst.tech->paint[layer->first].fill)) {
 			layer->second.fillSpacing();
-		}
-		if (layer->first >= 0 and dst.tech->paint[layer->first].fill) {
-			Rect box = layer->second.bbox();
-			layer->second.clear();
-			layer->second.push(box, true);
 		}
 	}
 

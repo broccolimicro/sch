@@ -40,8 +40,8 @@ int routeCell(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debu
 	return 0;
 }
 
-bool extract(Subckt &dst, Layout &src) {
-	if (src.nets.empty()) {
+bool extract(Subckt &dst, Layout &src, bool forceTrace) {
+	if (forceTrace or src.nets.empty()) {
 		src.trace();
 	}
 
@@ -136,9 +136,8 @@ bool extract(Subckt &dst, Layout &src) {
 		// find the via layer associated with this model
 		// overlap that with the vias to determine net names
 
-		Layer gates = poly->second & diff;
-		gates.merge();
-		vector<Layer> ports = (diff & ~poly->second).split();
+		vector<Layer> gates = ((poly->second & diff).merge()).split();
+		vector<Layer> ports = ((diff & ~poly->second).merge()).split();
 		vector<int> portIDs;
 		for (auto p = ports.begin(); p != ports.end(); p++) {
 			bool found = false;
@@ -154,21 +153,24 @@ bool extract(Subckt &dst, Layout &src) {
 			}
 		}
 
-		for (auto r0 = gates.geo.begin(); r0 != gates.geo.end(); r0++) {
-			int gate = r0->net;
+		for (auto g0 = gates.begin(); g0 != gates.end(); g0++) {
+			int gate = g0->geo[0].net;
+			Rect box = g0->bbox();
 			vector<int> port;
 			for (int i = 0; i < (int)ports.size(); i++) {
-				if (ports[i].overlaps(*r0)) {
+				if (ports[i].overlaps(*g0)) {
 					port.push_back(portIDs[i]);
 				}
 			}
 
 			int base = -1;
 			if (well != src.layers.end()) {
-				for (auto r1 = well->second.geo.begin(); r1 != well->second.geo.end(); r1++) {
-					if (r1->overlaps(*r0) and r1->net >= 0) {
-						base = r1->net;
-						break;
+				if (not src.tech->isLabel(well->second.draw)) {
+					for (auto r1 = well->second.geo.begin(); r1 != well->second.geo.end(); r1++) {
+						if (g0->overlaps(*r1) and r1->net >= 0) {
+							base = r1->net;
+							break;
+						}
 					}
 				}
 			}
@@ -183,7 +185,7 @@ bool extract(Subckt &dst, Layout &src) {
 			while ((int)port.size() < 2) {
 				port.push_back(dst.push(Net("_" + to_string(dst.nets.size()), false)));
 			}
-			dst.push(Mos(*src.tech, modelID, model->type, port[0], gate, port[1], base, r0->ur-r0->ll));
+			dst.push(Mos(*src.tech, modelID, model->type, port[0], gate, port[1], base, box.ur-box.ll));
 		}
 	}
 
@@ -192,12 +194,12 @@ bool extract(Subckt &dst, Layout &src) {
 	return true;
 }
 
-bool extract(Netlist &net, phy::Library &lib) {
+bool extract(Netlist &net, phy::Library &lib, bool forceTrace) {
 	bool result = true;
 	int start = (int)net.subckts.size();
 	net.subckts.resize(start+(int)lib.macros.size());
 	for (int i = 0; i < (int)lib.macros.size(); i++) {
-		result = extract(net.subckts[start+i], lib.macros[i]) and result;
+		result = extract(net.subckts[start+i], lib.macros[i], forceTrace) and result;
 		net.subckts[start+i].canonicalize();
 	}
 	return result;

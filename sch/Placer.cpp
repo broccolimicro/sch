@@ -45,17 +45,34 @@ Placement::Placement(const Tech &tech, const Subckt &ckt, int l, int w, int g, s
 	this->d[0] = max(0, (int)stack[0].size()-(int)stack[1].size());
 	this->d[1] = max(0, (int)stack[1].size()-(int)stack[0].size());
 
-	int model = ckt.mos[0].model;
-	int poly = tech.wires[0].draw;
-	int via = tech.vias[tech.findVias(flip(model), 1)[0]].draw;
-	int diff = tech.subst[tech.models[model].stack[0]].draw;
+	int gateToGate = 42;
+	int diffEncloseContact = 12;
+	int diffToDiff = 54; 
+	gateToContact = 18;
+	contactWidth = 34;
+	if (not tech.wires.empty()) {
+		int poly = tech.wires[0].draw;
+		gateToGate = tech.getSpacing(poly, poly);
+		if (not ckt.mos.empty()) {
+			int model = ckt.mos[0].model;
 
-	int gateToGate = tech.getSpacing(poly, poly);
-	int diffEncloseContact = tech.getEnclosing(diff, via)[1];
-	int diffToDiff = tech.getSpacing(diff, diff);
+			int diff = -1;
+			if (not tech.models[model].stack.empty()) {
+				int diff = tech.subst[tech.models[model].stack[0]].draw;
+				diffToDiff = tech.getSpacing(diff, diff);
+			}
 
-	gateToContact = tech.getSpacing(poly, via);
-	contactWidth = tech.paint[via].minWidth;
+			vector<int> viaLevels = tech.findVias(flip(model), 1);
+			if (not viaLevels.empty()) {
+				int via = tech.vias[viaLevels[0]].draw;
+				gateToContact = tech.getSpacing(poly, via);
+				contactWidth = tech.paint[via].minWidth;
+				if (diff >= 0) {
+					diffEncloseContact = tech.getEnclosing(diff, via)[1];
+				}
+			}
+		}
+	}
 
 	seqDist = gateToGate;
 	parDist = gateToContact*2+contactWidth;

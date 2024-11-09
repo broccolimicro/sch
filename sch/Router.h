@@ -262,6 +262,7 @@ struct Router {
 	// Finish building the constraint graph, filling out vcon and hcon.
 	void delRoute(int route);
 	bool buildPinConstraints(int level=1, bool reset=false);
+	bool lockPinConstraints();
 	void buildViaConstraints();
 	bool findCycle(int s, const vector<set<int> > &Ak, vector<pair<int, set<int> > > *cycles=nullptr);
 	bool findCycles(vector<pair<int, set<int> > > *cycles=nullptr);

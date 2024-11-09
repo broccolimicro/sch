@@ -7,6 +7,7 @@ using namespace std;
 
 TEST(placer, solve)
 {
+	Tech tech;
 	Subckt ckt;
 	ckt.name = "test";
 	// Create an inverter
@@ -18,7 +19,7 @@ TEST(placer, solve)
 	ckt.push(Mos(-1, Model::PMOS, b, a, vdd));
 
 	// Run the placer
-	Placement result = Placement::solve(ckt);
+	Placement result = Placement::solve(tech, ckt);
 }
 
 

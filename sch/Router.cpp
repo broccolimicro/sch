@@ -303,6 +303,8 @@ Router::Router(const Tech &tech, const Placement &place, bool progress, bool deb
 	this->allowOverCell = true;
 	this->unresolvedCycle[0] = false;
 	this->unresolvedCycle[1] = false;
+	this->unresolvedPinCycle[0] = false;
+	this->unresolvedPinCycle[1] = false;
 	for (int type = 0; type < (int)this->stack.size(); type++) {
 		this->stack[type].type = type;
 	}
@@ -579,6 +581,68 @@ bool Router::buildPinConstraints(int level, bool reset) {
 		c1++;
 	}
 	return false;
+}
+
+bool Router::lockPinConstraints() {
+	bool change = false;
+	for (auto c0 = pinConstraints.begin(); c0 != pinConstraints.end(); c0++) {
+		array<bool, 2> hasPrev = {
+			c0->to-1 < 0,
+			c0->from-1 < 0
+		};
+		array<bool, 2> hasNext = {
+			c0->to+1 >= (int)stack[Model::NMOS].pins.size(),
+			c0->from+1 >= (int)stack[Model::PMOS].pins.size()
+		};
+		for (auto c1 = pinConstraints.begin(); c1 != pinConstraints.end(); c1++) {
+			if (c0->from == c1->from and c0->to+1 == c1->to) {
+				hasNext[Model::NMOS] = true;
+			}
+			if (c0->from == c1->from and c0->to-1 == c1->to) {
+				hasPrev[Model::NMOS] = true;
+			}
+			if (c0->from+1 == c1->from and c0->to == c1->to) {
+				hasNext[Model::PMOS] = true;
+			}
+			if (c0->from-1 == c1->from and c0->to == c1->to) {
+				hasPrev[Model::PMOS] = true;
+			}
+		}
+
+		for (auto cnst = stackConstraints.begin(); cnst != stackConstraints.end(); cnst++) {
+			for (int d = 0; d < 2; d++) {
+				if (not hasNext[Model::NMOS]
+					and cnst->select < 0
+					and cnst->pins[d] == Index(Model::PMOS, c0->from)
+					and cnst->pins[1-d] == Index(Model::NMOS, c0->to+1)) {
+					cnst->select = d;
+					change = true;
+				}
+				if (not hasNext[Model::PMOS]
+					and cnst->select < 0
+					and cnst->pins[d] == Index(Model::PMOS, c0->from+1)
+					and cnst->pins[1-d] == Index(Model::NMOS, c0->to)) {
+					cnst->select = 1-d;
+					change = true;
+				}
+				if (not hasPrev[Model::NMOS]
+					and cnst->select < 0
+					and cnst->pins[d] == Index(Model::PMOS, c0->from)
+					and cnst->pins[1-d] == Index(Model::NMOS, c0->to-1)) {
+					cnst->select = 1-d;
+					change = true;
+				}
+				if (not hasPrev[Model::PMOS]
+					and cnst->select < 0
+					and cnst->pins[d] == Index(Model::PMOS, c0->from-1)
+					and cnst->pins[1-d] == Index(Model::NMOS, c0->to)) {
+					cnst->select = d;
+					change = true;
+				}
+			}
+		}
+	}
+	return change;
 }
 
 void Router::buildViaConstraints() {
@@ -1564,15 +1628,8 @@ bool Router::buildPinOffsets(int type, vector<Index> start, bool reset) {
 	if (reset) {
 		for (int t0 = 0; t0 < (int)stack.size(); t0++) {
 			for (auto pin = stack[t0].pins.begin(); pin != stack[t0].pins.end(); pin++) {
-				pin->offset[type] = numeric_limits<int>::min();
+				pin->offset[type] = 0;
 				pin->bound[type] = numeric_limits<int>::max();
-			}
-			if (not stack[t0].pins.empty()) {
-				if (type == 0) {
-					stack[t0].pins[0].offset[type] = 0;
-				} else {
-					stack[t0].pins.back().offset[type] = 0;
-				}
 			}
 		}
 
@@ -2015,14 +2072,17 @@ bool Router::buildPinBounds(bool reset) {
 	}
 
 	for (int i = 0; i < (int)routes.size(); i++) {
+		int lo = routes[i].offset[Model::PMOS];
+
 		for (int j = 0; j < (int)routes[i].pins.size(); j++) {
 			Pin &pin = this->pin(routes[i].pins[j].idx);
-			if (routes[i].offset[Model::PMOS] < pin.lo) {
-				pin.lo = routes[i].offset[Model::PMOS];
+			int hi = lo + (routes[i].net < 0 ? pin.height : tech->paint[tech->wires[pin.layer].draw].minWidth);
+			if (lo < pin.lo) {
+				pin.lo = lo;
 				change = true;
 			}
-			if (routes[i].offset[Model::PMOS] > pin.hi) {
-				pin.hi = routes[i].offset[Model::PMOS];
+			if (hi > pin.hi) {
+				pin.hi = hi;
 				change = true;
 			}
 		}
@@ -2081,10 +2141,6 @@ bool Router::buildRouteOffsets(int type, vector<int> start) {
 	}
 	
 	buildPinBounds(true);
-
-	/*if (debug and unresolvedCycle[type]) {
-		print();
-	}*/
 	return change;
 }
 
@@ -2839,6 +2895,7 @@ bool Router::solve() {
 	alignPins();
 
 	buildPinConstraints(0, true);
+	lockPinConstraints();
 	breakCycles();
 	drawRoutes();
 	buildRouteConstraints(true, true);
@@ -2859,61 +2916,23 @@ bool Router::solve() {
 	buildRouteConstraints();
 	assignRouteConstraints();
 
-/*	buildPinOffsets(0);
-
-	buildPinConstraints(0, true);
-	breakCycles();
+	assignStackConstraints();
+	buildPinOffsets(0, vector<Index>(), true);
+	buildPinOffsets(1, vector<Index>(), true);
 	drawRoutes();
-	buildRouteConstraints(true, true);
-	assignRouteConstraints();
 
-	alignVirtualPins();
-	drawRoutes();
-	buildRouteConstraints(true);
-	assignRouteConstraints();
-
-	lowerRoutes();
-	buildGroupConstraints();
-
-	drawRoutes();
-	buildRouteConstraints(true);
-	assignRouteConstraints();*/
-	
-	bool change = false;
-	/*for (int i = 0; i < 10 and change; i++) {
-		change = false;
-		if (updatePinPos(true)) {
-			if (debug) printf("updatePinPos()\n");
-			//change = true;
-		}
-		if (buildPinConstraints(0)) {
-			if (debug) printf("buildPinConstraints()\n");
-			change = true;
-		}
-		if (breakCycles()) {
-			if (debug) printf("breakCycles()\n");
-			change = true;
-		}
-		alignVirtualPins();
-		drawRoutes();
-		if (buildRouteConstraints()) {
-			if (debug) printf("buildRouteConstraints()\n");
-			change = true;
-		}
-		if (assignRouteConstraints()) {
-			if (debug) printf("assignRouteConstraints()\n");
-			change = true;
-		}
+	if (debug and unresolvedCycle[0]) {
+		printf("error: unresolved route constraint cycle from nmos to pmos\n");
 	}
-	if (change) {
-		printf("error: unstable layout\n");
+	if (debug and unresolvedCycle[1]) {
+		printf("error: unresolved route constraint cycle from pmos to nmos\n");
 	}
-	if (unresolvedCycle[0]) {
-		printf("error: unresolved cycle 0\n");
+	if (debug and unresolvedPinCycle[0]) {
+		printf("error: unresolved constraint cycle in nmos stack\n");
 	}
-	if (unresolvedCycle[1]) {
-		printf("error: unresolved cycle 1\n");
-	}*/
+	if (debug and unresolvedPinCycle[1]) {
+		printf("error: unresolved constraint cycle in pmos stack\n");
+	}
 
 	// TODO(edward.bingham) Assigning the route constraints affects where
 	// contacts are relative to each other vertically. This changes the pin
@@ -2966,7 +2985,7 @@ bool Router::solve() {
 	// these cells are interfacing with.
 
 	//print();
-	return not change and not unresolvedCycle[0] and not unresolvedCycle[1];
+	return not unresolvedCycle[0] and not unresolvedCycle[1] and not unresolvedPinCycle[0] and not unresolvedPinCycle[1];
 }
 
 void Router::annotateAreaPerim(Subckt &ckt) {
