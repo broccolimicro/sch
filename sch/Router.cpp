@@ -1959,7 +1959,8 @@ bool Router::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
 			} else {
 				if (not resetSpacing) {
 					if (old[j].select < 0) {
-						routeConstraints.insert(routeConstraints.begin()+i, old[j]);
+						routeConstraints.insert(c, old[j]);
+						i++;
 					} else {
 						int from = old[j].wires[1-old[j].select];
 						int to = old[j].wires[old[j].select];
@@ -1968,14 +1969,13 @@ bool Router::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
 							pos.second = false;
 						}
 						if (not pos.second) {
-							routeConstraints.insert(routeConstraints.begin()+i, old[j]);
+							routeConstraints.insert(c, old[j]);
+							i++;
 						} else {
 							Ak[from].erase(pos.first);
 							change = true;
 						}
 					}
-
-					i++;
 				} else {
 					change = true;
 				}

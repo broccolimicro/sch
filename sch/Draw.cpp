@@ -334,22 +334,26 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 	// TODO(edward.bingham) We need to create pin locations on each wire for the
 	// inputs and outputs.
 
-	for (int i = 1; i < (int)wire.pins.size(); i++) {
-		int prevLevel = wire.getLevel(i-1);
-		int nextLevel = wire.getLevel(i);
+	for (int i = 0; i < (int)wire.pins.size(); i++) {
+		int prevLevel = wire.getLevel(i);
+		int nextLevel = wire.getLevel(i+1);
+		int height = dst.tech->paint[dst.tech->wires[prevLevel].draw].minWidth;
 
 		int left = numeric_limits<int>::min();
 		int right = numeric_limits<int>::max();
 		for (int j = 0; j < (int)dst.tech->vias.size(); j++) {
 			if (dst.tech->vias[j].downLevel == prevLevel or dst.tech->vias[j].upLevel == prevLevel) {
-				left = max(left, posArr[j][i-1]);
+				left = max(left, posArr[j][i]);
 			}
 			if (dst.tech->vias[j].downLevel == nextLevel or dst.tech->vias[j].upLevel == nextLevel) {
-				right = min(right, posArr[j][i]);
+				if (i+1 < (int)wire.pins.size()) {
+					right = min(right, posArr[j][i+1]);
+				} else {
+					right = min(right, posArr[j][i]+height);
+				}
 			}
 		}
 
-		int height = dst.tech->paint[dst.tech->wires[prevLevel].draw].minWidth;
 		vec2i ll = pos+vec2i(left, 0)*dir;
 		vec2i ur = pos+vec2i(right, height)*dir;
 		dst.push(dst.tech->wires[prevLevel], Rect(wire.net, ll, ur));
