@@ -335,11 +335,11 @@ int Router::pinWidth(Index p) const {
 	int device = pin(p).device;
 	if (device >= 0) {
 		// this pin is a transistor, use length of transistor
-		//return tech->paint[tech->wires[0].draw].minWidth;
+		//return tech->getWidth(tech->wires[0].draw);
 		return ckt->mos[device].size[0];
 	}
 	// this pin is a contact
-	return tech->paint[tech->wires[1].draw].minWidth;
+	return tech->getWidth(tech->wires[1].draw);
 }
 
 // vertical size of pin
@@ -2085,7 +2085,7 @@ bool Router::buildPinBounds(bool reset) {
 
 		for (int j = 0; j < (int)routes[i].pins.size(); j++) {
 			Pin &pin = this->pin(routes[i].pins[j].idx);
-			int hi = lo + (routes[i].net < 0 ? pin.height : tech->paint[tech->wires[pin.layer].draw].minWidth);
+			int hi = lo + (routes[i].net < 0 ? pin.height : tech->getWidth(tech->wires[pin.layer].draw));
 			if (lo < pin.lo) {
 				pin.lo = lo;
 				change = true;

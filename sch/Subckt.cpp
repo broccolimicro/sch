@@ -74,7 +74,7 @@ void Mos::setSize(const Tech &tech, vec2i size) {
 	int viaSize = 0;
 	if (via >= 0) {
 		gateToVia = tech.getSpacing(tech.wires[0].draw, tech.vias[via].draw);
-		viaSize = tech.paint[tech.vias[via].draw].minWidth;
+		viaSize = tech.getWidth(tech.vias[via].draw);
 	} else {
 		gateToVia = tech.getSpacing(tech.wires[0].draw, tech.wires[0].draw)/2;
 	}
@@ -633,7 +633,7 @@ void Subckt::splitDevices(const Tech &tech) {
 			continue;
 		}
 		int diff = tech.subst[flip(model->stack[0])].draw;
-		int minWidth = tech.paint[diff].minWidth;
+		int minWidth = tech.getWidth(diff);
 
 		int bin = -1;
 		for (bin = (int)model->bins.size()-1;

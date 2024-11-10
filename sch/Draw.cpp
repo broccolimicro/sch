@@ -85,7 +85,7 @@ void drawVia(Layout &dst, int net, int base, int viaLevel, vec2i axis, vec2i siz
 	int upLayer = upLevel < 0 ? dst.tech->subst[flip(dst.tech->models[flip(upLevel)].stack[0])].draw : dst.tech->wires[upLevel].draw;
 
 	// spacing and width of a via
-	int viaWidth = dst.tech->paint[viaLayer].minWidth;
+	int viaWidth = dst.tech->getWidth(viaLayer);
 	int viaSpacing = dst.tech->getSpacing(viaLayer, viaLayer);
 
 	// enclosure rules and default orientation
@@ -210,7 +210,7 @@ void drawVia(Layout &dst, int net, int base, int viaLevel, vec2i axis, vec2i siz
 void drawViaStack(Layout &dst, int net, int base, int downLevel, int upLevel, vec2i axis, vec2i size, vec2i pos, vec2i dir) {
 	if (downLevel == upLevel) {
 		int layer = dst.tech->wires[downLevel].draw;
-		int width = dst.tech->paint[layer].minWidth;
+		int width = dst.tech->getWidth(layer);
 		size[0] = max(size[0], width);
 		size[1] = max(size[1], width);
 		dst.push(dst.tech->wires[downLevel], Rect(net, pos, pos+size*dir));
@@ -270,12 +270,12 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 
 			int wireLayer = dst.tech->wires[nextLevel].draw;
 			int minSpacing = dst.tech->getSpacing(pinLayer, pinLayer);
-			height = dst.tech->paint[wireLayer].minWidth;
+			height = dst.tech->getWidth(wireLayer);
 
 			if ((pinLevel <= dst.tech->vias[i].downLevel and wireHigh >= dst.tech->vias[i].upLevel) or
 			    (wireLow <= dst.tech->vias[i].downLevel and pinLevel >= dst.tech->vias[i].upLevel)) {
 				// Draw the horizontal wire from the pin to the via
-				int width = dst.tech->paint[pinLayer].minWidth;
+				int width = dst.tech->getWidth(pinLayer);
 
 				vec2i axis(0,0);
 				//if (wireLow <= dst.tech->vias[i].downLevel and wireHigh >= dst.tech->vias[i].downLevel and j > 0 and j < (int)wire.pins.size()-1) {
@@ -337,7 +337,7 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 	for (int i = 0; i < (int)wire.pins.size(); i++) {
 		int prevLevel = wire.getLevel(i);
 		int nextLevel = wire.getLevel(i+1);
-		int height = dst.tech->paint[dst.tech->wires[prevLevel].draw].minWidth;
+		int height = dst.tech->getWidth(dst.tech->wires[prevLevel].draw);
 
 		int left = numeric_limits<int>::min();
 		int right = numeric_limits<int>::max();
@@ -378,7 +378,7 @@ void drawPin(Layout &dst, const Subckt &ckt, const Stack &stack, int pinID, vec2
 			pos[0] += pin.offset[0];
 			int level = pin.layer;
 			int layer = dst.tech->wires[level].draw;
-			int width = dst.tech->paint[layer].minWidth;
+			int width = dst.tech->getWidth(layer);
 			vec2i size(width, width);
 			dst.push(dst.tech->wires[level], Rect(pin.outNet, pos, pos+size*dir));
 		}
@@ -434,7 +434,7 @@ void drawCell(Layout &dst, const Router &rt) {
 			
 			int pinLevel = pin.layer;
 			int pinLayer = dst.tech->wires[pinLevel].draw;
-			int width = dst.tech->paint[pinLayer].minWidth;
+			int width = dst.tech->getWidth(pinLayer);
 			//int minSpacing = dst.tech->getSpacing(pinLayer, pinLayer);
 
 			//vector<Layer> layers;

@@ -66,7 +66,7 @@ Placement::Placement(const Tech &tech, const Subckt &ckt, int l, int w, int g, s
 			if (not viaLevels.empty()) {
 				int via = tech.vias[viaLevels[0]].draw;
 				gateToContact = tech.getSpacing(poly, via);
-				contactWidth = tech.paint[via].minWidth;
+				contactWidth = tech.getWidth(via);
 				if (diff >= 0) {
 					diffEncloseContact = tech.getEnclosing(diff, via)[1];
 				}
