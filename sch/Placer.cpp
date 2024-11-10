@@ -211,7 +211,7 @@ int Placement::score() {
 		}
 
 		if (score >= 0) {
-			aligned++;
+			aligned += 2;
 			aligned += ckt->mos[stack[type][best].device].left(stack[type][best].flip) == ckt->mos[stack[1-type][idx[1-type]].device].left(stack[1-type][idx[1-type]].flip);
 			aligned += ckt->mos[stack[type][best].device].right(stack[type][best].flip) == ckt->mos[stack[1-type][idx[1-type]].device].right(stack[1-type][idx[1-type]].flip);
 			idx[type] = best+1;
@@ -240,7 +240,7 @@ int Placement::score() {
 	// compute minimum and maximum number of overlapping routes
 	// compute total minimum extent of routes
 	// compute width of current placement
-	return max(0, w*width + (l*extent + g*overlap)/(aligned+1));
+	return max(0, w*width*100 + (l*extent + g*overlap)*100/(aligned+1));
 }
 
 Placement Placement::solve(const Tech &tech, const Subckt &ckt, int starts, int l, int w, int g, float step, float rate) {

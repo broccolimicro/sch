@@ -260,18 +260,26 @@ void Stack::push(const Tech &tech, const Subckt &ckt, int device, bool flip) {
 	int toNet = -1;
 	int gateNet = -1;
 	int baseNet = -1;
+	int prevModel = -1;
+	if (not pins.empty() and pins.back().isGate()) {
+		prevModel = ckt.mos[pins.back().device].model;
+	} else if (pins.size() >= 2 and pins[(int)pins.size()-2].isGate()) {
+		prevModel = ckt.mos[pins[(int)pins.size()-2].device].model;
+	}
+	int model = -1;
 
 	if (device >= 0) {
 		fromNet = ckt.mos[device].left(flip);
 		toNet = ckt.mos[device].right(flip);
 		gateNet = ckt.mos[device].gate;
 		baseNet = ckt.mos[device].base;
+		model = ckt.mos[device].model;
 	}
 
 	// Get information about the previous transistor on the stack. First if
 	// statement in the funtion guarantees that there is at least one transistor
 	// already on the stack.
-	bool link = (pins.size() > 0 and gateNet >= 0 and fromNet == pins.back().rightNet and baseNet == pins.back().baseNet);
+	bool link = (pins.size() > 0 and gateNet >= 0 and fromNet == pins.back().rightNet and baseNet == pins.back().baseNet and (prevModel < 0 or model < 0 or prevModel == model));
 
 	// We can't link this transistor to the previous one in the stack, so we
 	// need to cap off the stack with a contact, start a new stack with a new
@@ -584,6 +592,9 @@ bool Router::buildPinConstraints(int level, bool reset) {
 }
 
 bool Router::lockPinConstraints() {
+	// TODO(edward.bingham) I need to check pairs of pins and set up a
+	// stack constraint between them if there isn't a pin constraint
+	// between them. { PMOS -> 2, PMOS -> NMOS, 2 -> NMOS }
 	bool change = false;
 	for (auto c0 = pinConstraints.begin(); c0 != pinConstraints.end(); c0++) {
 		array<bool, 2> hasPrev = {
@@ -1992,13 +2003,11 @@ void Router::buildGroupConstraints() {
 	for (int i = 0; i < (int)routes.size(); i++) {
 		for (int type = 0; type < (int)this->stack.size(); type++) {
 			for (int j = 0; j < (int)this->stack[type].pins.size(); j++) {
-				auto pos = lower_bound(routes[i].pins.begin(), routes[i].pins.end(), Index(type, j), CompareIndex(this));
-				if (pos != routes[i].pins.end() and pos != routes[i].pins.begin() and pos->idx != Index(type, j)) {
-					pos--;
-					int level = routes[i].getLevel(pos-routes[i].pins.begin());
-					if (level == this->stack[type].pins[j].layer) {
-						groupConstraints.push_back(RouteGroupConstraint(i, Index(type, j)));
-					}
+				int off = 0;
+				if (minOffset(&off, 1, routes[i].layout, 0,
+				  stack[type].pins[j].layout, stack[type].pins[j].offset[0],
+					Layout::IGNORE, Layout::MERGENET)) {
+					groupConstraints.push_back(RouteGroupConstraint(i, Index(type, j)));
 				}
 			}
 		}
@@ -2715,10 +2724,11 @@ void Router::lowerRoutes(int window) {
 	// indexed by [route][pin]
 	vector<vector<set<int> > > blockedLevels(routes.size(), vector<set<int> >());
 	for (int i = 0; i < (int)routes.size(); i++) {
+		Rect box = routes[i].layout.bbox();
 		for (int type = 0; type < (int)this->stack.size(); type++) {
 			for (int j = 0; j < (int)this->stack[type].pins.size(); j++) {
 				const Pin &p0 = this->pin(Index(type, j));
-				if (routes[i].offset[Model::PMOS] >= this->stack[type].pins[j].lo and routes[i].offset[Model::PMOS] <= this->stack[type].pins[j].hi and not routes[i].pins.empty()) {
+				if (routes[i].offset[Model::PMOS]+box.ur[1] >= this->stack[type].pins[j].lo and routes[i].offset[Model::PMOS]+box.ll[1] <= this->stack[type].pins[j].hi and not routes[i].pins.empty()) {
 					auto pos = lower_bound(routes[i].pins.begin(), routes[i].pins.end(), Index(type, j), CompareIndex(this, false));
 					if (((pos == routes[i].pins.begin() and this->pin(routes[i].pins[0].idx).offset[0] - p0.offset[0] <= p0.width) or
 					    (pos != routes[i].pins.begin() and pos != routes[i].pins.end())) and not routes[i].hasPin(this, Index(type, j))) {
@@ -2905,15 +2915,15 @@ bool Router::solve() {
 	}
 
 	lowerRoutes();
-	buildGroupConstraints();
 
 	buildStackConstraints();
 	assignStackConstraints();
 	buildPinOffsets(0, vector<Index>(), true);
 	buildPinOffsets(1, vector<Index>(), true);
 	drawRoutes();
-	
-	buildRouteConstraints();
+
+	buildGroupConstraints();
+	buildRouteConstraints(false, false);
 	assignRouteConstraints();
 
 	assignStackConstraints();

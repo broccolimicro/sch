@@ -301,7 +301,7 @@ void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i 
 					Rect bbox = layer->second.bbox();
 
 					vec2i ll(min(pin.offset[0], viall[0]), 0);
-					vec2i ur(max(pin.offset[0]+width, viaur[0]), height);
+					vec2i ur(max(pin.offset[0]+width, viaur[0]), width);
 					if (wire.pins[j].idx.type == Model::PMOS and bbox.ll[0] < pin.offset[0]+width+minSpacing and pin.offset[0] < bbox.ur[0]+minSpacing) {
 						ll[1] = bbox.ll[1];
 					}
@@ -364,16 +364,11 @@ void drawPin(Layout &dst, const Subckt &ckt, const Stack &stack, int pinID, vec2
 	pos[0] += stack.pins[pinID].offset[0];
 	if (stack.pins[pinID].isContact()) {
 		int model = -1;
-		for (int i = pinID-1; i >= 0 and model < 0; i--) {
-			if (stack.pins[i].isGate()) {
-				model = ckt.mos[stack.pins[i].device].model;
-			}
+		if (model < 0 and pinID >= 1 and stack.pins[pinID-1].isGate()) {
+			model = ckt.mos[stack.pins[pinID-1].device].model;
 		}
-
-		for (int i = pinID+1; i < (int)stack.pins.size() and model < 0; i++) {
-			if (stack.pins[i].isGate()) {
-				model = ckt.mos[stack.pins[i].device].model;
-			}
+		if (model < 0 and pinID+1 < (int)stack.pins.size() and stack.pins[pinID+1].isGate()) {
+			model = ckt.mos[stack.pins[pinID+1].device].model;
 		}
 
 		if (model >= 0) {
