@@ -55,6 +55,9 @@ bool extract(Subckt &dst, Layout &src, bool forceTrace) {
 		}
 	}
 
+	if (src.tech->wires.empty()) {
+		return false;
+	}
 	auto poly = src.find(src.tech->wires[0].draw);
 	if (poly == src.layers.end()) {
 		return false;

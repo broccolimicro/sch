@@ -393,12 +393,12 @@ void drawStack(Layout &dst, const Subckt &ckt, const Stack &stack) {
 	for (auto i = stack.pins.begin(); i != stack.pins.end(); i++) {
 		vec2i dir = vec2i(1, stack.type == Model::NMOS ? -1 : 1);
 		drawLayout(dst, i->layout, vec2i(i->offset[0], 0), dir);
-		if (i != stack.pins.begin() and (i->device >= 0 or (i-1)->device >= 0)) {
+		if (i != stack.pins.begin() and (i->isGate() or (i-1)->isGate())) {
 			int height = min(i->height, (i-1)->height);
 			int model = -1;
-			if (i->device >= 0) {
+			if (i->isGate()) {
 				model = ckt.mos[i->device].model;
-			} else {
+			} else if ((i-1)->isGate()) {
 				model = ckt.mos[(i-1)->device].model;
 			}
 

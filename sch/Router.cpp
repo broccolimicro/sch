@@ -1563,7 +1563,7 @@ void Router::buildStackConstraints(bool reset) {
 						substrateMode = Layout::DEFAULT;
 						routingMode = Layout::DEFAULT;
 						if (from.isGate() or to.isGate()) {
-							substrateMode = Layout::MERGENET;
+							substrateMode = Layout::IGNORE;
 						}
 					}
 					array<int, 2> off={0,0};
