@@ -67,17 +67,19 @@ bool extract(Subckt &dst, Layout &src, bool forceTrace) {
 		int modelID = (model-src.tech->models.begin());
 		Layer diff(*src.tech);
 		auto well = src.layers.end();
+		bool wellIsPin = false;
 		bool found = true;
 		for (auto sub = model->stack.begin(); sub != model->stack.end(); sub++) {
 			if (src.tech->subst[flip(*sub)].isWell) {
 				if (well == src.layers.end() and src.tech->subst[flip(*sub)].draw >= 0) {
 					well = src.find(src.tech->subst[flip(*sub)].draw);
 				}
-				if (well == src.layers.end() and src.tech->subst[flip(*sub)].pin >= 0) {
-					well = src.find(src.tech->subst[flip(*sub)].pin);
-				}
 				if (well == src.layers.end() and src.tech->subst[flip(*sub)].label >= 0) {
 					well = src.find(src.tech->subst[flip(*sub)].label);
+				}
+				if (well == src.layers.end() and src.tech->subst[flip(*sub)].pin >= 0) {
+					well = src.find(src.tech->subst[flip(*sub)].pin);
+					wellIsPin = true;
 				}
 				continue;
 			}
@@ -121,6 +123,14 @@ bool extract(Subckt &dst, Layout &src, bool forceTrace) {
 				if (l1->net >= 0) {
 					globalBase = l1->net;
 					break;
+				}
+			}
+			if (wellIsPin) {
+				for (auto r0 = well->second.geo.begin(); r0 != well->second.geo.end(); r0++) {
+					if (r0->net >= 0) {
+						globalBase = r0->net;
+						break;
+					}
 				}
 			}
 		}
