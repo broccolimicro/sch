@@ -54,15 +54,12 @@ Placement::Placement(const Tech &tech, const Subckt &ckt, int l, int w, int g, s
 		int poly = tech.wires[0].draw;
 		gateToGate = tech.getSpacing(poly, poly);
 		if (not ckt.mos.empty()) {
-			int model = ckt.mos[0].model;
+			auto model = tech.models.begin()+ckt.mos[0].model;
 
-			int diff = -1;
-			if (not tech.models[model].stack.empty()) {
-				int diff = tech.subst[tech.models[model].stack[0]].draw;
-				diffToDiff = tech.getSpacing(diff, diff);
-			}
+			int diff = tech.at(model->diff).draw;
+			diffToDiff = tech.getSpacing(diff, diff);
 
-			vector<int> viaLevels = tech.findVias(flip(model), 1);
+			vector<int> viaLevels = tech.via(model->diff, Level(Level::ROUTE, 1));
 			if (not viaLevels.empty()) {
 				int via = tech.vias[viaLevels[0]].draw;
 				gateToContact = tech.getSpacing(poly, via);

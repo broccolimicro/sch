@@ -14,13 +14,13 @@ Pin::Pin(const Tech &tech) : layout(tech) {
 	leftNet = -1;
 	rightNet = -1;
 	
-	layer = 0;
 	width = 0;
 	height = 0;
 	offset[0] = 0;
 	offset[1] = 0;
 	bound[0] = 0;
 	bound[1] = 0;
+	layer = Level(Level::ROUTE, 0);
 	lo = numeric_limits<int>::max();
 	hi = numeric_limits<int>::min();
 }
@@ -32,13 +32,13 @@ Pin::Pin(const Tech &tech, int outNet, int baseNet) : layout(tech) {
 	this->rightNet = outNet;
 	this->baseNet = baseNet;
 
-	layer = 1;
 	width = 0;
 	height = 0;
 	offset[0] = 0;
 	offset[1] = 0;
 	bound[0] = 0;
 	bound[1] = 0;
+	layer = Level(Level::ROUTE, 1);
 	lo = numeric_limits<int>::max();
 	hi = numeric_limits<int>::min();
 }
@@ -50,13 +50,13 @@ Pin::Pin(const Tech &tech, int device, int outNet, int leftNet, int rightNet, in
 	this->rightNet = rightNet;
 	this->baseNet = baseNet;
 
-	layer = 0;
 	width = 0;
 	height = 0;
 	offset[0] = 0;
 	offset[1] = 0;
 	bound[0] = 0;
 	bound[1] = 0;
+	layer = Level(Level::ROUTE, 0);
 	lo = numeric_limits<int>::max();
 	hi = numeric_limits<int>::min();
 }
@@ -183,20 +183,20 @@ void Wire::resortPins(const Router *rt) {
 	}
 }
 
-int Wire::getLevel(int i) const {
+Level Wire::getLevel(int i) const {
 	if ((int)level.size() == 0) {
-		return 2;
+		return Level(Level::ROUTE, 2);
 	}
 
 	if (i < 0) {
-		return level[0];
+		return Level(Level::ROUTE, level[0]);
 	}
 
 	if (i >= (int)level.size()) {
-		return level[level.size()-1];
+		return Level(Level::ROUTE, level[level.size()-1]);
 	}
 
-	return level[i];
+	return Level(Level::ROUTE, level[i]);
 }
 
 bool Wire::hasGate(const Router *rt) const {
@@ -231,10 +231,10 @@ void Wire::buildContacts(const Router *rt) {
 
 	for (int j = 0; j < (int)pins.size(); j++) {
 		const Pin &pin = rt->pin(pins[j].idx);
-		int prevLevel = getLevel(j-1);
-		int nextLevel = getLevel(j);
-		int maxLevel = max(pin.layer, max(nextLevel, prevLevel));
-		int minLevel = min(pin.layer, min(nextLevel, prevLevel));
+		Level prevLevel = getLevel(j-1);
+		Level nextLevel = getLevel(j);
+		Level maxLevel = max(pin.layer, max(nextLevel, prevLevel));
+		Level minLevel = min(pin.layer, min(nextLevel, prevLevel));
 
 		pins[j].layout.clear();
 		drawViaStack(pins[j].layout, net, pin.baseNet, minLevel, maxLevel, vec2i(0, 0), vec2i(0,0), vec2i(0,0));
@@ -1567,6 +1567,7 @@ void Router::buildStackConstraints(bool reset) {
 						}
 					}
 					array<int, 2> off={0,0};
+
 					bool fromto = minOffset(&off[0], 0, from.layout, 0, to.layout, 0, substrateMode, routingMode, false);
 					bool tofrom = minOffset(&off[1], 0, to.layout, 0, from.layout, 0, substrateMode, routingMode, false);
 					if (fromto or tofrom) {
@@ -2085,7 +2086,7 @@ bool Router::buildPinBounds(bool reset) {
 
 		for (int j = 0; j < (int)routes[i].pins.size(); j++) {
 			Pin &pin = this->pin(routes[i].pins[j].idx);
-			int hi = lo + (routes[i].net < 0 ? pin.height : tech->getWidth(tech->wires[pin.layer].draw));
+			int hi = lo + (routes[i].net < 0 ? pin.height : tech->getWidth(tech->at(pin.layer).draw));
 			if (lo < pin.lo) {
 				pin.lo = lo;
 				change = true;
@@ -2722,9 +2723,9 @@ void Router::lowerRoutes(int window) {
 	// int pinLevel = 1;
 
 	// indexed by [route][pin]
-	vector<vector<set<int> > > blockedLevels(routes.size(), vector<set<int> >());
+	vector<vector<set<Level> > > blockedLevels(routes.size(), vector<set<Level> >());
 	for (int i = 0; i < (int)routes.size(); i++) {
-		Rect box = routes[i].layout.bbox();
+		Rect box = routes[i].layout.box;
 		for (int type = 0; type < (int)this->stack.size(); type++) {
 			for (int j = 0; j < (int)this->stack[type].pins.size(); j++) {
 				const Pin &p0 = this->pin(Index(type, j));
@@ -2764,12 +2765,12 @@ void Router::lowerRoutes(int window) {
 			continue;
 		}
 		for (int j = 0; j < (int)routes[i].pins.size(); j++) {
-			int level = this->pin(routes[i].pins[j].idx).layer;
+			Level level = this->pin(routes[i].pins[j].idx).layer;
 			if (j+1 < (int)routes[i].pins.size()) {
 				level = min(level, this->pin(routes[i].pins[j+1].idx).layer);
 			}
-			level = max(1, level);
-			for (; level < (int)tech->wires.size(); level++) {
+			level = max(Level(Level::ROUTE, 1), level);
+			for (; level < Level(Level::ROUTE, (int)tech->wires.size()); level.idx++) {
 				bool found = false;
 				for (int k = max(0, j-window); not found and k < min(j+window+1, (int)blockedLevels[i].size()); k++) {
 					found = found or (blockedLevels[i][k].find(level) != blockedLevels[i][k].end());
@@ -2781,7 +2782,7 @@ void Router::lowerRoutes(int window) {
 			if (j >= (int)routes[i].level.size()) {
 				routes[i].level.resize(j+1, 2);
 			}
-			routes[i].level[j] = level;
+			routes[i].level[j] = level.idx;
 		}
 	}
 
@@ -2855,7 +2856,7 @@ void Router::load(const Placement &place, bool createIO) {
 					Index ioPin(2, (int)this->stack[2].pins.size());
 					this->stack[2].pins.push_back(Pin(*tech, i, -1));
 					this->stack[2].pins.back().offset[0] = -50;
-					this->stack[2].pins.back().layer = 2;
+					this->stack[2].pins.back().layer = Level(Level::ROUTE, 2);
 				//}
 			}
 		}
@@ -3014,9 +3015,9 @@ void Router::annotateAreaPerim(Subckt &ckt) {
 			int leftTerm = pin->leftNet == mos->drain ? 0 : 1;
 			int rightTerm = pin->rightNet == mos->source ? 1 : 0;
 
-			auto sub = tech->models[mos->model].stack.begin();
-			int diff = tech->subst[::flip(*sub)].draw;
-			vector<int> vias = tech->findVias(::flip(mos->model), 1);
+			Level diffLevel = tech->models[mos->model].diff;
+			int diff = tech->at(diffLevel).draw;
+			vector<int> vias = tech->via(diffLevel, Level(Level::ROUTE, 1));
 			if (not vias.empty()) {
 				int via = tech->vias[vias[0]].draw;
 				vec2i diffOverPoly = max(tech->getEnclosing(diff, poly), 0).swap(0,1);

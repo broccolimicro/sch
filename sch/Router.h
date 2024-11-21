@@ -48,7 +48,7 @@ struct Pin {
 	Layout layout;
 	// Routing level (this is mis-named, should be "level")
 	// index into Tech::wires, See phy/Tech.h
-	int layer;
+	Level layer;
 
 	// dimensions of the pin in dbunits. See phy/Tech.h
 	int width;
@@ -177,7 +177,7 @@ struct Wire {
 	int findPin(const Router *rt, Index pin) const;
 	bool hasPin(const Router *rt, Index pin) const;
 	void resortPins(const Router *rt);
-	int getLevel(int i) const;
+	Level getLevel(int i) const;
 	bool hasGate(const Router *rt) const;
 	int numSourceDrain(const Router *rt) const;
 	vector<bool> pinTypes() const;
