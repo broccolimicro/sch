@@ -641,8 +641,6 @@ void Subckt::splitDevices(const Tech &tech) {
 			continue;
 		}
 
-		printf("%d -> (%d %d)\n", mos[i].size[1], model->bins[bin].first, model->bins[bin].second);
-
 		int N = 2;
 		for (; mos[i].size[1]/N > model->bins[bin].second; N++);
 
