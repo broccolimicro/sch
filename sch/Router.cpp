@@ -2903,6 +2903,7 @@ void Router::load(const Placement &place, bool createIO) {
 bool Router::solve() {
 	buildPinOffsets(0, vector<Index>(), true);
 	buildPinOffsets(1, vector<Index>(), true);
+	// TODO(edward.bingham) does alignment depend on the pin constraints?
 	alignPins();
 
 	buildPinConstraints(0, true);

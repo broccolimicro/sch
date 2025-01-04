@@ -278,6 +278,8 @@ Placement Placement::solve(const Tech &tech, const Subckt &ckt, int starts, int 
 		float currStep = step;
 		do {
 			// Test all of the possible moves and pick the best one.
+			// TODO(edward.bingham) cross stack moves need to select *geometrically*
+			// aligned transistors, not transistors aligned by *order*
 			score = newScore;
 			for (auto choice = choices.begin(); choice != choices.end(); choice++) {
 				//printf("\r%06d/%06d  %f %f %06d<%06d", (int)(choice-choices.begin()), (int)choices.size(), currStep, rate, newScore, score);
