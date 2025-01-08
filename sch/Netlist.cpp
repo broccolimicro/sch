@@ -84,10 +84,6 @@ void Netlist::mapCells(bool progress) {
 	}
 
 	// break large subckts into new cells
-	if (progress) {
-		printf("Break subckts into cells:\n");
-	}
-	steady_clock::time_point start = steady_clock::now();
 	for (int i = (int)subckts.size()-1; i >= 0; i--) {
 		if (not subckts[i].isCell and not subckts[i].mos.empty()) {
 			int count = (int)subckts.size();
@@ -96,6 +92,8 @@ void Netlist::mapCells(bool progress) {
 				printf("  %s...", subckts[i].name.c_str());
 				fflush(stdout);
 			}
+			steady_clock::time_point start = steady_clock::now();
+
 			subckts[i].splitDevices(*tech);
 
 			auto segments = subckts[i].segment();
@@ -130,19 +128,15 @@ void Netlist::mapCells(bool progress) {
 				}
 			}
 
-			if (progress) {
-				printf("[%s%d UNIQUE/%d CELLS%s]\n", KGRN, (int)subckts.size()-count, (int)segments.size(), KNRM);
-			}
-
 			subckts[i].cleanDangling();
+
+			if (progress) {
+				printf("[%s%d UNIQUE/%d CELLS%s]\t%gs\n", KGRN, (int)subckts.size()-count, (int)segments.size(), KNRM, (float)(chrono::duration_cast<chrono::microseconds>(chrono::steady_clock::now() - start).count())/1e6);
+			}
 			if (not subckts[i].mos.empty()) {
 				printf("failed to segment all devices\n");
 			}
 		}
-	}
-	steady_clock::time_point finish = steady_clock::now();
-	if (progress) {
-		printf("done [%gs]\n\n", ((float)duration_cast<milliseconds>(finish - start).count())/1000.0);
 	}
 }
 
