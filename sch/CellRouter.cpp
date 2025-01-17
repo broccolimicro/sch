@@ -3,7 +3,7 @@
 #include <set>
 #include <list>
 
-#include "Router.h"
+#include "CellRouter.h"
 #include "Draw.h"
 
 namespace sch {
@@ -102,7 +102,7 @@ bool operator!=(const Contact &c0, const Contact &c1) {
 	return c0.idx != c1.idx;
 }
 
-CompareIndex::CompareIndex(const Router *rt, bool orderIndex) {
+CompareIndex::CompareIndex(const CellRouter *rt, bool orderIndex) {
 	this->rt = rt;
 	this->orderIndex = orderIndex;
 }
@@ -148,7 +148,7 @@ Wire::Wire(const Tech &tech, int net) : layout(tech) {
 Wire::~Wire() {
 }
 
-void Wire::addPin(const Router *rt, Contact ct) {
+void Wire::addPin(const CellRouter *rt, Contact ct) {
 	auto pos = lower_bound(pins.begin(), pins.end(), ct.idx, CompareIndex(rt));
 	pins.insert(pos, ct);
 	const Pin &pin = rt->pin(ct.idx);
@@ -160,7 +160,7 @@ void Wire::addPin(const Router *rt, Contact ct) {
 	}
 }
 
-int Wire::findPin(const Router *rt, Index pin) const {
+int Wire::findPin(const CellRouter *rt, Index pin) const {
 	auto pos = lower_bound(pins.begin(), pins.end(), pin, CompareIndex(rt));
 	if (pos != pins.end() and pos->idx == pin) {
 		return pos - pins.begin();
@@ -168,11 +168,11 @@ int Wire::findPin(const Router *rt, Index pin) const {
 	return -1;
 }
 
-bool Wire::hasPin(const Router *rt, Index pin) const {
+bool Wire::hasPin(const CellRouter *rt, Index pin) const {
 	return findPin(rt, pin) != -1;
 }
 
-void Wire::resortPins(const Router *rt) {
+void Wire::resortPins(const CellRouter *rt) {
 	if (not pins.empty()) {
 		sort(pins.begin(), pins.end(), CompareIndex(rt));
 		left = rt->pin(pins[0].idx).offset[0];
@@ -199,7 +199,7 @@ Level Wire::getLevel(int i) const {
 	return Level(Level::ROUTE, level[i]);
 }
 
-bool Wire::hasGate(const Router *rt) const {
+bool Wire::hasGate(const CellRouter *rt) const {
 	for (int i = 0; i < (int)pins.size(); i++) {
 		if (rt->pin(pins[i].idx).device >= 0) {
 			return true;
@@ -208,7 +208,7 @@ bool Wire::hasGate(const Router *rt) const {
 	return false;
 }
 
-int Wire::numSourceDrain(const Router *rt) const {
+int Wire::numSourceDrain(const CellRouter *rt) const {
 	int result = 0;
 	for (int i = 0; i < (int)pins.size(); i++) {
 		result += (rt->pin(pins[i].idx).device < 0);
@@ -224,7 +224,7 @@ vector<bool> Wire::pinTypes() const {
 	return result;
 }
 
-void Wire::buildContacts(const Router *rt) {
+void Wire::buildContacts(const CellRouter *rt) {
 	if (net < 0) {
 		return;
 	}
@@ -254,7 +254,7 @@ Stack::Stack(int type) {
 Stack::~Stack() {
 }
 
-// index into Placement::dangling
+// index into CellPlacement::dangling
 void Stack::push(const Tech &tech, const Subckt &ckt, int device, bool flip) {
 	int fromNet = -1;
 	int toNet = -1;
@@ -300,7 +300,7 @@ void Stack::push(const Tech &tech, const Subckt &ckt, int device, bool flip) {
 	}
 }
 
-Router::Router(const Tech &tech, const Placement &place, bool progress, bool debug) {
+CellRouter::CellRouter(const Tech &tech, const CellPlacement &place, bool progress, bool debug) {
 	this->tech = &tech;
 	this->ckt = place.ckt;
 	this->cycleCount = 0;
@@ -319,19 +319,19 @@ Router::Router(const Tech &tech, const Placement &place, bool progress, bool deb
 	this->load(place);
 }
 
-Router::~Router() {
+CellRouter::~CellRouter() {
 }
 
-Pin &Router::pin(Index i) {
+Pin &CellRouter::pin(Index i) {
 	return stack[i.type].pins[i.pin];
 }
 
-const Pin &Router::pin(Index i) const {
+const Pin &CellRouter::pin(Index i) const {
 	return stack[i.type].pins[i.pin];
 }
 
 // horizontal size of pin
-int Router::pinWidth(Index p) const {
+int CellRouter::pinWidth(Index p) const {
 	int device = pin(p).device;
 	if (device >= 0) {
 		// this pin is a transistor, use length of transistor
@@ -343,7 +343,7 @@ int Router::pinWidth(Index p) const {
 }
 
 // vertical size of pin
-int Router::pinHeight(Index p) const {
+int CellRouter::pinHeight(Index p) const {
 	int device = pin(p).device;
 	if (device >= 0) {
 		// this pin is a transistor, use width of transistor
@@ -380,7 +380,7 @@ int Router::pinHeight(Index p) const {
 	return result;
 }
 
-void Router::propagateOrderMap(vector<bitset> &m, set<int> todo) {
+void CellRouter::propagateOrderMap(vector<bitset> &m, set<int> todo) {
 	if (todo.empty()) {
 		for (int i = 0; i < (int)m.size(); i++) {
 			todo.insert(i);
@@ -399,7 +399,7 @@ void Router::propagateOrderMap(vector<bitset> &m, set<int> todo) {
 	}
 }
 
-vector<bitset> Router::routeOrderMap(int type) {
+vector<bitset> CellRouter::routeOrderMap(int type) {
 	vector<bitset> result;
 	result.resize(routes.size());
 	for (int i = 0; i < (int)routes.size(); i++) {
@@ -413,7 +413,7 @@ vector<bitset> Router::routeOrderMap(int type) {
 	return result;
 }
 
-vector<bitset> Router::pinOrderMap() {
+vector<bitset> CellRouter::pinOrderMap() {
 	array<int, 3> offset = {0, (int)stack[0].pins.size(),
 		(int)stack[0].pins.size()+(int)stack[1].pins.size()};
 
@@ -452,7 +452,7 @@ vector<bitset> Router::pinOrderMap() {
 }
 
 
-vector<set<int> > Router::createAdjacencyList() {
+vector<set<int> > CellRouter::createAdjacencyList() {
 	vector<set<int> > Ak(routes.size(), set<int>());
 	for (int i = 0; i < (int)routes.size(); i++) {
 		for (auto c = routeConstraints.begin(); c != routeConstraints.end(); c++) {
@@ -475,7 +475,7 @@ vector<set<int> > Router::createAdjacencyList() {
 	return Ak;
 }
 
-void Router::delRoute(int route) {
+void CellRouter::delRoute(int route) {
 	for (int i = (int)routeConstraints.size()-1; i >= 0; i--) {
 		if (routeConstraints[i].wires[0] == route or routeConstraints[i].wires[1] == route) {
 			routeConstraints.erase(routeConstraints.begin()+i);
@@ -501,7 +501,7 @@ void Router::delRoute(int route) {
 
 // depends on:
 // buildPinOffsets() - this determines what the pin constraints are
-bool Router::buildPinConstraints(int level, bool reset) {
+bool CellRouter::buildPinConstraints(int level, bool reset) {
 	// TODO(edward.bingham) this could be more efficiently done as a 1d rectangle
 	// overlap problem
 	set<PinConstraint> old;
@@ -591,7 +591,7 @@ bool Router::buildPinConstraints(int level, bool reset) {
 	return false;
 }
 
-bool Router::lockPinConstraints() {
+bool CellRouter::lockPinConstraints() {
 	// TODO(edward.bingham) I need to check pairs of pins and set up a
 	// stack constraint between them if there isn't a pin constraint
 	// between them. { PMOS -> 2, PMOS -> NMOS, 2 -> NMOS }
@@ -656,7 +656,7 @@ bool Router::lockPinConstraints() {
 	return change;
 }
 
-void Router::buildViaConstraints() {
+void CellRouter::buildViaConstraints() {
 	viaConstraints.clear();
 	// Compute via constraints
 	/*for (int type = 0; type < 2; type++) {
@@ -688,7 +688,7 @@ void Router::buildViaConstraints() {
 	}*/
 }
 
-map<int, int> Router::next(int i) {
+map<int, int> CellRouter::next(int i) {
 	map<int, int> result;
 	for (auto c = routeConstraints.begin(); c != routeConstraints.end(); c++) {
 		if (c->select >= 0 and c->wires[c->select] == i) {
@@ -709,7 +709,7 @@ map<int, int> Router::next(int i) {
 	return result;
 }
 
-map<int, int> Router::prev(int i) {
+map<int, int> CellRouter::prev(int i) {
 	map<int, int> result;
 	for (auto c = routeConstraints.begin(); c != routeConstraints.end(); c++) {
 		if (c->select >= 0 and c->wires[1-c->select] == i) {
@@ -730,7 +730,7 @@ map<int, int> Router::prev(int i) {
 	return result;
 }
 
-bool Router::hasPinConstraint(int from, int to) {
+bool CellRouter::hasPinConstraint(int from, int to) {
 	for (auto i = pinConstraints.begin(); i != pinConstraints.end(); i++) {
 		if (routes[from].hasPin(this, Index(Model::PMOS, i->from))
 			and routes[to].hasPin(this, Index(Model::NMOS, i->to))) {
@@ -740,7 +740,7 @@ bool Router::hasPinConstraint(int from, int to) {
 	return false;
 }
 
-bool Router::findCycle(int s, const vector<set<int> > &Ak, vector<pair<int, set<int> > > *cycles) {
+bool CellRouter::findCycle(int s, const vector<set<int> > &Ak, vector<pair<int, set<int> > > *cycles) {
 	/*printf("looking for cycle\n");
 	for (int i = 0; i < (int)Ak.size(); i++) {
 		printf("%d:{", i);
@@ -829,7 +829,7 @@ bool Router::findCycle(int s, const vector<set<int> > &Ak, vector<pair<int, set<
 	return found;
 }
 
-bool Router::findCycles(vector<pair<int, set<int> > > *cycles) {
+bool CellRouter::findCycles(vector<pair<int, set<int> > > *cycles) {
 	// DESIGN(edward.bingham) There can be multiple cycles with the same set of
 	// nodes as a result of multiple pin constraints. This function does not
 	// differentiate between those cycles. Doing so could introduce an
@@ -866,7 +866,7 @@ bool Router::findCycles(vector<pair<int, set<int> > > *cycles) {
 	return found;
 }
 
-bool Router::breakRoute(int route, set<int> cycleRoutes) {
+bool CellRouter::breakRoute(int route, set<int> cycleRoutes) {
 	// DESIGN(edward.bingham) There are two obvious options to mitigate cycles
 	// in the constraint graph by splitting a route. Either way, one pin needs
 	// to be shared across the two routes to handle the vertical connection
@@ -1183,7 +1183,7 @@ bool Router::breakRoute(int route, set<int> cycleRoutes) {
 	return true;
 }
 
-bool Router::breakCycles() {
+bool CellRouter::breakCycles() {
 	bool change = false;
 	vector<pair<int, set<int> > > cycles(routes.size(), pair<int, set<int> >(0, set<int>()));
 	while (findCycles(&cycles)) {
@@ -1275,7 +1275,7 @@ bool Router::breakCycles() {
 	return change;
 }
 
-void Router::findAndBreakViaCycles() {
+void CellRouter::findAndBreakViaCycles() {
 	/*for (int type = 0; type < 2; type++) {
 		for (int i = 0; i < (int)this->stack[type].pins.size(); i++) {
 			this->stack[type].pins[i].viaToPin.clear();
@@ -1283,7 +1283,7 @@ void Router::findAndBreakViaCycles() {
 		}
 	}
 	
-	// <index into Router::stack[via->type], index into Router::viaConstraints>
+	// <index into CellRouter::stack[via->type], index into CellRouter::viaConstraints>
 	vector<vector<ViaConstraint>::iterator> active;
 	for (auto via = viaConstraints.begin(); via != viaConstraints.end(); via++) {
 		for (auto s0p = via->side[0].begin(); s0p != via->side[0].end(); s0p++) {
@@ -1338,7 +1338,7 @@ void Router::findAndBreakViaCycles() {
 	}*/
 }
 
-Index Router::createVirtualPin(int net) {
+Index CellRouter::createVirtualPin(int net) {
 	Index fromId(2, (int)this->stack[2].pins.size());
 	stack[2].pins.push_back(Pin(*tech, net, -1));
 	Pin &from = stack[2].pins.back();
@@ -1389,7 +1389,7 @@ Index Router::createVirtualPin(int net) {
 	return fromId;
 }
 
-void Router::alignVirtualPin(Index idx) {
+void CellRouter::alignVirtualPin(Index idx) {
 	// TODO(edward.bingham) Find a list of potential ranges for each pin. This is
 	// determined by the other pins and their hi and lo values. I also need to
 	// think about routes.  Ranges should be defined in terms of pins... but
@@ -1528,13 +1528,13 @@ void Router::alignVirtualPin(Index idx) {
 	// TODO(edward.bingham) create pin constraints
 }
 
-void Router::buildContacts() {
+void CellRouter::buildContacts() {
 	for (int i = 0; i < (int)routes.size(); i++) {
 		routes[i].buildContacts(this);
 	}
 }
 
-void Router::buildStackConstraints(bool reset) {
+void CellRouter::buildStackConstraints(bool reset) {
 	vector<StackConstraint> oldStack;
 	std::swap(oldStack, stackConstraints);
 	vector<vector<vector<ContactConstraint> > > oldCt;
@@ -1635,7 +1635,7 @@ void Router::buildStackConstraints(bool reset) {
 // depends on:
 // buildStackConstraints() - these constraints determine the
 //                           position of the pins
-bool Router::buildPinOffsets(int type, vector<Index> start, bool reset) {
+bool CellRouter::buildPinOffsets(int type, vector<Index> start, bool reset) {
 	bool change = false;
 	if (reset) {
 		for (int t0 = 0; t0 < (int)stack.size(); t0++) {
@@ -1827,7 +1827,7 @@ bool Router::buildPinOffsets(int type, vector<Index> start, bool reset) {
 // depends on:
 // buildPinOffsets() - contacts on the route need an up-to-date
 //                  position before we draw them
-void Router::drawRoutes() {
+void CellRouter::drawRoutes() {
 	for (int i = 0; i < (int)routes.size(); i++) {
 		routes[i].layout.clear();
 	}
@@ -1842,7 +1842,7 @@ void Router::drawRoutes() {
 	}
 }
 
-void Router::createRouteConstraint(int i, int j) {
+void CellRouter::createRouteConstraint(int i, int j) {
 	if (i > j) {
 		swap(i, j);
 	}
@@ -1888,7 +1888,7 @@ void Router::createRouteConstraint(int i, int j) {
 	}
 }
 
-bool Router::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
+bool CellRouter::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
 	// Compute route constraints
 	bool change = false;
 	vector<RouteConstraint> old;
@@ -1998,7 +1998,7 @@ bool Router::buildRouteConstraints(bool resetSpacing, bool resetOrder) {
 	return change;
 }
 
-void Router::buildGroupConstraints() {
+void CellRouter::buildGroupConstraints() {
 	groupConstraints.clear();
 
 	for (int i = 0; i < (int)routes.size(); i++) {
@@ -2015,7 +2015,7 @@ void Router::buildGroupConstraints() {
 	}
 }
 
-set<int> Router::propagateRouteConstraint(int idx) {
+set<int> CellRouter::propagateRouteConstraint(int idx) {
 	set<int> result;
 	if (routeConstraints[idx].select < 0) {
 		return result;
@@ -2062,7 +2062,7 @@ set<int> Router::propagateRouteConstraint(int idx) {
 	return result;
 }
 
-void Router::zeroWeights() {
+void CellRouter::zeroWeights() {
 	cellHeight = 0;
 	for (int i = 0; i < (int)routes.size(); i++) {
 		routes[i].offset[Model::PMOS] = 0;
@@ -2070,7 +2070,7 @@ void Router::zeroWeights() {
 	}
 }
 
-bool Router::buildPinBounds(bool reset) {
+bool CellRouter::buildPinBounds(bool reset) {
 	bool change = false;
 	if (reset) {
 		for (int type = 0; type < (int)this->stack.size(); type++) {
@@ -2100,7 +2100,7 @@ bool Router::buildPinBounds(bool reset) {
 	return change;
 }
 
-bool Router::buildRouteOffsets(int type, vector<int> start) {
+bool CellRouter::buildRouteOffsets(int type, vector<int> start) {
 	bool change = false;
 	unresolvedCycle[type] = false;
 	if (start.empty()) {
@@ -2154,13 +2154,13 @@ bool Router::buildRouteOffsets(int type, vector<int> start) {
 	return change;
 }
 
-void Router::resetGraph() {
+void CellRouter::resetGraph() {
 	zeroWeights();
 	buildRouteOffsets(Model::PMOS);
 	buildRouteOffsets(Model::NMOS);
 }
 
-void Router::alignPins() {
+void CellRouter::alignPins() {
 	array<int, 3> offset = {0, (int)stack[0].pins.size(),
 		(int)stack[0].pins.size()+(int)stack[1].pins.size()};
 
@@ -2503,7 +2503,7 @@ void Router::alignPins() {
 	}
 }
 
-bool Router::assignStackConstraints() {
+bool CellRouter::assignStackConstraints() {
 	bool change = false;
 	for (auto cnst = stackConstraints.begin(); cnst != stackConstraints.end(); cnst++) {
 		if (cnst->select < 0) {
@@ -2545,7 +2545,7 @@ bool Router::assignStackConstraints() {
 	return change;
 }
 
-bool Router::assignRouteConstraints(bool reset) {
+bool CellRouter::assignRouteConstraints(bool reset) {
 	bool change = false;
 	if (reset) {
 		resetGraph();
@@ -2709,7 +2709,7 @@ bool Router::assignRouteConstraints(bool reset) {
 }
 
 // The `window` attempts to prevent too many vias across a route by smoothing the transition
-void Router::lowerRoutes(int window) {
+void CellRouter::lowerRoutes(int window) {
 	// TODO(edward.bingham) There's still an interaction between route lowering
 	// and via merging where it ends up creating a double route for two close
 	// pins, causing DRC violations
@@ -2789,7 +2789,7 @@ void Router::lowerRoutes(int window) {
 	buildContacts();
 }
 
-int Router::computeCost() {
+int CellRouter::computeCost() {
 	// TODO(edward.bingham) This may be useful for a second placement round where
 	// we use full cell area as the cost function. So, start with the simpler
 	// cost function, do an initial layout, then use the layout size as the new
@@ -2813,7 +2813,7 @@ int Router::computeCost() {
 
 // Load the pin order from the placer and then compute everything that is
 // invariant across different routing solutions
-void Router::load(const Placement &place, bool createIO) {
+void CellRouter::load(const CellPlacement &place, bool createIO) {
 	// Save the resulting placement to the Subckt
 	for (int type = 0; type < (int)stack.size(); type++) {
 		stack[type].type = type;
@@ -2900,7 +2900,7 @@ void Router::load(const Placement &place, bool createIO) {
 	buildStackConstraints(true);
 }
 
-bool Router::solve() {
+bool CellRouter::solve() {
 	buildPinOffsets(0, vector<Index>(), true);
 	buildPinOffsets(1, vector<Index>(), true);
 	// TODO(edward.bingham) does alignment depend on the pin constraints?
@@ -3000,7 +3000,7 @@ bool Router::solve() {
 	return not unresolvedCycle[0] and not unresolvedCycle[1] and not unresolvedPinCycle[0] and not unresolvedPinCycle[1];
 }
 
-void Router::annotateAreaPerim(Subckt &ckt) {
+void CellRouter::annotateAreaPerim(Subckt &ckt) {
 	int poly = tech->wires[0].draw;
 	for (int type = 0; type < 2; type++) {
 		if (stack[type].pins.empty()) {
@@ -3108,7 +3108,7 @@ void Router::annotateAreaPerim(Subckt &ckt) {
 	}
 }
 
-void Router::print() {
+void CellRouter::print() {
 	printf("NMOS\n");
 	for (int i = 0; i < (int)this->stack[0].pins.size(); i++) {
 		const Pin &pin = this->stack[0].pins[i];

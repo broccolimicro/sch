@@ -1,4 +1,4 @@
-#include "Placer.h"
+#include "CellPlacer.h"
 #include "Draw.h"
 
 #include <list>
@@ -18,7 +18,7 @@ namespace sch {
 // 6. With those pin constraints locked in, the route ordering won't change the horizontal relationships between pins, just the relative distances. This means that we can just compute the route ordering once and then expand out the pins to match, keeping those relationships.
 // 7. Lower the routes as much as possible. Check/eliminate/add route constraints.
 
-Placement::Placement(const Tech &tech, const Subckt &ckt, int l, int w, int g, std::default_random_engine &rand) {
+CellPlacement::CellPlacement(const Tech &tech, const Subckt &ckt, int l, int w, int g, std::default_random_engine &rand) {
 	this->ckt = &ckt;
 
 	this->l = l;
@@ -100,10 +100,10 @@ Placement::Placement(const Tech &tech, const Subckt &ckt, int l, int w, int g, s
 	}
 }
 
-Placement::~Placement() {
+CellPlacement::~CellPlacement() {
 }
 
-int Placement::dist(const Device &d0, const Device &d1) {
+int CellPlacement::dist(const Device &d0, const Device &d1) {
 	int n0 = ckt->mos[d0.device].right(d0.flip);
 	int n1 = ckt->mos[d1.device].left(d1.flip);
 	return d0.length + (
@@ -112,7 +112,7 @@ int Placement::dist(const Device &d0, const Device &d1) {
 				seqDist));
 }
 
-void Placement::move(vec4i choice) {
+void CellPlacement::move(vec4i choice) {
 	for (int i = choice[0]; i < choice[1]; i++) {
 		int j = choice[2], k = min(choice[3], (int)stack[i].size()-1);
 		for (; j < k; j++, k--) {
@@ -136,8 +136,8 @@ void Placement::move(vec4i choice) {
 	}
 }
 
-// Compute the cost of this placement using the cost function documented in floret/floret/Placer.h
-int Placement::score() {
+// Compute the cost of this placement using the cost function documented in floret/floret/CellPlacer.h
+int CellPlacement::score() {
 	vector<vec4i> nets(ckt->nets.size(), vec2i(
 			std::numeric_limits<int>::max(),
 			std::numeric_limits<int>::max(),
@@ -240,10 +240,10 @@ int Placement::score() {
 	return max(0, w*width*100 + (l*extent + g*overlap)*100/(aligned+1));
 }
 
-Placement Placement::solve(const Tech &tech, const Subckt &ckt, int starts, int l, int w, int g, float step, float rate) {
-	//printf("Running Placement\n");
+CellPlacement CellPlacement::solve(const Tech &tech, const Subckt &ckt, int starts, int l, int w, int g, float step, float rate) {
+	//printf("Running CellPlacement\n");
 	std::default_random_engine rand(0/*std::random_device{}()*/);
-	Placement best(tech, ckt, l, w, g, rand);
+	CellPlacement best(tech, ckt, l, w, g, rand);
 	if (ckt.mos.size() == 0) {
 		return best;
 	}
@@ -272,7 +272,7 @@ Placement Placement::solve(const Tech &tech, const Subckt &ckt, int starts, int 
 		//printf("start %d/%d\n", i, starts);
 
 		// Run simulated annealing to find closest minimum
-		Placement curr(tech, ckt, l, w, g, rand);
+		CellPlacement curr(tech, ckt, l, w, g, rand);
 		int score = 0;
 		int newScore = curr.score();
 		float currStep = step;
@@ -315,7 +315,7 @@ Placement Placement::solve(const Tech &tech, const Subckt &ckt, int starts, int 
 			best = curr;
 		}
 	}
-	//printf("Placement complete after %d iterations\n", starts);
+	//printf("CellPlacement complete after %d iterations\n", starts);
 
 	return best;
 }

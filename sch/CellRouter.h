@@ -2,7 +2,7 @@
 
 #include <phy/Layout.h>
 #include "Subckt.h"
-#include "Placer.h"
+#include "CellPlacer.h"
 #include <set>
 #include <unordered_set>
 #include <array>
@@ -14,7 +14,7 @@ using namespace std;
 
 namespace sch {
 
-struct Router;
+struct CellRouter;
 
 // A Pin represents either a gate of a transistor or a source/drain connection
 // (called contacts). The list of Pins in a cell is given to us by the placer.
@@ -29,7 +29,7 @@ struct Pin {
 	~Pin();
 
 	// inNet == outNet == gateNet for contacts
-	// inNet and outNet represent source and drain depending on Placer::Device::flip
+	// inNet and outNet represent source and drain depending on CellPlacement::Device::flip
 	// These index into Subckt::nets
 	int leftNet;
 	int outNet;
@@ -110,13 +110,13 @@ bool operator==(const Contact &c0, const Contact &c1);
 bool operator!=(const Contact &c0, const Contact &c1);
 
 // DESIGN(edward.bingham) use this to keep Wire::pins sorted
-// This isn't a particularly integral structure in the Router or Placer. This
+// This isn't a particularly integral structure in the CellRouter or CellPlacement. This
 // is just a helper to keep the vias in Wire::pins sorted from left to right.
 struct CompareIndex {
-	CompareIndex(const Router *rt, bool orderIndex = true);
+	CompareIndex(const CellRouter *rt, bool orderIndex = true);
 	~CompareIndex();
 
-	const Router *rt;
+	const CellRouter *rt;
 	bool orderIndex;
 
 	bool operator()(const Index &i0, const Index &i1);
@@ -147,7 +147,7 @@ struct Wire {
 	// This represents the routing level (poly, local interconnect, metal 1,
 	// metal 2, etc) on which the segment of this wire between two pins is
 	// routed. For level[i], this is the segment between pins[i] and pins[i+1].
-	// This is largely computed by lowerRoutes() in the Router.
+	// This is largely computed by lowerRoutes() in the CellRouter.
 	vector<int> level;
 
 	// The minimum and maximum X coordinate (horizontal) of this wire in the
@@ -173,15 +173,15 @@ struct Wire {
 	// The vertical distance from the [NMOS,PMOS] stack to this wire.
 	array<int, 2> offset;
 
-	void addPin(const Router *rt, Contact pin);
-	int findPin(const Router *rt, Index pin) const;
-	bool hasPin(const Router *rt, Index pin) const;
-	void resortPins(const Router *rt);
+	void addPin(const CellRouter *rt, Contact pin);
+	int findPin(const CellRouter *rt, Index pin) const;
+	bool hasPin(const CellRouter *rt, Index pin) const;
+	void resortPins(const CellRouter *rt);
 	Level getLevel(int i) const;
-	bool hasGate(const Router *rt) const;
-	int numSourceDrain(const Router *rt) const;
+	bool hasGate(const CellRouter *rt) const;
+	int numSourceDrain(const CellRouter *rt) const;
 	vector<bool> pinTypes() const;
-	void buildContacts(const Router *rt);
+	void buildContacts(const CellRouter *rt);
 };
 
 // This structure keeps track of all of the pins in the pull up or pull down
@@ -206,9 +206,9 @@ struct Stack {
 
 
 
-struct Router {
-	Router(const Tech &tech, const Placement &place, bool progress=false, bool debug=false);
-	~Router();
+struct CellRouter {
+	CellRouter(const Tech &tech, const CellPlacement &place, bool progress=false, bool debug=false);
+	~CellRouter();
 
 	bool progress;
 	bool debug;
@@ -290,7 +290,7 @@ struct Router {
 	int computeCost();
 
 	// Solve the constraint and circuit graph, filling out layers and constraints
-	void load(const Placement &place, bool createIO=false);
+	void load(const CellPlacement &place, bool createIO=false);
 	bool solve();
 
 	void annotateAreaPerim(Subckt &ckt);

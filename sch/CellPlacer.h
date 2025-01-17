@@ -5,8 +5,6 @@
 
 namespace sch {
 
-struct Placer;
-
 // This represents a single transistor placement in the stack
 struct Device {
 	// index into Subckt::mos
@@ -38,9 +36,9 @@ struct Device {
 //        |____________| <-- select this range
 // Then flip
 // [a b c][c d e][e f g][g h i]
-struct Placement {
-	Placement(const Tech &tech, const Subckt &ckt, int l, int w, int g, std::default_random_engine &rand);
-	~Placement();
+struct CellPlacement {
+	CellPlacement(const Tech &tech, const Subckt &ckt, int l, int w, int g, std::default_random_engine &rand);
+	~CellPlacement();
 
 	// These are needed to be able to compute the cost of the ordering
 	const Subckt *ckt;
@@ -85,14 +83,14 @@ struct Placement {
 	int l, w, g;
 
 	// This is the minimum width over all legal placements. It is computed in
-	// the constructor Placement::Placement() and cached in this structure as an
+	// the constructor CellPlacement::CellPlacement() and cached in this structure as an
 	// optimization.
 	int Wmin;
 
 	// If the nmos stack is bigger than the pmos stack, then d[0] is the
 	// difference in size and d[1] is 0. If the pmos stack is bigger than the
 	// nmos stack, then d[1] is the difference in size and d[0] is 0. This is
-	// computed in the constructor Placement::Placement() and cached in this
+	// computed in the constructor CellPlacement::CellPlacement() and cached in this
 	// structure as an optimization.
 	array<int, 2> d;
 
@@ -104,7 +102,7 @@ struct Placement {
 
 	void move(vec4i choice);	
 	int score();
-	static Placement solve(const Tech &tech, const Subckt &ckt, int starts=100, int l=1, int w=10, int g=10, float step=2.0, float rate=0.02);
+	static CellPlacement solve(const Tech &tech, const Subckt &ckt, int starts=100, int l=1, int w=10, int g=10, float step=2.0, float rate=0.02);
 };
 
 /*struct Link {
@@ -120,9 +118,9 @@ struct Cell {
 	vec2i size;
 };
 
-struct CellPlacement {
-	CellPlacement(const Tech &tech, const Netlist &net, int top);
-	~CellPlacement();
+struct CellCellPlacement {
+	CellCellPlacement(const Tech &tech, const Netlist &net, int top);
+	~CellCellPlacement();
 
 	const Netlist *net;
 

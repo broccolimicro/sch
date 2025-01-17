@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <sch/Placer.h>
+#include <sch/CellPlacer.h>
 #include <random>
 #include <algorithm>
 

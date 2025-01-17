@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <sch/Placer.h>
+#include <sch/CellPlacer.h>
 
 using namespace sch;
 using namespace std;
@@ -19,7 +19,7 @@ TEST(placer, solve)
 	ckt.push(Mos(-1, Model::PMOS, b, a, vdd));
 
 	// Run the placer
-	Placement result = Placement::solve(tech, ckt);
+	CellPlacement result = CellPlacement::solve(tech, ckt);
 }
 
 

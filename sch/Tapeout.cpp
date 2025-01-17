@@ -2,8 +2,8 @@
 
 #include "Netlist.h"
 #include "Draw.h"
-#include "Placer.h"
-#include "Router.h"
+#include "CellPlacer.h"
+#include "CellRouter.h"
 
 #include <interpret_phy/import.h>
 #include <interpret_phy/export.h>
@@ -24,11 +24,11 @@ using namespace phy;
 
 namespace sch {
 
-int routeCell(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debug) {
+int buildCell(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debug) {
 	bool place = true;
 	bool route = true;
-	Placement pl = Placement::solve(*lib.tech, lst.subckts[idx]);
-	Router rt(*lib.tech, pl, progress, debug);
+	CellPlacement pl = CellPlacement::solve(*lib.tech, lst.subckts[idx]);
+	CellRouter rt(*lib.tech, pl, progress, debug);
 	route = rt.solve();
 	drawCell(lib.macros[idx], rt);
 	rt.annotateAreaPerim(lst.subckts[idx]);
@@ -38,6 +38,10 @@ int routeCell(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debu
 		return 2;
 	}
 	return 0;
+}
+
+int buildProcess(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debug) {
+	
 }
 
 bool extract(Subckt &dst, Layout &src, bool forceTrace) {

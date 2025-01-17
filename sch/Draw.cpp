@@ -127,7 +127,7 @@ void drawViaStack(Layout &dst, int net, int base, Level down, Level up, vec2i ax
 	}
 }
 
-void drawWire(Layout &dst, const Router &rt, const Wire &wire, vec2i pos, vec2i dir) {
+void drawWire(Layout &dst, const CellRouter &rt, const Wire &wire, vec2i pos, vec2i dir) {
 	// [via level][pin]
 	vector<vector<int> > posArr;
 	posArr.resize(dst.tech->vias.size());
@@ -317,7 +317,7 @@ void drawStack(Layout &dst, const Subckt &ckt, const Stack &stack) {
 	}
 }
 
-void drawCell(Layout &dst, const Router &rt) {
+void drawCell(Layout &dst, const CellRouter &rt) {
 	vec2i dir(1,-1);
 	dst.name = rt.ckt->name;
 
