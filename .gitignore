@@ -1,5 +1,6 @@
 *.o
 *.d
 *.a
+sch/Kernel.h
 build
 test

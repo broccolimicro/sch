@@ -11,9 +11,9 @@ GTEST_L      := -L$(GTEST)/build/lib -L.
 
 INCLUDE_PATHS = $(DEPEND:%=-I../%) -I../gdstk/build/include $(shell python3-config --includes) -I.
 LIBRARY_PATHS = $(DEPEND:%=-L../%) -L$(shell python3-config --prefix)/lib -L.
-LIBRARIES     = $(DEPEND:%=-l%) -l$(PYTHON_RELEASE)
+LIBRARIES     = $(DEPEND:%=-l%) -l$(PYTHON_RELEASE) -lOpenCL
 LIBFILES      = $(foreach dep,$(DEPEND),../$(dep)/lib$(dep).a)
-CXXFLAGS      = -std=c++17 -O2 -g -Wall -fmessage-length=0 $(DEPEND:%=-I../%) -I../gdstk/include -I.
+CXXFLAGS      = -std=c++17 -O2 -g -Wall -fmessage-length=0 -D CL_HPP_TARGET_OPENCL_VERSION=300 $(DEPEND:%=-I../%) -I../gdstk/include -I.
 LDFLAGS       =  
 
 SOURCES	     := $(shell mkdir -p $(SRCDIR); find $(SRCDIR) -name '*.cpp')
@@ -68,10 +68,17 @@ tests: lib $(TEST_TARGET)
 $(TARGET): $(OBJECTS)
 	ar rvs $(TARGET) $(OBJECTS)
 
-build/$(SRCDIR)/%.o: $(SRCDIR)/%.cpp 
+build/$(SRCDIR)/%.o: $(SRCDIR)/%.cpp
 	@mkdir -p $(dir $@)
 	@$(CXX) $(CXXFLAGS) $(LDFLAGS) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ -c $<
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -c -o $@ $<
+
+sch/Placer.cpp: sch/Kernel.h
+
+sch/Kernel.h: cl/placer.cl
+	echo -n "#pragma once\n\nnamespace sch {\n\nconst string placer_cl_string = " > sch/Kernel.h
+	cat cl/placer.cl | sed 's/\\/\\\\/g;s/"/\\"/g;s/^/"/g;s/$$/\\n"/g' >> sch/Kernel.h
+	echo ";\n}\n" >> sch/Kernel.h
 
 $(TEST_TARGET): $(TEST_OBJECTS) $(TARGET) $(LIBFILES)
 	$(CXX) $(LIBRARY_PATHS) $(GTEST_L) $(CXXFLAGS) $(LDFLAGS) $(TEST_OBJECTS) -o $(TEST_TARGET) -pthread -l$(NAME) -lgtest $(LIBRARIES)
@@ -88,4 +95,4 @@ build/$(TESTDIR)/gtest_main.o: $(GTEST)/googletest/src/gtest_main.cc
 include $(DEPS) $(TEST_DEPS)
 
 clean:
-	rm -rf build $(TARGET) $(TEST_TARGET)
+	rm -rf sch/Kernel.h build $(TARGET) $(TEST_TARGET)

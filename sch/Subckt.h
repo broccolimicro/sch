@@ -85,8 +85,8 @@ struct Net {
 
 	vector<int> remote;
 
-	// Is this net an input or output to the cell? If it is, then we need to draw
-	// an IO pin and hook it up to the rest of the net.
+	// Is this net an input or output to the cell? If it is, then we
+	// need to draw an IO pin and hook it up to the rest of the net.
 	bool isIO;
 	bool remoteIO;
 
@@ -105,6 +105,7 @@ struct Net {
 
 struct Instance {
 	Instance();
+	Instance(int subckt, vector<int> ports=vector<int>());
 	Instance(const Subckt &ckt, const Mapping &m, int subckt);
 	~Instance();
 

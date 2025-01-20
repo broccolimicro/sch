@@ -47,7 +47,7 @@ Subckt genRand(int n, bool dev=false, bool swap=false) {
 	return ckt;
 }
 
-TEST(iso, canonical_equal)
+TEST(Isomorph, canonicalEqual)
 {
 	std::default_random_engine rand(0/*std::random_device{}()*/);
 	int n = 5;
@@ -67,7 +67,7 @@ TEST(iso, canonical_equal)
 	EXPECT_EQ(equal, count);
 }
 
-TEST(iso, canonical_not_equal)
+TEST(Isomorph, canonicalNotEqual)
 {
 	std::default_random_engine rand(0/*std::random_device{}()*/);
 	int n = 5;

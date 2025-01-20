@@ -174,6 +174,7 @@ bool operator>(const Mos &m0, const Mos &m1) {
 
 Net::Net() {
 	isIO = false;
+	remoteIO = false;
 }
 
 Net::Net(string name, bool isIO) {
@@ -249,6 +250,11 @@ bool Net::isAnonymous() const {
 
 Instance::Instance() {
 	subckt = -1;
+}
+
+Instance::Instance(int subckt, vector<int> ports) {
+	this->subckt = subckt;
+	this->ports = ports;
 }
 
 Instance::Instance(const Subckt &ckt, const Mapping &m, int subckt) {

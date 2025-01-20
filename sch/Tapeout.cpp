@@ -4,6 +4,7 @@
 #include "Draw.h"
 #include "CellPlacer.h"
 #include "CellRouter.h"
+#include "Placer.h"
 
 #include <interpret_phy/import.h>
 #include <interpret_phy/export.h>
@@ -41,7 +42,16 @@ int buildCell(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debu
 }
 
 int buildProcess(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debug) {
-	
+	if ((int)lib.macros.size() < idx+1) {
+		lib.macros.resize(idx+1, Layout(*lst.tech));
+	}
+	lib.macros[idx].name = lst.subckts[idx].name;
+	Placement placer;
+	placer.configure(0, 0, debug);
+	placer.load(lst, idx, debug);
+	placer.run();
+	placer.save(lib.macros[idx], lst);
+	return 0;
 }
 
 bool extract(Subckt &dst, Layout &src, bool forceTrace) {

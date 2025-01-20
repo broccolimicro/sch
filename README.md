@@ -2,6 +2,10 @@
 
 This library facilitates cell layout.
 
+```
+sudo apt install opencl-headers ocl-icd-opencl-dev -y
+```
+
 ## License
 
 Licensed by Broccoli, LLC under GNU GPL v3.

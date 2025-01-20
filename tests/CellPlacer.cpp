@@ -5,7 +5,7 @@
 using namespace sch;
 using namespace std;
 
-TEST(placer, solve)
+TEST(CellPlacer, solve)
 {
 	Tech tech;
 	Subckt ckt;

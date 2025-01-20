@@ -7,6 +7,7 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <stdint.h>
 
 using namespace std;
 
@@ -26,6 +27,9 @@ struct Netlist {
 	void erase(int idx);
 
 	void mapCells(bool progress=false);
+
+	int cellAt(int root, uint64_t index) const;
+	uint64_t countCells(int root) const;
 };
 
 string idToString(size_t id);
