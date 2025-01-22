@@ -208,6 +208,24 @@ kernel void computeCartesian(
 // it easier to implement the constant-time neighbor search, and has similar
 // properties
 
+inline ulong isqrt(ulong x) {
+	ulong a, b, m; // Limits and midpoint.
+	a = 1;
+	b = (x >> 5) + 8;
+	if (b > 65535) {
+		b = 65535;
+	}
+	do {
+		m = (a + b) >> 1;
+		if (m*m > x) {
+			b = m - 1;
+		} else {
+			a = m + 1;
+		}
+	} while (b >= a);
+	return a - 1;
+}
+
 
 // Cells in the same module are going to be close to each other in the provided
 // array!!!! This already creates the optimal distribution given the module
@@ -227,7 +245,14 @@ kernel void initPlacement(
 	if (i >= num) return;
 
 	uint h = hilbert[i] * (UINT_MAX / total);
-	uint2 p = cartesianFromHilbert(h);
+	uint side = isqrt(total);
+	side += side >> 3;
+	if (side == 0) {
+		side = 1;
+	}
+
+	uint scale = UINT_MAX / side;
+	uint2 p = cartesianFromHilbert(h)/scale;
 
 	index[i] = i;
 	position[i] = p;

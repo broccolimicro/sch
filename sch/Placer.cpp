@@ -517,24 +517,12 @@ void Placement::doLegal() {
 }
 
 void Placement::save(phy::Library &lib, const sch::Netlist &lst) {
-	cl_uint side = isqrt(schem[root].totalArea);
-	// apply a buffer
-	side += side>>3;
-	// ensure nonzero
-	if (side == 0) {
-		side = 1;
-	}
-
-	cl_uint scale = std::numeric_limits<cl_uint>::max()/side;
-
 	for (int i = 0; i < (int)position.size(); i++) {
 		int idx = schem[root].subckts[i];
 		string cellName = "nil";
 		if (idx < (int)lst.subckts.size()) {
 			cellName = lst.subckts[idx].name;
 		}
-		position[i].s[0] = position[i].s[0]/scale;
-		position[i].s[1] = position[i].s[1]/scale;
 		cout << cellName << "(" << i << "): {" << position[i].s[0] << " " << position[i].s[1] << "} " << index[i] << " " << schem[root].hilbert[i] << endl;
 		
 		lib.macros[root].inst.push_back(phy::Instance(idx, vec2i((int)position[i].s[0], (int)position[i].s[1])));
