@@ -388,6 +388,9 @@ vector<int> Placement::doHier(const Subckt &ckt, int starts, float step, float r
 }
 
 void Placement::doGlobal() {
+	// TODO(edward.bingham) I need to convert position coordinates from the
+	// universal domain to the scaled domain of the layout problem.
+
 	cl_uint num = (schem[root].cells.size()-1);
 	position.resize(num);
 	index.resize(num);
@@ -498,7 +501,19 @@ void Placement::doDetail() {
 }
 
 void Placement::doLegal() {
+	// For legalization, we need to first divide the space up into columns, then
+	// divide the space up into rows. Column clusters should seek to reduce the
+	// standard deviation of the height of the cells within each row while
+	// maximizing the number of cells in the column (to a point). Row clusters
+	// should seek to reduce the standard deviation of the total width of the
+	// column across rows while bucketing cells by cell height.
+
+	// This algorithm also needs to be easily parallelizeable.
 	
+	// Lets start by just doing the stupid thing. Divide the space into an equal
+	// number of columns, then divide each column into an equal number of rows.
+
+	// 
 }
 
 void Placement::save(phy::Library &lib, const sch::Netlist &lst) {
@@ -515,15 +530,11 @@ void Placement::save(phy::Library &lib, const sch::Netlist &lst) {
 	for (int i = 0; i < (int)position.size(); i++) {
 		int idx = schem[root].subckts[i];
 		string cellName = "nil";
-		cl_uint width = 0;
-		cl_uint height = 0;
 		if (idx < (int)lst.subckts.size()) {
 			cellName = lst.subckts[idx].name;
-			width = lib.macros[idx].box.ur[0]-lib.macros[idx].box.ll[0]; 
-			height = lib.macros[idx].box.ur[1]-lib.macros[idx].box.ll[1]; 
 		}
-		position[i].s[0] = position[i].s[0]/scale - width/2;
-		position[i].s[1] = position[i].s[1]/scale + height/2;
+		position[i].s[0] = position[i].s[0]/scale;
+		position[i].s[1] = position[i].s[1]/scale;
 		cout << cellName << "(" << i << "): {" << position[i].s[0] << " " << position[i].s[1] << "} " << index[i] << " " << schem[root].hilbert[i] << endl;
 		
 		lib.macros[root].inst.push_back(phy::Instance(idx, vec2i((int)position[i].s[0], (int)position[i].s[1])));

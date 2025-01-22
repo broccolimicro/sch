@@ -452,6 +452,8 @@ void drawCell(Layout &dst, const CellRouter &rt) {
 			}
 		}
 	}
+
+	dst.shift_inplace(-dst.box.center());
 }
 
 void drawLayout(Layout &dst, const Layout &src, vec2i pos, vec2i dir) {
