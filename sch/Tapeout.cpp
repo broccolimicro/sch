@@ -48,9 +48,11 @@ int buildProcess(phy::Library &lib, Netlist &lst, int idx, bool progress, bool d
 	lib.macros[idx].name = lst.subckts[idx].name;
 	Placement placer;
 	placer.configure(0, 0, debug);
-	placer.load(lst, idx, debug);
-	placer.run();
-	placer.save(lib.macros[idx], lst);
+	placer.load(lib, lst, idx, debug);
+	placer.doGlobal();
+	placer.doDetail();
+	//placer.run();
+	placer.save(lib, lst);
 	return 0;
 }
 

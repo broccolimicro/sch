@@ -28,8 +28,8 @@ struct Netlist {
 
 	void mapCells(bool progress=false);
 
-	int cellAt(int root, uint64_t index) const;
-	uint64_t countCells(int root) const;
+	int cellAt(int root, size_t index) const;
+	size_t countCells(int root) const;
 };
 
 string idToString(size_t id);

@@ -140,18 +140,18 @@ void Netlist::mapCells(bool progress) {
 	}
 }
 
-int Netlist::cellAt(int root, uint64_t index) const {
+int Netlist::cellAt(int root, size_t index) const {
 	while (root < (int)subckts.size() and not subckts[root].inst.empty()) {
-		int next = (int)(index % (uint64_t)subckts[root].inst.size());
-		index /= (uint64_t)subckts[root].inst.size();
+		int next = (int)(index % (size_t)subckts[root].inst.size());
+		index /= (size_t)subckts[root].inst.size();
 		root = subckts[root].inst[next].subckt;
 	}
 	return root;
 }
 
-uint64_t Netlist::countCells(int root) const {
-	vector<uint64_t> sub;
-	sub.resize(subckts.size(), std::numeric_limits<uint64_t>::max());
+size_t Netlist::countCells(int root) const {
+	vector<size_t> sub;
+	sub.resize(subckts.size(), std::numeric_limits<size_t>::max());
 	
 	vector<int> stack(1, root);
 	while (not stack.empty()) {
@@ -160,7 +160,7 @@ uint64_t Netlist::countCells(int root) const {
 		
 		bool done = true;
 		for (auto i = currCkt->inst.begin(); i != currCkt->inst.end(); i++) {
-			if (sub[i->subckt] == std::numeric_limits<uint64_t>::max()) {
+			if (sub[i->subckt] == std::numeric_limits<size_t>::max()) {
 				done = false;
 				stack.erase(remove(stack.begin(), stack.end(), i->subckt), stack.end());
 				stack.push_back(i->subckt);
