@@ -163,19 +163,21 @@ void Placement::load(const phy::Library &lib, const Netlist &lst, int root, bool
 				vector<int> index = doHier(*currCkt);
 				for (auto i = index.begin(); i != index.end(); i++) {
 					int next = currCkt->inst[*i].subckt;
+					auto nextLay = lib.macros.begin()+next;
 					auto nextSch = schem.begin()+next;
 					auto nextCkt = lst.subckts.begin()+next;
 
 					cl_uint h = 0;
-					if (not currSch->cellAreas.empty()) {
-						 h = currSch->hilbert.back() + currSch->cellAreas.back()/2;
+					if (not currSch->cellBounds.empty()) {
+						cl_uint2 bound = currSch->cellBounds.back();
+						h = currSch->hilbert.back() + (bound.s[0]*bound.s[1])/2;
 					}
 
 					if ((int)nextSch->cells.size() <= 1) {
 						currSch->subckts.push_back(next);
 						currSch->cells.push_back(currSch->cellsToNets.size());
 						currSch->hilbert.push_back(h + nextSch->totalArea/2);
-						currSch->cellAreas.push_back(nextSch->totalArea);
+						currSch->cellBounds.push_back({(cl_uint)nextLay->box.width(), (cl_uint)nextLay->box.height()});
 						currSch->totalArea += nextSch->totalArea;
 						currSch->cellsToNets.insert(currSch->cellsToNets.end(), currCkt->inst[*i].ports.begin(), currCkt->inst[*i].ports.end());
 					} else {
@@ -201,7 +203,7 @@ void Placement::load(const phy::Library &lib, const Netlist &lst, int root, bool
 						for (int j = 0; j+1 < (int)nextSch->cells.size(); j++) {
 							currSch->cells.push_back(currSch->cellsToNets.size());
 							currSch->subckts.push_back(nextSch->subckts[j]);
-							currSch->cellAreas.push_back(nextSch->cellAreas[j]);
+							currSch->cellBounds.push_back(nextSch->cellBounds[j]);
 							currSch->hilbert.push_back(h+nextSch->hilbert[j]);
 							for (size_t k = nextSch->cells[j]; k < nextSch->cells[j+1]; k++) {
 								currSch->cellsToNets.push_back(netMap[nextSch->cellsToNets[k]]);
@@ -227,7 +229,7 @@ void Placement::load(const phy::Library &lib, const Netlist &lst, int root, bool
 			cellName = lst.subckts[idx].name;
 		}
 
-		cout << cellName << "(" << i << ") " << schem[root].cellAreas[i] << ": {";
+		cout << cellName << "(" << i << ") " << schem[root].cellBounds[i].s[0] << "," << schem[root].cellBounds[i].s[1] << ": {";
 		for (size_t j = start; j < end; j++) {
 			cout << schem[root].cellsToNets[j] << " ";
 		}
@@ -414,21 +416,16 @@ void Placement::doGlobal() {
 	size_t positionSize = num * sizeof(cl_uint2);
 	size_t indexSize = num * sizeof(cl_uint);
 	size_t hilbertSize = num * sizeof(cl_uint);
-	size_t areaSize = num * sizeof(cl_uint);
 	try {
 		cl::Buffer positionBuffer(context, CL_MEM_READ_WRITE, positionSize);
 		cl::Buffer indexBuffer(context, CL_MEM_READ_WRITE, indexSize);
 		cl::Buffer hilbertBuffer(context, CL_MEM_READ_WRITE, hilbertSize);	
-		cl::Buffer areaBuffer(context, CL_MEM_READ_WRITE, areaSize);	
-
 		initPlacement.setArg(0, positionBuffer);
 		initPlacement.setArg(1, indexBuffer);
 		initPlacement.setArg(2, hilbertBuffer);
-		initPlacement.setArg(3, areaBuffer);
-		initPlacement.setArg(4, num);
-		initPlacement.setArg(5, schem[root].totalArea);
+		initPlacement.setArg(3, num);
+		initPlacement.setArg(4, schem[root].totalArea);
 
-		queue.enqueueWriteBuffer(areaBuffer, CL_TRUE, 0, areaSize, schem[root].cellAreas.data());
 		queue.enqueueWriteBuffer(hilbertBuffer, CL_TRUE, 0, hilbertSize, schem[root].hilbert.data());
 
 		queue.enqueueNDRangeKernel(initPlacement, cl::NullRange, cl::NDRange(num), cl::NullRange);
@@ -443,7 +440,47 @@ void Placement::doGlobal() {
 }
 
 void Placement::doDetail() {
-
+	// This is a GPU optimized variant of RePlAce, a force directed graph layout
+	// with two types of forces:
+	// 1. attractive forces between cells connected by a net
+	// 2. repulsive forces between neighboring cells.
+	//
+	// Given N cells, RePlAce creates an NxN grid of bins, and computes a cell
+	// area vs capacity density value for each bin. Then it takes the fast
+	// fourier transform of that, followed by a low pass filter, then uses that
+	// as the gradiant to push cells around as the repulsive force. As cells
+	// stablize, they increase the frequency they pass.
+	//
+	// The approach we'll take does the same thing, but slightly differently. We
+	// are given an initial cell placement on the Hilbert space filing curve.
+	// 1. start with a quad tree with one node.
+	// 2. for each node in the quadtree, compute the centroid, the cell area vs
+	// capacity amplitude, and the standard deviation. As the number of points in
+	// a distribution grows, it tends toward a normal distribution. This computes
+	// that normal distribution.
+	// 3. Apply the gradient on all cells from that normal distribution.
+	// 4. When cells stabilize in a node, subdivide that node.
+	// 5. There is a constant time algorithm to identify neighbors of a quad-tree
+	// node. Use this to walk the quadtree and apply gradient forces until those
+	// forces become negligible due to distance. Use a breadth first search.
+	// 6. Stop subdividing when there are 7 to 13 cells in the node.
+	//
+	// If this method starts to lose acuity at smaller distributions, then we
+	// need to switch to a more detailed method.
+	// 1. The delauny triangulation is an optimal mesh that eliminates thin
+	// triangules, further there is a unique delauny triangulation for any
+	// distribution of vertices. This means that solving the delauny
+	// triangulation locally will also solve it globally because local solutions
+	// will be consistent with eachother.
+	// 2. The expected maximum degree of a vertex in this mesh is
+	// M = log(N)/log(log(N)). For 1T points, that's 12. for 300k points, thats 8.
+	// 3. For each cell, search for 2M nearest neighbors using the quadtree.
+	// 4. Filter out the nearest neighbors that violate the delauny constraint.
+	// 5. The remaining nearest neighbors will correctly implement the delauny
+	// triangulation. Even if there is a mistake, that doesn't matter.
+	// 6. In the next iteration on the GPU, we now have the complete delauny triangulation.
+	// 7. Walk this graph using Breadth first search, and apply electrostatic repulsion forces.
+	// 8. do a natural interpolation of nearest neighbors to determine gradient.
 
 
 	/*for (int i = 0; i < (int)position.size(); i++) {
@@ -539,6 +576,42 @@ void Placement::doLegal() {
 	// 7. create a database of cell offsets for every pair of cells in the design
 	// 8. use this to pack x-coordinates in each row. Rows to the right of midpoint should be packed left to right and visa versa for left of midpoint.
 	// 9. record row and column geometry.
+
+	/*cl_uint num = (schem[root].cells.size()-1);
+	position.resize(num);
+	index.resize(num);
+
+	size_t positionSize = num * sizeof(cl_uint2);
+	size_t indexSize = num * sizeof(cl_uint);
+	size_t hilbertSize = num * sizeof(cl_uint);
+	size_t boundsSize = num * sizeof(cl_uint);
+	try {
+		cl::Buffer positionBuffer(context, CL_MEM_READ_WRITE, positionSize);
+		cl::Buffer indexBuffer(context, CL_MEM_READ_WRITE, indexSize);
+		cl::Buffer hilbertBuffer(context, CL_MEM_READ_WRITE, hilbertSize);	
+		cl::Buffer boundsBuffer(context, CL_MEM_READ_WRITE, boundsSize);	
+
+		initPlacement.setArg(0, positionBuffer);
+		initPlacement.setArg(1, indexBuffer);
+		initPlacement.setArg(2, hilbertBuffer);
+		initPlacement.setArg(3, boundsBuffer);
+		initPlacement.setArg(4, num);
+		initPlacement.setArg(5, schem[root].totalArea);
+
+		queue.enqueueWriteBuffer(boundsBuffer, CL_TRUE, 0, boundsSize, schem[root].cellBounds.data());
+		queue.enqueueWriteBuffer(hilbertBuffer, CL_TRUE, 0, hilbertSize, schem[root].hilbert.data());
+
+		queue.enqueueNDRangeKernel(initPlacement, cl::NullRange, cl::NDRange(num), cl::NullRange);
+		queue.finish();
+
+		queue.enqueueReadBuffer(positionBuffer, CL_TRUE, 0, positionSize, position.data());
+		queue.enqueueReadBuffer(indexBuffer, CL_TRUE, 0, indexSize, index.data());
+	} catch (cl::Error &err) {
+		std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
+		exit(1);
+	}*/
+
+
 
 	/*vector<int> indices; // cell indices ordered by y-coordinate from bottom to top
 	vector<int> columns; // index into the indices array of balanced columns

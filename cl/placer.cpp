@@ -237,7 +237,6 @@ kernel void initPlacement(
 	global uint2* position,
 	global uint* index,  // initialized as incremented value, moved with hilbert, used to index original cell
 	global uint* hilbert,
-	global uint* areas,
 	const uint num,
 	const ulong total
 ) {
@@ -307,4 +306,42 @@ kernel void stepPlacement(
 	// Use Quad-Tree to apply individual electrostatic repulsion forces to this point
 	// Natural interpolation of nearest neighbors to compute gradient
 }
+
+kernel void partitionColumns(
+	global uint2* position,
+	global uint2* bound,
+	const uint num,
+	global uint* col,
+	global uint* colHeight,
+	global uint* colCount,
+	const uint numCol
+) {
+	uint i = get_global_id(0);
+	if (i >= num) return;
+
+	uint c = position[i].x / numCol;
+	atomic_add(&colHeight[c], bound[i].y);
+	atomic_inc(&colCount[c]);
+	col[i] = c;
+}
+
+kernel void partitionRows(
+	global uint2* position,
+	global uint2* bound,
+	const uint num,
+	global uint* col,
+	global uint* colHeight,
+	global uint* colCount,
+	const uint numCol,
+	global uint* row
+) {
+	uint i = get_global_id(0);
+	if (i >= num) return;
+
+	uint colIndex = col[i];
+	uint doubleAverageHeight = (2 * colHeight[colIndex]) / colCount[colIndex];
+	row[i] = 2*(position[i].y / doubleAverageHeight);
+}
+
+
 

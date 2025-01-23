@@ -29,7 +29,7 @@ struct Schematic {
 
 	cl_ulong totalArea;
 	// Each value is the area of a particular cell.
-	vector<cl_uint> cellAreas;
+	vector<cl_uint2> cellBounds;
 	vector<cl_uint> hilbert;
 
 	vector<int> subckts;
