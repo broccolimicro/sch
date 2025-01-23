@@ -266,6 +266,9 @@ cl_uint Placement::isqrt(cl_uint x) {
 }
 
 vector<cl_uint> Placement::hierComputeOffsets(const Subckt &ckt, const vector<int> &index) {
+	// Determine midpoint locations of instances in Hilbert space using half
+	// instance area.
+	
 	// position in ckt.inst -> hilbert position
 	/*printf("offsets of cells {");
 	for (int i = 0; i < (int)schem.size(); i++) {
@@ -285,11 +288,11 @@ vector<cl_uint> Placement::hierComputeOffsets(const Subckt &ckt, const vector<in
 }
 
 cl_uint Placement::hierComputeHPWL(const Subckt &ckt, const vector<cl_uint> &offset) {
-	// Compute total half perimeter wire length. Estimate the
-	// expected perimeter of an interval on the hilbert curve as
-	// `sqrt(length)*4` assuming that allocated spaces on the hilbert
-	// curve tend to be rectangular and the expected area of an
-	// interval as `length`.
+	// Compute total half perimeter wire length. Estimate the expected perimeter
+	// of an interval on the hilbert curve as `sqrt(length)*4` assuming that
+	// allocated spaces on the hilbert curve tend to be rectangular and the
+	// expected area of an interval as `length`.
+	
 	/*printf("hpwl of {");
 	for (int i = 0; i < (int)offset.size(); i++) {
 		printf("%u ", offset[i]);
@@ -318,6 +321,17 @@ cl_uint Placement::hierComputeHPWL(const Subckt &ckt, const vector<cl_uint> &off
 }
 
 vector<int> Placement::doHier(const Subckt &ckt, int starts, float step, float rate) {
+	// Order subckt instances to minimize the estimated HPWL of the layout using
+	// a Hilbert space-filling curve. This is a really rough heuristic used to
+	// quickly compute an initial placement. Since this is done hierarchically,
+	// all cells will be roughly ordered to minimize the HPWL of their local
+	// connections in the module hierarchy.
+
+	// This ordering is done using a simple simulated annealing algorithm. See
+	// hierComputeHPWL() to see how the total half perimeter wire length (HPWL)
+	// of an orderng is estimated. See hierComputeOffsets() to see how we place
+	// modules on the Hilbert curve by evenly distributing module area.
+
 	std::default_random_engine rand(0/*std::random_device{}()*/);
 	if (ckt.inst.empty()) {
 		return vector<int>();
@@ -388,8 +402,10 @@ vector<int> Placement::doHier(const Subckt &ckt, int starts, float step, float r
 }
 
 void Placement::doGlobal() {
-	// TODO(edward.bingham) I need to convert position coordinates from the
-	// universal domain to the scaled domain of the layout problem.
+	// Evenly space all cells based on area in the Hilbert space filling curve.
+	// Cells have been elaborated in a hierarchical HPWL minimizing sorted order
+	// as a fast initial guess at a placement. This placement is not optimal, so
+	// we still need to run a detail placement algorithm.
 
 	cl_uint num = (schem[root].cells.size()-1);
 	position.resize(num);
@@ -427,6 +443,9 @@ void Placement::doGlobal() {
 }
 
 void Placement::doDetail() {
+
+
+
 	/*for (int i = 0; i < (int)position.size(); i++) {
 		int idx = lst->cellAt(root, i);
 		string cellName = "nil";
@@ -506,14 +525,29 @@ void Placement::doLegal() {
 	// standard deviation of the height of the cells within each row while
 	// maximizing the number of cells in the column (to a point). Row clusters
 	// should seek to reduce the standard deviation of the total width of the
-	// column across rows while bucketing cells by cell height.
+	// column across rows while bucketing cells by cell height. This algorithm
+	// also needs to be easily parallelizeable.
 
-	// This algorithm also needs to be easily parallelizeable.
+	// 1. break cells into columns
+	//    a. parallel kernel to compute column based on x coordinate / column width
+	//    b. for each column, compute average cell height `h`
+	// 3. put cells into H/2h rows based on y coordinate / row height
+	//    a. another parallel kernel given column assignments and average cell height per column
+	// 4. for each row, sort based on cell height, find midpoint of cell width to determine weighted median of cell height `m`
+	// 5. break each row into two with all cells shorter than `m` in one and all cells taller than `m` in the other. Compute max height of each row.
+	// 6. lock y-coordinates into rows based on each row height
+	// 7. create a database of cell offsets for every pair of cells in the design
+	// 8. use this to pack x-coordinates in each row. Rows to the right of midpoint should be packed left to right and visa versa for left of midpoint.
+	// 9. record row and column geometry.
+
+	/*vector<int> indices; // cell indices ordered by y-coordinate from bottom to top
+	vector<int> columns; // index into the indices array of balanced columns
 	
-	// Lets start by just doing the stupid thing. Divide the space into an equal
-	// number of columns, then divide each column into an equal number of rows.
+	for (int i = 0; i < (int)position.size(); i++) {
+		indices.push_back(i);
+	}*/
 
-	// 
+	
 }
 
 void Placement::save(phy::Library &lib, const sch::Netlist &lst) {
@@ -527,6 +561,11 @@ void Placement::save(phy::Library &lib, const sch::Netlist &lst) {
 		
 		lib.macros[root].inst.push_back(phy::Instance(idx, vec2i((int)position[i].s[0], (int)position[i].s[1])));
 	}
+
+	// 1. draw power grid
+	// 2. route to power
+	// 3. draw well taps
+	// 4. draw filler
 }
 
 }
