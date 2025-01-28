@@ -94,6 +94,8 @@ void Placement::configureSource(string source, int platformId, int deviceId, boo
 
 	initPlacement = cl::Kernel(program, "initPlacement");
 	stepPlacement = cl::Kernel(program, "stepPlacement");
+	partitionCols = cl::Kernel(program, "partitionCols");
+	partitionRows = cl::Kernel(program, "partitionRows");
 
 	size_t kernelMaxWorkGroupSize = 0;
 	size_t preferredWorkGroupMultiple = 0;
@@ -411,20 +413,16 @@ void Placement::doGlobal() {
 
 	cl_uint num = (schem[root].cells.size()-1);
 	position.resize(num);
-	index.resize(num);
 
 	size_t positionSize = num * sizeof(cl_uint2);
-	size_t indexSize = num * sizeof(cl_uint);
 	size_t hilbertSize = num * sizeof(cl_uint);
 	try {
 		cl::Buffer positionBuffer(context, CL_MEM_READ_WRITE, positionSize);
-		cl::Buffer indexBuffer(context, CL_MEM_READ_WRITE, indexSize);
 		cl::Buffer hilbertBuffer(context, CL_MEM_READ_WRITE, hilbertSize);	
 		initPlacement.setArg(0, positionBuffer);
-		initPlacement.setArg(1, indexBuffer);
-		initPlacement.setArg(2, hilbertBuffer);
-		initPlacement.setArg(3, num);
-		initPlacement.setArg(4, schem[root].totalArea);
+		initPlacement.setArg(1, hilbertBuffer);
+		initPlacement.setArg(2, num);
+		initPlacement.setArg(3, schem[root].totalArea);
 
 		queue.enqueueWriteBuffer(hilbertBuffer, CL_TRUE, 0, hilbertSize, schem[root].hilbert.data());
 
@@ -432,7 +430,6 @@ void Placement::doGlobal() {
 		queue.finish();
 
 		queue.enqueueReadBuffer(positionBuffer, CL_TRUE, 0, positionSize, position.data());
-		queue.enqueueReadBuffer(indexBuffer, CL_TRUE, 0, indexSize, index.data());
 	} catch (cl::Error &err) {
 		std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
 		exit(1);
@@ -556,7 +553,7 @@ void Placement::doDetail() {
 	}*/
 }
 
-void Placement::doLegal() {
+void Placement::doLegal(phy::Library &lib) {
 	// For legalization, we need to first divide the space up into columns, then
 	// divide the space up into rows. Column clusters should seek to reduce the
 	// standard deviation of the height of the cells within each row while
@@ -577,50 +574,261 @@ void Placement::doLegal() {
 	// 8. use this to pack x-coordinates in each row. Rows to the right of midpoint should be packed left to right and visa versa for left of midpoint.
 	// 9. record row and column geometry.
 
-	/*cl_uint num = (schem[root].cells.size()-1);
-	position.resize(num);
-	index.resize(num);
+	cl_uint num = (schem[root].cells.size()-1);
+	cl_uint side = isqrt(schem[root].totalArea);
+	side += side >> 3;
 
-	size_t positionSize = num * sizeof(cl_uint2);
-	size_t indexSize = num * sizeof(cl_uint);
-	size_t hilbertSize = num * sizeof(cl_uint);
-	size_t boundsSize = num * sizeof(cl_uint);
+	// TODO(edward.bingham) Get tap to diff enclosure rule Column is then N times
+	// tap to diff enclosure rule with a well tap on either side of the column.
+	
+	cl_uint coeff = 8;
+	cl_uint diffTap = 848; //tech.getEnclosing()
+	cl_uint buffer = diffTap >> 3;
+	cl_uint colWidth = coeff * (diffTap - buffer);
+
+	cl_uint numCol = (side / colWidth) + 1;
+	colWidth = side / numCol;
+
+	printf("num=%u numCol=%u side=%u colWidth=%u diffTap=%u buffer=%u\n", num, numCol, side, colWidth, diffTap, buffer);
+
+	// Start by assigning columns based only on the x-coord
+	vector<cl_uint> rows(numCol, 0);
+	grid.resize(num);
+	for (int i = 0; i < (int)position.size(); i++) {
+		grid[i].s[0] = position[i].s[0] / colWidth;
+		rows[grid[i].s[0]] += schem[root].cellBounds[i].s[0];
+	}
+
+	// Then compute the number of rows needed in each column
+	// x-coord, x-bound, y-bound, cell index
+	vector<vector<vector<cl_uint4> > > assign(numCol);
+	for (int i = 0; i < (int)rows.size(); i++) {
+		cl_uint count = (rows[i]+colWidth-1)/colWidth;
+		count += count%2;
+		assign[i].resize(count);
+	}
+
+	// Then assign each cell to every other row based loosely on the
+	// y-coord
+	for (int i = 0; i < (int)position.size(); i++) {
+		cl_uint x = position[i].s[0];
+		cl_uint y = position[i].s[1];
+		cl_uint2 b = schem[root].cellBounds[i];
+		cl_uint c = grid[i].s[0];
+		grid[i].s[1] = 2 * (y * assign[c].size() / (side * 2));
+		assign[c][grid[i].s[1]].push_back({x, b.s[0], b.s[1], (cl_uint)i});
+	}
+
+	vector<vector<cl_uint> > rowHeight(numCol);
+	for (int c = 0; c < (int)assign.size(); c++) {
+		rowHeight[c].resize(assign[c].size(), 0);
+		for (int r = 0; r < (int)assign[c].size(); r+=2) {
+			sort(assign[c][r].begin(), assign[c][r].end(), [](const cl_uint4 &a, const cl_uint4 &b) { 
+				return a.s[2] < b.s[2]; 
+			});
+			cl_uint prev = 0;
+			for (int i = 0; i < (int)assign[c][r].size(); i++) {
+				assign[c][r][i].s[1] += prev;
+				prev = assign[c][r][i].s[1];
+			}
+			auto pos = lower_bound(assign[c][r].begin(), assign[c][r].end(), prev/2, [](const cl_uint4 &a, const cl_uint &b) { 
+				return a.s[1] < b; 
+			});
+			if (pos != assign[c][r].begin()) {
+				rowHeight[c][r] = std::prev(pos)->s[2];
+			}
+			if (not assign[c][r].empty()) {
+				rowHeight[c][r+1] = assign[c][r].back().s[2];
+			}
+			
+			assign[c][r+1].insert(assign[c][r+1].end(), pos, assign[c][r].end());
+			assign[c][r].erase(pos, assign[c][r].end());
+
+			for (int i = 0; i < (int)assign[c][r+1].size(); i++) {
+				++grid[assign[c][r+1][i].s[3]].s[1];
+			}
+		}
+	}
+	// assign is now x-coord, XXXXXXX, y-bound, idx
+
+	/*size_t positionSize = num * sizeof(cl_uint2);
+	size_t boundSize = num * sizeof(cl_uint2);
+	size_t colSize = num * sizeof(cl_uint);
+	size_t colHeightSize = numCol * sizeof(cl_uint);
+	size_t colTotalWidthSize = numCol * sizeof(cl_uint);
+	size_t colCountSize = numCol * sizeof(cl_uint);
+
+	vector<cl_uint> colHeight(numCol, 0);
+	vector<cl_uint> colTotalWidth(numCol, 0);
+	vector<cl_uint> colCount(numCol, 0);
+	col.resize(num, 0);
+
 	try {
 		cl::Buffer positionBuffer(context, CL_MEM_READ_WRITE, positionSize);
-		cl::Buffer indexBuffer(context, CL_MEM_READ_WRITE, indexSize);
-		cl::Buffer hilbertBuffer(context, CL_MEM_READ_WRITE, hilbertSize);	
-		cl::Buffer boundsBuffer(context, CL_MEM_READ_WRITE, boundsSize);	
+		cl::Buffer boundBuffer(context, CL_MEM_READ_WRITE, boundSize);	
+		cl::Buffer colBuffer(context, CL_MEM_READ_WRITE, colSize);
+		cl::Buffer colHeightBuffer(context, CL_MEM_READ_WRITE, colHeightSize);
+		cl::Buffer colTotalWidthBuffer(context, CL_MEM_READ_WRITE, colTotalWidthSize);
+		cl::Buffer colCountBuffer(context, CL_MEM_READ_WRITE, colCountSize);
+		//cl::Buffer rowBuffer(context, CL_MEM_READ_WRITE, rowSize);
 
-		initPlacement.setArg(0, positionBuffer);
-		initPlacement.setArg(1, indexBuffer);
-		initPlacement.setArg(2, hilbertBuffer);
-		initPlacement.setArg(3, boundsBuffer);
-		initPlacement.setArg(4, num);
-		initPlacement.setArg(5, schem[root].totalArea);
+		partitionCols.setArg(0, positionBuffer);
+		partitionCols.setArg(1, boundBuffer);
+		partitionCols.setArg(2, num);
+		partitionCols.setArg(3, colBuffer);
+		partitionCols.setArg(4, colHeightBuffer);
+		partitionCols.setArg(5, colTotalWidthBuffer);
+		partitionCols.setArg(6, colCountBuffer);
+		partitionCols.setArg(7, colWidth);
 
-		queue.enqueueWriteBuffer(boundsBuffer, CL_TRUE, 0, boundsSize, schem[root].cellBounds.data());
-		queue.enqueueWriteBuffer(hilbertBuffer, CL_TRUE, 0, hilbertSize, schem[root].hilbert.data());
+		queue.enqueueWriteBuffer(positionBuffer, CL_TRUE, 0, positionSize, position.data());
+		queue.enqueueWriteBuffer(boundBuffer, CL_TRUE, 0, boundSize, schem[root].cellBounds.data());
+		queue.enqueueWriteBuffer(colHeightBuffer, CL_TRUE, 0, colHeightSize, colHeight.data());
+		queue.enqueueWriteBuffer(colTotalWidthBuffer, CL_TRUE, 0, colTotalWidthSize, colTotalWidth.data());
+		queue.enqueueWriteBuffer(colCountBuffer, CL_TRUE, 0, colCountSize, colCount.data());
 
-		queue.enqueueNDRangeKernel(initPlacement, cl::NullRange, cl::NDRange(num), cl::NullRange);
+		queue.enqueueNDRangeKernel(partitionCols, cl::NullRange, cl::NDRange(num), cl::NullRange);
 		queue.finish();
 
-		queue.enqueueReadBuffer(positionBuffer, CL_TRUE, 0, positionSize, position.data());
-		queue.enqueueReadBuffer(indexBuffer, CL_TRUE, 0, indexSize, index.data());
+		queue.enqueueReadBuffer(colBuffer, CL_TRUE, 0, colSize, col.data());
+		queue.enqueueReadBuffer(colHeightBuffer, CL_TRUE, 0, colHeightSize, colHeight.data());
+		queue.enqueueReadBuffer(colTotalWidthBuffer, CL_TRUE, 0, colTotalWidthSize, colTotalWidth.data());
+		queue.enqueueReadBuffer(colCountBuffer, CL_TRUE, 0, colCountSize, colCount.data());
+	} catch (cl::Error &err) {
+		std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
+		exit(1);
+	}
+
+	row.resize(num, 0);
+
+	size_t rowSize = num * sizeof(cl_uint);
+
+	try {
+		cl::Buffer positionBuffer(context, CL_MEM_READ_WRITE, positionSize);
+		cl::Buffer colBuffer(context, CL_MEM_READ_WRITE, colSize);
+		cl::Buffer colHeightBuffer(context, CL_MEM_READ_WRITE, colHeightSize);
+		cl::Buffer colCountBuffer(context, CL_MEM_READ_WRITE, colCountSize);
+		cl::Buffer rowBuffer(context, CL_MEM_READ_WRITE, rowSize);
+
+		partitionRows.setArg(0, positionBuffer);
+		partitionRows.setArg(1, num);
+		partitionRows.setArg(2, colBuffer);
+		partitionRows.setArg(3, colHeightBuffer);
+		partitionRows.setArg(4, colCountBuffer);
+		partitionRows.setArg(5, rowBuffer);
+
+		queue.enqueueWriteBuffer(positionBuffer, CL_TRUE, 0, positionSize, position.data());
+		queue.enqueueWriteBuffer(colBuffer, CL_TRUE, 0, colSize, col.data());
+		queue.enqueueWriteBuffer(colHeightBuffer, CL_TRUE, 0, colHeightSize, colHeight.data());
+		queue.enqueueWriteBuffer(colCountBuffer, CL_TRUE, 0, colCountSize, colCount.data());
+
+		queue.enqueueNDRangeKernel(partitionRows, cl::NullRange, cl::NDRange(num), cl::NullRange);
+		queue.finish();
+
+		queue.enqueueReadBuffer(rowBuffer, CL_TRUE, 0, rowSize, row.data());
 	} catch (cl::Error &err) {
 		std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
 		exit(1);
 	}*/
 
+	/*for (int i = 0; i < (int)num; i++) {
+		printf("position %d:(%u %u) col=%u row=%u\n", i, position[i].s[0], position[i].s[1], col[i], row[i]);
+	}
 
+	for (int i = 0; i < (int)numCol; i++) {
+		printf("col %d height=%d count=%d\n", i, colHeight[i], colCount[i]);
+	}
 
-	/*vector<int> indices; // cell indices ordered by y-coordinate from bottom to top
-	vector<int> columns; // index into the indices array of balanced columns
-	
-	for (int i = 0; i < (int)position.size(); i++) {
-		indices.push_back(i);
+	vector<vector<vector<cl_uint3> > > rowWidth(numCol);
+	vector<vector<cl_uint> > rowMedian(numCol);
+
+	for (int i = 0; i < (int)row.size(); i++) {
+		if (row[i] >= rowWidth[col[i]].size()) {
+			rowWidth[col[i]].resize(row[i]+1);
+		}
+		rowWidth[col[i]][row[i]].push_back(cl_uint3{schem[root].cellBounds[i].s[0], schem[root].cellBounds[i].s[1], (cl_uint)i});
+	}
+
+	vector<vector<vector<cl_uint2> > > rowAssign(numCol);
+	vector<vector<cl_uint> > rowHeight(numCol);
+	for (int c = 0; c < (int)rowWidth.size(); c++) {
+		rowAssign[c].resize(rowWidth[c].size()*2);
+		rowHeight[c].resize(rowWidth[c].size()*2, 0);
+		for (int i = 0; i < (int)rowWidth[c].size(); i++) {
+			sort(rowWidth[c][i].begin(), rowWidth[c][i].end(), [](const cl_uint3 &a, const cl_uint3 &b) { 
+				return a.s[1] < b.s[1]; 
+			});
+			for (int j = 1; j < (int)rowWidth[c][i].size(); j++) {
+				rowWidth[c][i][j].s[0] += rowWidth[c][i][j-1].s[0];
+			}
+
+			int s = 0;
+			for (int j = 0; j < (int)rowWidth[c][i].size(); j++) {
+				if (rowWidth[c][i][j].s[0] > rowWidth[c][i].back().s[0]/2) {
+					s = 1;
+				}
+
+				cl_uint index = rowWidth[c][i][j].s[2];
+				row[index] = i*2+s;
+				rowAssign[c][i*2+s].push_back(cl_uint2{position[index].s[0], index});
+				cl_uint2 bound = schem[root].cellBounds[index];
+				if (bound.s[1] > rowHeight[c][i*2+s]) {
+					rowHeight[c][i*2+s] = bound.s[1];
+				}
+			}
+		}
 	}*/
 
-	
+	map<pair<int, int>, int> offset;
+	int colStart = 0;
+	for (int c = 0; c < (int)assign.size(); c++) {
+		int rowStart = rowHeight[c][0]/2;
+		int rowWidth = 0;
+		for (int i = 0; i < (int)assign[c].size(); i++) {
+			sort(assign[c][i].begin(), assign[c][i].end(), [](const cl_uint4 &a, const cl_uint4 &b) {
+				return a.s[0] < b.s[0];
+			});
+
+			int prevPos = colStart;
+			int prevSubckt = -1;
+			for (int j = 0; j < (int)assign[c][i].size(); j++) {
+				cl_uint index = assign[c][i][j].s[3];
+				int currSubckt = schem[root].subckts[index];
+				cl_uint2 bound = schem[root].cellBounds[index];
+
+				int currPos = prevPos;
+				if (j == 0) {
+					currPos += bound.s[0]/2;
+				}
+				if (prevSubckt >= 0) {
+					auto off = offset.find({prevSubckt, currSubckt});
+					if (off != offset.end()) {
+						currPos += off->second;
+					} else {
+						int value = 0;
+						minOffset(&value, 0, lib.macros[prevSubckt], 0, lib.macros[currSubckt], 0);
+						offset.insert({{prevSubckt, currSubckt}, value});
+						currPos += value;
+					}
+				}
+
+				position[index].s[0] = currPos; 
+				position[index].s[1] = rowStart;
+
+				prevSubckt = currSubckt;
+				prevPos = currPos;
+				if (currPos+(int)bound.s[0]/2 > rowWidth) {
+					rowWidth = currPos + bound.s[0]/2;
+				}
+			}
+			rowStart += rowHeight[c][i]/2;
+			if (i+1 < (int)assign[c].size()) {
+				rowStart += rowHeight[c][i+1]/2;
+			}
+		}
+		colStart += colWidth;
+		rowStart = 0;
+	}
 }
 
 void Placement::save(phy::Library &lib, const sch::Netlist &lst) {
@@ -630,9 +838,11 @@ void Placement::save(phy::Library &lib, const sch::Netlist &lst) {
 		if (idx < (int)lst.subckts.size()) {
 			cellName = lst.subckts[idx].name;
 		}
-		cout << cellName << "(" << i << "): {" << position[i].s[0] << " " << position[i].s[1] << "} " << index[i] << " " << schem[root].hilbert[i] << endl;
-		
-		lib.macros[root].inst.push_back(phy::Instance(idx, vec2i((int)position[i].s[0], (int)position[i].s[1])));
+		vec2i pos((int)position[i].s[0], (int)position[i].s[1]);
+		vec2i dir(1, 1-2*(grid[i].s[1]%2));
+
+		cout << cellName << "(" << i << "): pos={" << pos[0] << " " << pos[1] << "} dir={" << dir[0] << " " << dir[1] << "} " << schem[root].hilbert[i] << endl;
+		lib.macros[root].inst.push_back(phy::Instance(idx, pos, dir));
 	}
 
 	// 1. draw power grid

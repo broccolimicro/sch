@@ -51,6 +51,7 @@ int buildProcess(phy::Library &lib, Netlist &lst, int idx, bool progress, bool d
 	placer.load(lib, lst, idx, debug);
 	placer.doGlobal();
 	placer.doDetail();
+	placer.doLegal(lib);
 	//placer.run();
 	placer.save(lib, lst);
 	return 0;

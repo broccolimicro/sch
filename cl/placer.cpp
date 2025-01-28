@@ -235,7 +235,6 @@ inline ulong isqrt(ulong x) {
 // part of the canonicalization method for subcircuits with instances.
 kernel void initPlacement(
 	global uint2* position,
-	global uint* index,  // initialized as incremented value, moved with hilbert, used to index original cell
 	global uint* hilbert,
 	const uint num,
 	const ulong total
@@ -251,10 +250,7 @@ kernel void initPlacement(
 	}
 
 	uint scale = UINT_MAX / side;
-	uint2 p = cartesianFromHilbert(h)/scale;
-
-	index[i] = i;
-	position[i] = p;
+	position[i] = cartesianFromHilbert(h)/scale;
 }
 
 kernel void stepPlacement(
@@ -307,32 +303,32 @@ kernel void stepPlacement(
 	// Natural interpolation of nearest neighbors to compute gradient
 }
 
-kernel void partitionColumns(
-	global uint2* position,
+kernel void partitionCols(
+	global uint3* position,
 	global uint2* bound,
 	const uint num,
 	global uint* col,
 	global uint* colHeight,
+	global uint* colTotalWidth,
 	global uint* colCount,
-	const uint numCol
+	const uint colWidth
 ) {
 	uint i = get_global_id(0);
 	if (i >= num) return;
 
-	uint c = position[i].x / numCol;
+	uint c = position[i].x / colWidth;
 	atomic_add(&colHeight[c], bound[i].y);
+	atomic_add(&colTotalWidth[c], bound[i].x);
 	atomic_inc(&colCount[c]);
 	col[i] = c;
 }
 
 kernel void partitionRows(
 	global uint2* position,
-	global uint2* bound,
 	const uint num,
 	global uint* col,
 	global uint* colHeight,
 	global uint* colCount,
-	const uint numCol,
 	global uint* row
 ) {
 	uint i = get_global_id(0);

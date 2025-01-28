@@ -65,13 +65,15 @@ struct Placement {
 	cl::Program program;
 	cl::Kernel initPlacement;
 	cl::Kernel stepPlacement;
+	cl::Kernel partitionCols;
+	cl::Kernel partitionRows;
 
 	int root;
 	vector<Schematic> schem;
 
-	// total cell area of bin
+	// x-coord, y-coord, cell index
+	vector<cl_uint3> grid;
 	vector<cl_uint2> position;
-	vector<cl_uint> index;
 
 	// Configure the OpenCL Driver and Kernel
 	void configure(int platformId=0, int deviceId=0, bool debug=false);
@@ -88,7 +90,7 @@ struct Placement {
 	vector<int> doHier(const Subckt &ckt, int starts=10, float step=2.0, float rate=0.02);
 	void doGlobal();
 	void doDetail();
-	void doLegal();
+	void doLegal(phy::Library &lib);
 
 	// Save the result to the layout library
 	void save(phy::Library &lib, const sch::Netlist &lst);

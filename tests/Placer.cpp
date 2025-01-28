@@ -37,7 +37,8 @@ TEST(Placer, solve)
 	result.configure(0, 0, true);
 	result.load(lib, lst, 1, true);	
 	result.doGlobal();
-	result.doDetail();
+	//result.doDetail();
+	result.doLegal(lib);
 
 	result.save(lib, lst);
 
