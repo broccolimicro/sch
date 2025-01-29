@@ -221,6 +221,10 @@ Mapping Segment::generate(Subckt &dst, const Subckt &src) const {
 	return m1;
 }
 
+bool Segment::contains(int i) const {
+	return find(mos.begin(), mos.end(), i) != mos.end();
+}
+
 void Segment::print() const {
 	printf("segment{");
 	for (int i = 0; i < (int)mos.size(); i++) {

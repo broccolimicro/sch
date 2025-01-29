@@ -579,12 +579,23 @@ vector<Segment> Subckt::segment() {
 	//    given by pass transistor logic at their source, then selectively merge
 	//    the drivers into the cell as long as they are within the same isochronic
 	//    region.
+	// 4. If all of their connections go to the same place or to eachother.
 
 	// TODO(edward.bingham) only do this merge if the signals crossing the bounds don't switch. How do I figure that out?
 	for (int i = (int)segments.size()-2; i >= 0; i--) {
 		for (int j = (int)segments.size()-1; j > i; j--) {
 			if (segments[j].overlapsWith(segments[i])
 				or areCoupled(segments[i], segments[j])) {
+				segments[i].merge(segments[j]);
+				segments.erase(segments.begin() + j);
+			}
+		}
+	}
+
+	int count = 8;
+	for (int i = (int)segments.size()-2; i >= 0; i--) {
+		for (int j = (int)segments.size()-1; j > i; j--) {
+			if ((int)(segments[i].mos.size() + segments[i].mos.size()) <= count and areSimilar(segments, i, j)) {
 				segments[i].merge(segments[j]);
 				segments.erase(segments.begin() + j);
 			}
@@ -616,6 +627,51 @@ bool Subckt::areCoupled(const Segment &s0, const Segment &s1) const {
 		hasBtoA = (toA.find(*b) != toA.end());
 	}
 	return (hasAtoB and hasBtoA);
+}
+
+bool Subckt::areSimilar(const vector<Segment> &segs, int a, int b) const {
+	std::set<int> aNets, bNets;
+	for (auto d = segs[a].mos.begin(); d != segs[a].mos.end(); d++) {
+		aNets.insert(mos[*d].drain);
+		aNets.insert(mos[*d].gate);
+		aNets.insert(mos[*d].source);
+		aNets.insert(mos[*d].base);
+	}
+	for (auto d = segs[b].mos.begin(); d != segs[b].mos.end(); d++) {
+		bNets.insert(mos[*d].drain);
+		bNets.insert(mos[*d].gate);
+		bNets.insert(mos[*d].source);
+		bNets.insert(mos[*d].base);
+	}
+
+	std::set<int> A, B;
+	for (auto n = aNets.begin(); n != aNets.end(); n++) {
+		for (int s = 0; s < (int)segs.size(); s++) {
+			if (segs[s].contains(*n)) {
+				A.insert(s);
+			}
+		}
+		if (nets[*n].isIO) {
+			A.insert(-1);
+		}
+	}
+	for (auto n = bNets.begin(); n != bNets.end(); n++) {
+		for (int s = 0; s < (int)segs.size(); s++) {
+			if (segs[s].contains(*n)) {
+				B.insert(s);
+			}
+		}
+		if (nets[*n].isIO) {
+			B.insert(-1);
+		}
+	}
+
+	A.erase(a);
+	A.erase(b);
+	B.erase(a);
+	B.erase(b);
+
+	return A == B;
 }
 
 void Subckt::combineDevices() {

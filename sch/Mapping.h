@@ -45,6 +45,7 @@ struct Segment {
 
 	Mapping map(const Subckt &ckt) const;	
 	Mapping generate(Subckt &dst, const Subckt &src) const;
+	bool contains(int i) const;
 
 	void print() const;
 };

@@ -180,6 +180,7 @@ struct Subckt {
 	Segment segment(int net, set<int> *covered=nullptr);
 	vector<Segment> segment();
 	bool areCoupled(const Segment &m0, const Segment &m1) const;
+	bool areSimilar(const vector<Segment> &segs, int a, int b) const;
 
 	void combineDevices();
 	void splitDevices(const Tech &tech);
