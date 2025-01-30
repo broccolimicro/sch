@@ -166,7 +166,8 @@ struct Subckt {
 	vector<Mos> mos;
 	vector<Instance> inst;
 
-	int findNet(string name, bool create=false);
+	int createNet(string name);
+	int findNet(string name) const;
 	string netName(int net) const;
 
 	int push(Net n);
@@ -191,7 +192,7 @@ struct Subckt {
 	void apply(const ucs::mapping &m);
 	ucs::mapping canonicalize();
 	int compare(const Subckt &ckt) const;
-
+	ucs::mapping mapToLayout(const Layout &layout) const;
 
 	vector<PartitionKey> createPartitionKey(int v, const Partition &beta) const;
 	PartitionKey lambda(const Partition::Cell &c0, const Partition::Cell &c1) const;
@@ -202,6 +203,7 @@ struct Subckt {
 
 	void printNet(int i) const;
 	void printMos(int i) const;
+	void printInst(int i) const;
 	void print() const;
 };
 

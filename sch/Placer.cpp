@@ -65,8 +65,6 @@ void Schematic::pushPorts(int port, cl_uint cell) {
 		netsToCells.push_back(cell);
 		return;
 	}
-	int *p = nullptr;
-	*p = 5;
 	printf("not enough space\n");
 }
 
@@ -77,6 +75,31 @@ void Schematic::finish() {
 
 bool Schematic::isCell() const {
 	return cells.size() <= 1u;
+}
+
+void Schematic::print(const Netlist &lst) const {
+	cout << "cells " << totalArea << ": " << cells.size()-1 << endl;
+	for (int i = 0; i+1 < (int)cells.size(); i++) {
+		size_t start = cells[i];
+		size_t end = cells[i+1];
+		string cellName = lst.subckts[subckts[i]].name;
+		cout << cellName << "(" << i << ") " << cellBounds[i].s[0] << "," << cellBounds[i].s[1] << ": {";
+		for (size_t j = start; j < end; j++) {
+			cout << cellsToNets[j] << " ";
+		}
+		cout << "}" << endl;
+	}
+
+	cout << "nets: " << nets.size()-1 << endl;
+	for (int i = 0; i+1 < (int)nets.size(); i++) {
+		size_t start = nets[i];
+		size_t end = nets[i+1];
+		cout << netNames[i] << "(" << i << "): {";
+		for (size_t j = start; j < end; j++) {
+			cout << netsToCells[j] << " ";
+		}
+		cout << "}" << endl;
+	}
 }
 
 Placement::Placement() {
@@ -265,6 +288,12 @@ void Placement::elaborateSchematic(const phy::Library &lib, const Netlist &lst, 
 		}
 	}
 	currSch->finish();
+
+	//printf("Elaborating %s\n", lst.subckts[curr].name.c_str());
+	//lst.subckts[curr].print();
+
+	//currSch->print(lst);
+	//printf("done\n\n");
 }
 
 void Placement::load(const phy::Library &lib, const Netlist &lst, int root, bool debug) {
@@ -290,34 +319,6 @@ void Placement::load(const phy::Library &lib, const Netlist &lst, int root, bool
 			elaborateSchematic(lib, lst, curr, debug);
 			stack.pop_back();
 		}
-	}
-
-	cout << "cells " << schem[root].totalArea << ": " << schem[root].cells.size()-1 << endl;
-	for (int i = 0; i+1 < (int)schem[root].cells.size(); i++) {
-		size_t start = schem[root].cells[i];
-		size_t end = schem[root].cells[i+1];
-		int idx = lst.cellAt(root, i);
-		string cellName = "nil";
-		if (idx < (int)lst.subckts.size()) {
-			cellName = lst.subckts[idx].name;
-		}
-
-		cout << cellName << "(" << i << ") " << schem[root].cellBounds[i].s[0] << "," << schem[root].cellBounds[i].s[1] << ": {";
-		for (size_t j = start; j < end; j++) {
-			cout << schem[root].cellsToNets[j] << " ";
-		}
-		cout << "}" << endl;
-	}
-
-	cout << "nets: " << schem[root].nets.size()-1 << endl;
-	for (int i = 0; i+1 < (int)schem[root].nets.size(); i++) {
-		size_t start = schem[root].nets[i];
-		size_t end = schem[root].nets[i+1];
-		cout << schem[root].netNames[i] << "(" << i << "): {";
-		for (size_t j = start; j < end; j++) {
-			cout << schem[root].netsToCells[j] << " ";
-		}
-		cout << "}" << endl;
 	}
 }
 
@@ -467,11 +468,11 @@ vector<int> Placement::doHier(const Subckt &ckt, int starts, float step, float r
 		}
 	}
 
-	printf("found HPWL of %u for {", bestScore);
+	/*printf("found HPWL of %u for {", bestScore);
 	for (int i = 0; i < (int)best.size(); i++) {
 		printf("%d ", best[i]);
 	}
-	printf("}\n");
+	printf("}\n");*/
 
 	return best;
 }
@@ -668,7 +669,7 @@ void Placement::doLegal(phy::Library &lib) {
 	cl_uint numCol = (side / colWidth) + 1;
 	colWidth = side / numCol;
 
-	printf("num=%u numCol=%u side=%u colWidth=%u diffTap=%u buffer=%u\n", num, numCol, side, colWidth, diffTap, buffer);
+	//printf("num=%u numCol=%u side=%u colWidth=%u diffTap=%u buffer=%u\n", num, numCol, side, colWidth, diffTap, buffer);
 
 	// Start by assigning columns based only on the x-coord
 	vector<cl_uint> rows(numCol, 0);
@@ -874,14 +875,14 @@ void Placement::doLegal(phy::Library &lib) {
 
 			int prevPos = colStart;
 			int prevSubckt = -1;
-			ucs::mapping prevMap;
+			ucs::mapping prevChildToParent;
 			for (int j = 0; j < (int)assign[c][i].size(); j++) {
 				cl_uint index = assign[c][i][j].s[3];
 				int currSubckt = schem[root].subckts[index];
 				cl_uint2 bound = schem[root].cellBounds[index];
-				ucs::mapping currMap;
+				ucs::mapping currChildToParent;
 				for (int k = 0; k < (int)lst->subckts[currSubckt].ports.size(); k++) {
-					currMap.set(lst->subckts[currSubckt].ports[k], schem[root].cellsToNets[schem[root].cells[index]+k]);
+					currChildToParent.set(lst->toLayout[currSubckt].map(lst->subckts[currSubckt].ports[k]), schem[root].cellsToNets[schem[root].cells[index]+k]);
 				}
 
 				int currPos = prevPos;
@@ -894,9 +895,16 @@ void Placement::doLegal(phy::Library &lib) {
 						currPos += off->second;
 					} else {
 						int value = 0;
-						minOffset(&value, 0, lib.macros[prevSubckt], 0, lib.macros[currSubckt], 0, Layout::DEFAULT, Layout::DEFAULT, true, prevMap, currMap);
+						//printf("COMPARING CELLS %s -> %s\n", lib.macros[prevSubckt].name.c_str(), lib.macros[currSubckt].name.c_str());
+						//lib.macros[prevSubckt].print();
+						//prevChildToParent.print();
+						//printf("\n\n");
+						//lib.macros[currSubckt].print();
+						//currChildToParent.print();
+						//printf("\n\n");
+						bool conf = minOffset(&value, 0, lib.macros[prevSubckt], 0, lib.macros[currSubckt], 0, Layout::MERGENET, Layout::DEFAULT, true, prevChildToParent, currChildToParent);
 						offset.insert({{prevSubckt, currSubckt}, value});
-						printf("from %s({%d %d} {%d %d}) to %s({%d %d} {%d %d}): %d\n", lib.macros[prevSubckt].name.c_str(), lib.macros[prevSubckt].box.ll[0], lib.macros[prevSubckt].box.ll[1], lib.macros[prevSubckt].box.ur[0], lib.macros[prevSubckt].box.ur[1], lib.macros[currSubckt].name.c_str(), lib.macros[currSubckt].box.ll[0], lib.macros[currSubckt].box.ll[1], lib.macros[currSubckt].box.ur[0], lib.macros[currSubckt].box.ur[1], value);
+						//printf("from %d %s({%d %d} {%d %d}) to %s({%d %d} {%d %d}): %d\n", conf, lib.macros[prevSubckt].name.c_str(), lib.macros[prevSubckt].box.ll[0], lib.macros[prevSubckt].box.ll[1], lib.macros[prevSubckt].box.ur[0], lib.macros[prevSubckt].box.ur[1], lib.macros[currSubckt].name.c_str(), lib.macros[currSubckt].box.ll[0], lib.macros[currSubckt].box.ll[1], lib.macros[currSubckt].box.ur[0], lib.macros[currSubckt].box.ur[1], value);
 						currPos += value;
 					}
 				}
@@ -905,7 +913,7 @@ void Placement::doLegal(phy::Library &lib) {
 				position[index].s[1] = rowStart;
 
 				prevSubckt = currSubckt;
-				prevMap = currMap;
+				prevChildToParent = currChildToParent;
 				prevPos = currPos;
 				if (currPos+(int)bound.s[0]/2 > rowWidth) {
 					rowWidth = currPos + bound.s[0]/2;
@@ -931,7 +939,7 @@ void Placement::save(phy::Library &lib, const sch::Netlist &lst) {
 		vec2i pos((int)position[i].s[0], (int)position[i].s[1]);
 		vec2i dir(1, 1-2*(grid[i].s[1]%2));
 
-		cout << cellName << "(" << i << "): pos={" << pos[0] << " " << pos[1] << "} dir={" << dir[0] << " " << dir[1] << "} " << schem[root].hilbert[i] << endl;
+		//cout << cellName << "(" << i << "): pos={" << pos[0] << " " << pos[1] << "} dir={" << dir[0] << " " << dir[1] << "} " << schem[root].hilbert[i] << endl;
 		lib.macros[root].inst.push_back(phy::Instance(idx, pos, dir));
 	}
 

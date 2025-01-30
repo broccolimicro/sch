@@ -9,6 +9,8 @@
 #include <set>
 #include <stdint.h>
 
+#include <ucs/mapping.h>
+
 using namespace std;
 
 namespace sch {
@@ -21,6 +23,7 @@ struct Netlist {
 
 	map<size_t, set<int> > cells;
 	vector<Subckt> subckts; 
+	vector<ucs::mapping> toLayout;
 
 	int insert(int idx);
 	int insert(const Subckt &cell);
@@ -30,6 +33,8 @@ struct Netlist {
 
 	int cellAt(int root, size_t index) const;
 	size_t countCells(int root) const;
+
+	void mapToLayout(int idx, const Layout &layout);
 };
 
 string idToString(size_t id);

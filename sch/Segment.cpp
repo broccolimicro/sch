@@ -88,7 +88,7 @@ ucs::mapping Segment::map(const Subckt &ckt) const {
 }
 
 ucs::mapping Segment::generate(Subckt &dst, const Subckt &src) const {
-	ucs::mapping m0 = map(src), m1;
+	ucs::mapping m0 = map(src), m1(false);
 	for (auto i = m0.nets.begin(); i != m0.nets.end(); i++) {
 		auto n = src.nets.begin()+*i;
 
@@ -112,27 +112,24 @@ ucs::mapping Segment::generate(Subckt &dst, const Subckt &src) const {
 			}
 		}
 
-		int j = dst.push(Net(n->name, isIO));
-		if (j >= (int)m1.nets.size()) {
-			m1.nets.resize(j+1, -1);
-		}
-		m1.nets[j] = *i;
+		m1.set(dst.push(Net(n->name, isIO)), *i);
 	}
 
 	for (auto i = mos.begin(); i != mos.end(); i++) {
 		auto d = src.mos.begin()+*i;
 		int gate = -1, source = -1, drain = -1, base = -1;
-		for (int j = 0; j < (int)m1.nets.size(); j++) {
-			if (d->gate == m1.nets[j]) {
+		for (int j = 0; j < m1.size(); j++) {
+			int net = m1.map(j);
+			if (d->gate == net) {
 				gate = j;
 			}
-			if (d->source == m1.nets[j]) {
+			if (d->source == net) {
 				source = j;
 			}
-			if (d->drain == m1.nets[j]) {
+			if (d->drain == net) {
 				drain = j;
 			}
-			if (d->base == m1.nets[j]) {
+			if (d->base == net) {
 				base = j;
 			}
 		}
@@ -148,8 +145,8 @@ ucs::mapping Segment::generate(Subckt &dst, const Subckt &src) const {
 		dst.mos.back().params = d->params;
 	}
 
-	for (int i = 0; i < (int)m1.nets.size(); i++) {
-		if (m1.nets[i] >= 0) {
+	for (int i = 0; i < m1.size(); i++) {
+		if (m1.has(i)) {
 			if (dst.nets[i].isIO and dst.nets[i].isOutput()) {
 				dst.nets[i].name = "o" + to_string(i);
 			} else if (dst.nets[i].isIO and dst.nets[i].isInput()) {

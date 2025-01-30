@@ -47,6 +47,8 @@ struct Schematic {
 	void pushPorts(int port, cl_uint cell);
 	void finish();
 	bool isCell() const;
+
+	void print(const Netlist &lst) const;
 };
 
 struct Placement {

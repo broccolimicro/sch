@@ -260,7 +260,7 @@ Instance::Instance(int subckt, vector<int> ports) {
 Instance::Instance(const Subckt &ckt, const ucs::mapping &m, int subckt) {
 	this->subckt = subckt;
 	for (int i = 0; i < (int)ckt.ports.size(); i++) {
-		this->ports.push_back(m.nets[ckt.ports[i]]);
+		this->ports.push_back(m.map(ckt.ports[i]));
 	}
 }
 
@@ -275,14 +275,19 @@ Subckt::Subckt(bool isCell) {
 Subckt::~Subckt() {
 }
 
-int Subckt::findNet(string name, bool create) {
+int Subckt::createNet(string name) {
+	int uid = findNet(name);
+	if (uid < 0) {
+		uid = push(Net(name));
+	}
+	return uid;
+}
+
+int Subckt::findNet(string name) const {
 	for (int i = 0; i < (int)nets.size(); i++) {
 		if (nets[i].name == name) {
 			return i;
 		}
-	}
-	if (create) {
-		return push(Net(name));
 	}
 	return -1;
 }
@@ -751,17 +756,18 @@ void Subckt::apply(const ucs::mapping &m) {
 
 	for (int i = 0; i < (int)mos.size(); i++) {
 		int gate = -1, source = -1, drain = -1, base = -1;
-		for (int j = 0; j < (int)m.nets.size(); j++) {
-			if (mos[i].gate == m.nets[j]) {
+		for (int j = 0; j < m.size(); j++) {
+			int net = m.map(j);
+			if (mos[i].gate == net) {
 				gate = j;
 			}
-			if (mos[i].source == m.nets[j]) {
+			if (mos[i].source == net) {
 				source = j;
 			}
-			if (mos[i].drain == m.nets[j]) {
+			if (mos[i].drain == net) {
 				drain = j;
 			}
-			if (mos[i].base == m.nets[j]) {
+			if (mos[i].base == net) {
 				base = j;
 			}
 		}
@@ -805,9 +811,9 @@ void Subckt::apply(const ucs::mapping &m) {
 	}
 
 	vector<Net> reorder;
-	reorder.reserve(m.nets.size());
-	for (int i = 0; i < (int)m.nets.size(); i++) {
-		reorder.push_back(nets[m.nets[i]]);
+	reorder.reserve(m.size());
+	for (int i = 0; i < m.size(); i++) {
+		reorder.push_back(nets[m.map(i)]);
 	}
 	std::swap(nets, reorder);
 	reorder.clear();
@@ -935,6 +941,19 @@ int Subckt::compare(const Subckt &ckt) const {
 	} else {
 		return 1;
 	}*/
+}
+
+ucs::mapping Subckt::mapToLayout(const Layout &layout) const {
+	ucs::mapping result(false);
+	for (int i = 0; i < (int)layout.nets.size(); i++) {
+		for (auto name = layout.nets[i].names.begin(); name != layout.nets[i].names.end(); name++) {
+			int uid = findNet(*name);
+			if (uid >= 0) {
+				result.set(uid, i);
+			}
+		}
+	}
+	return result;
 }
 
 vector<Subckt::PartitionKey> Subckt::createPartitionKey(int net, const Partition &beta) const {
@@ -1252,6 +1271,14 @@ void Subckt::printMos(int i) const {
 	printf("%s[%d](%d) d=%s(%d) g=%s(%d) s=%s(%d) b=%s(%d) w=%d l=%d\n", (mos[i].type == 0 ? "nmos" : "pmos"), mos[i].model, i, nets[mos[i].drain].name.c_str(), mos[i].drain, nets[mos[i].gate].name.c_str(), mos[i].gate, nets[mos[i].source].name.c_str(), mos[i].source, nets[mos[i].base].name.c_str(), mos[i].base, mos[i].size[1], mos[i].size[0]);
 }
 
+void Subckt::printInst(int i) const {
+	printf("%s[%d](%d) {", inst[i].name.c_str(), i, inst[i].subckt);
+	for (int j = 0; j < (int)inst[i].ports.size(); j++) {
+		printf("%d ", inst[i].ports[j]);
+	}
+	printf("}\n");
+}
+
 void Subckt::print() const {
 	printf("nets\n");
 	for (int i = 0; i < (int)nets.size(); i++) {
@@ -1260,6 +1287,10 @@ void Subckt::print() const {
 	printf("\nmos\n");
 	for (int i = 0; i < (int)mos.size(); i++) {
 		printMos(i);
+	}
+	printf("\ninst\n");
+	for (int i = 0; i < (int)inst.size(); i++) {
+		printInst(i);
 	}
 	printf("\n");
 }

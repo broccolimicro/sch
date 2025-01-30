@@ -403,6 +403,9 @@ void drawCell(Layout &dst, const CellRouter &rt) {
 		dst.push(dst.tech->boundary, dst.box); 
 	}
 
+	//printf("\n\nCELL PREMERGE %s\n", dst.name.c_str());
+	//dst.print();
+
 	dst.merge();
 
 	// Find best place to put the pin for the ports
@@ -454,6 +457,9 @@ void drawCell(Layout &dst, const CellRouter &rt) {
 	}
 
 	dst.shift_inplace(-dst.box.center());
+	//printf("\n\nDONE DRAWING CELL %s\n", dst.name.c_str());
+	//dst.print();
+	//printf("\n\n");
 	/*for (auto l = dst.layers.begin(); l != dst.layers.end(); l++) {
 		if (l->second.isWell) {
 			l->second.print();
