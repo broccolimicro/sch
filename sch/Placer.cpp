@@ -16,6 +16,69 @@ Schematic::Schematic() {
 Schematic::~Schematic() {
 }
 
+int Schematic::pushNet(string name) {
+	int result = (int)nets.size();
+	nets.push_back(netsToCells.size());
+	netNames.push_back(name);
+	return result;
+}
+
+void Schematic::allocPorts(cl_uint count) {
+	cl_uint blank = std::numeric_limits<cl_uint>::max();
+	netsToCells.resize(netsToCells.size()+count, blank);
+}
+
+void Schematic::pushCell(int subckt, vec2i bound, cl_uint pos) {
+	cells.push_back(cellsToNets.size());
+	subckts.push_back(subckt);
+	cellBounds.push_back({(cl_uint)bound[0], (cl_uint)bound[1]});
+	hilbert.push_back(pos);
+}
+
+void Schematic::pushCell(int subckt, cl_uint2 bound, cl_uint pos) {
+	cells.push_back(cellsToNets.size());
+	subckts.push_back(subckt);
+	cellBounds.push_back(bound);
+	hilbert.push_back(pos);
+}
+
+void Schematic::pushPorts(vector<int> ports, cl_uint cell) {
+	for (int i = 0; i < (int)ports.size(); i++) {
+		pushPorts(ports[i], cell);
+	}
+}
+
+void Schematic::pushPorts(int port, cl_uint cell) {
+	cl_uint blank = std::numeric_limits<cl_uint>::max();
+	size_t start = nets[port];
+	size_t end = netsToCells.size();
+	if (port+1 < (int)nets.size()) {
+		end = nets[port+1];
+	}
+	for (size_t i = start; i < end; i++) {
+		if (netsToCells[i] == blank) {
+			netsToCells[i] = cell;
+			return;
+		}
+	}
+	if (end == netsToCells.size()) {
+		netsToCells.push_back(cell);
+		return;
+	}
+	int *p = nullptr;
+	*p = 5;
+	printf("not enough space\n");
+}
+
+void Schematic::finish() {
+	nets.push_back(netsToCells.size());
+	cells.push_back(cellsToNets.size());
+}
+
+bool Schematic::isCell() const {
+	return cells.size() <= 1u;
+}
+
 Placement::Placement() {
 	lst = nullptr;
 }
@@ -110,6 +173,100 @@ void Placement::configureSource(string source, int platformId, int deviceId, boo
 	}
 }
 
+void Placement::elaborateSchematicNets(const Netlist &lst, int curr, bool debug) {
+	auto currSch = schem.begin()+curr;
+	auto currCkt = lst.subckts.begin()+curr;
+
+	// Start by placing the nets for this cell
+	for (int i = 0; i < (int)currCkt->nets.size(); i++) {
+		currSch->pushNet(currCkt->nets[i].name);
+
+		int count = 0;
+		for (auto j = currCkt->nets[i].portOf.begin(); j != currCkt->nets[i].portOf.end(); j++) {
+			auto inst = currCkt->inst.begin()+*j;
+			auto nextSch = schem.begin()+inst->subckt;
+			auto nextCkt = lst.subckts.begin()+inst->subckt;
+
+			for (int k = 0; k < (int)inst->ports.size(); k++) {
+				if (inst->ports[k] == i) {
+					int net = nextCkt->ports[k];
+					count += nextSch->isCell() ? 1 : nextSch->nets[net+1]-nextSch->nets[net];
+				}
+			}
+		}
+		currSch->allocPorts(count);
+	}
+}
+
+void Placement::elaborateSchematicInstance(const phy::Library &lib, const Netlist &lst, int curr, int idx) {
+	auto currSch = schem.begin()+curr;
+	auto currCkt = lst.subckts.begin()+curr;
+
+	int next = currCkt->inst[idx].subckt;
+	auto nextLay = lib.macros.begin()+next;
+	auto nextSch = schem.begin()+next;
+	auto nextCkt = lst.subckts.begin()+next;
+
+	cl_uint h = 0;
+	if (not currSch->cellBounds.empty()) {
+		cl_uint2 bound = currSch->cellBounds.back();
+		h = currSch->hilbert.back() + (bound.s[0]*bound.s[1])/2;
+	}
+
+	currSch->totalArea += nextSch->totalArea;
+	if (nextSch->isCell()) {
+		currSch->pushCell(next, nextLay->box.size(), h+nextSch->totalArea/2);
+		currSch->pushPorts(currCkt->inst[idx].ports, currSch->cells.size()-1);
+		currSch->cellsToNets.insert(currSch->cellsToNets.end(), currCkt->inst[idx].ports.begin(), currCkt->inst[idx].ports.end());
+	} else {
+		// Then place the nets of the instances
+		ucs::mapping currMap;
+		for (int j = 0; j < (int)currCkt->inst[idx].ports.size(); j++) {
+			currMap.set(nextCkt->ports[j], currCkt->inst[idx].ports[j]);
+		}
+
+		for (int j = 0; j+1 < (int)nextSch->nets.size(); j++) {
+			int net = currMap.map(j);
+			if (net < 0) {
+				net = currSch->pushNet("c"+idToString(idx)+"."+nextSch->netNames[j]);
+				if (net < 0) {
+					continue;
+				}
+				currMap.set(j, net);
+			}
+
+			for (size_t port = nextSch->nets[j]; port < nextSch->nets[j+1]; port++) {
+				currSch->pushPorts(net, currSch->cells.size()+nextSch->netsToCells[port]);
+			}
+		}
+
+		for (int j = 0; j+1 < (int)nextSch->cells.size(); j++) {
+			currSch->pushCell(nextSch->subckts[j], nextSch->cellBounds[j], h+nextSch->hilbert[j]);
+			for (size_t k = nextSch->cells[j]; k < nextSch->cells[j+1]; k++) {
+				currSch->cellsToNets.push_back(currMap.map(nextSch->cellsToNets[k]));
+			}
+		}
+	}
+}
+
+void Placement::elaborateSchematic(const phy::Library &lib, const Netlist &lst, int curr, bool debug) {
+	auto currSch = schem.begin()+curr;
+	auto currCkt = lst.subckts.begin()+curr;
+
+	// Do simulated annealing reduce total wirelength along the hilbert curve
+	if (currCkt->inst.empty()) {
+		auto currLay = lib.macros.begin()+curr;
+		currSch->totalArea = currLay->box.area();
+	} else {
+		elaborateSchematicNets(lst, curr, debug);
+		vector<int> index = doHier(*currCkt);
+		for (auto i = index.begin(); i != index.end(); i++) {
+			elaborateSchematicInstance(lib, lst, curr, *i);
+		}
+	}
+	currSch->finish();
+}
+
 void Placement::load(const phy::Library &lib, const Netlist &lst, int root, bool debug) {
 	this->root = root;
 	this->lst = &lst;
@@ -130,93 +287,7 @@ void Placement::load(const phy::Library &lib, const Netlist &lst, int root, bool
 		}
 
 		if (done) {
-			auto currSch = schem.begin()+curr;
-
-			// Start by placing the nets for this cell
-			for (int i = 0; i < (int)currCkt->nets.size(); i++) {
-				currSch->nets.push_back(currSch->netsToCells.size());
-				currSch->netNames.push_back(currCkt->nets[i].name);
-				for (int j = 0; j < (int)currCkt->nets[i].portOf.size(); j++) {
-					int index = currCkt->nets[i].portOf[j];
-					auto inst = currCkt->inst.begin()+index;
-					auto nextSch = schem.begin()+inst->subckt;
-					auto nextCkt = lst.subckts.begin()+inst->subckt;
-
-					if ((int)nextSch->cells.size() <= 1) {
-						currSch->netsToCells.push_back(index);
-					} else {
-						for (int k = 0; k < (int)inst->ports.size(); k++) {
-							if (inst->ports[k] == i) {
-								int net = nextCkt->ports[k];
-								for (size_t port = nextSch->nets[net]; port < nextSch->nets[net+1]; port++) {
-									currSch->netsToCells.push_back(nextSch->netsToCells[port]*currCkt->inst.size()+index);
-								}
-							}
-						}
-					}
-				}
-			}
-
-			// Do simulated annealing reduce total wirelength along the hilbert curve
-			if (currCkt->inst.empty()) {
-				auto currLay = lib.macros.begin()+curr;
-				currSch->totalArea = currLay->box.area();
-			} else {
-				vector<int> index = doHier(*currCkt);
-				for (auto i = index.begin(); i != index.end(); i++) {
-					int next = currCkt->inst[*i].subckt;
-					auto nextLay = lib.macros.begin()+next;
-					auto nextSch = schem.begin()+next;
-					auto nextCkt = lst.subckts.begin()+next;
-
-					cl_uint h = 0;
-					if (not currSch->cellBounds.empty()) {
-						cl_uint2 bound = currSch->cellBounds.back();
-						h = currSch->hilbert.back() + (bound.s[0]*bound.s[1])/2;
-					}
-
-					if ((int)nextSch->cells.size() <= 1) {
-						currSch->subckts.push_back(next);
-						currSch->cells.push_back(currSch->cellsToNets.size());
-						currSch->hilbert.push_back(h + nextSch->totalArea/2);
-						currSch->cellBounds.push_back({(cl_uint)nextLay->box.width(), (cl_uint)nextLay->box.height()});
-						currSch->totalArea += nextSch->totalArea;
-						currSch->cellsToNets.insert(currSch->cellsToNets.end(), currCkt->inst[*i].ports.begin(), currCkt->inst[*i].ports.end());
-					} else {
-						currSch->totalArea += nextSch->totalArea;
-						// Then place the nets of the instances
-						vector<size_t> netMap;
-						netMap.resize(nextSch->nets.size(), std::numeric_limits<size_t>::max());
-						for (int j = 0; j < (int)currCkt->inst[*i].ports.size(); j++) {
-							netMap[nextCkt->ports[j]] = currCkt->inst[*i].ports[j];
-						}
-
-						for (int j = 0; j+1 < (int)nextSch->nets.size(); j++) {
-							if (j >= (int)nextCkt->nets.size() or not nextCkt->nets[j].isIO) {
-								netMap[j] = currSch->nets.size();
-								currSch->nets.push_back(currSch->netsToCells.size());
-								currSch->netNames.push_back("c"+idToString(*i)+"."+nextSch->netNames[j]);
-								for (size_t port = nextSch->nets[j]; port < nextSch->nets[j+1]; port++) {
-									currSch->netsToCells.push_back(nextSch->netsToCells[port]*currCkt->inst.size()+*i);
-								}
-							}
-						}
-
-						for (int j = 0; j+1 < (int)nextSch->cells.size(); j++) {
-							currSch->cells.push_back(currSch->cellsToNets.size());
-							currSch->subckts.push_back(nextSch->subckts[j]);
-							currSch->cellBounds.push_back(nextSch->cellBounds[j]);
-							currSch->hilbert.push_back(h+nextSch->hilbert[j]);
-							for (size_t k = nextSch->cells[j]; k < nextSch->cells[j+1]; k++) {
-								currSch->cellsToNets.push_back(netMap[nextSch->cellsToNets[k]]);
-							}
-						}
-						netMap.clear();
-					}
-				}
-			}
-			currSch->nets.push_back(currSch->netsToCells.size());
-			currSch->cells.push_back(currSch->cellsToNets.size());
+			elaborateSchematic(lib, lst, curr, debug);
 			stack.pop_back();
 		}
 	}
@@ -238,7 +309,7 @@ void Placement::load(const phy::Library &lib, const Netlist &lst, int root, bool
 		cout << "}" << endl;
 	}
 
-	cout << "nets: " << schem[root].nets.size() << endl;
+	cout << "nets: " << schem[root].nets.size()-1 << endl;
 	for (int i = 0; i+1 < (int)schem[root].nets.size(); i++) {
 		size_t start = schem[root].nets[i];
 		size_t end = schem[root].nets[i+1];
@@ -412,6 +483,10 @@ void Placement::doGlobal() {
 	// we still need to run a detail placement algorithm.
 
 	cl_uint num = (schem[root].cells.size()-1);
+	if (num == 0) {
+		return;
+	}
+
 	position.resize(num);
 
 	size_t positionSize = num * sizeof(cl_uint2);
@@ -575,6 +650,10 @@ void Placement::doLegal(phy::Library &lib) {
 	// 9. record row and column geometry.
 
 	cl_uint num = (schem[root].cells.size()-1);
+	if (num == 0) {
+		return;
+	}
+
 	cl_uint side = isqrt(schem[root].totalArea);
 	side += side >> 3;
 
@@ -782,6 +861,10 @@ void Placement::doLegal(phy::Library &lib) {
 	map<pair<int, int>, int> offset;
 	int colStart = 0;
 	for (int c = 0; c < (int)assign.size(); c++) {
+		if (rowHeight[c].empty()) {
+			continue;
+		}
+
 		int rowStart = rowHeight[c][0]/2;
 		int rowWidth = 0;
 		for (int i = 0; i < (int)assign[c].size(); i++) {
@@ -791,10 +874,15 @@ void Placement::doLegal(phy::Library &lib) {
 
 			int prevPos = colStart;
 			int prevSubckt = -1;
+			ucs::mapping prevMap;
 			for (int j = 0; j < (int)assign[c][i].size(); j++) {
 				cl_uint index = assign[c][i][j].s[3];
 				int currSubckt = schem[root].subckts[index];
 				cl_uint2 bound = schem[root].cellBounds[index];
+				ucs::mapping currMap;
+				for (int k = 0; k < (int)lst->subckts[currSubckt].ports.size(); k++) {
+					currMap.set(lst->subckts[currSubckt].ports[k], schem[root].cellsToNets[schem[root].cells[index]+k]);
+				}
 
 				int currPos = prevPos;
 				if (j == 0) {
@@ -806,8 +894,9 @@ void Placement::doLegal(phy::Library &lib) {
 						currPos += off->second;
 					} else {
 						int value = 0;
-						minOffset(&value, 0, lib.macros[prevSubckt], 0, lib.macros[currSubckt], 0);
+						minOffset(&value, 0, lib.macros[prevSubckt], 0, lib.macros[currSubckt], 0, Layout::DEFAULT, Layout::DEFAULT, true, prevMap, currMap);
 						offset.insert({{prevSubckt, currSubckt}, value});
+						printf("from %s({%d %d} {%d %d}) to %s({%d %d} {%d %d}): %d\n", lib.macros[prevSubckt].name.c_str(), lib.macros[prevSubckt].box.ll[0], lib.macros[prevSubckt].box.ll[1], lib.macros[prevSubckt].box.ur[0], lib.macros[prevSubckt].box.ur[1], lib.macros[currSubckt].name.c_str(), lib.macros[currSubckt].box.ll[0], lib.macros[currSubckt].box.ll[1], lib.macros[currSubckt].box.ur[0], lib.macros[currSubckt].box.ur[1], value);
 						currPos += value;
 					}
 				}
@@ -816,6 +905,7 @@ void Placement::doLegal(phy::Library &lib) {
 				position[index].s[1] = rowStart;
 
 				prevSubckt = currSubckt;
+				prevMap = currMap;
 				prevPos = currPos;
 				if (currPos+(int)bound.s[0]/2 > rowWidth) {
 					rowWidth = currPos + bound.s[0]/2;

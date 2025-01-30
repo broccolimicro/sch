@@ -12,8 +12,10 @@
 #include <phy/Layout.h>
 #include <phy/vector.h>
 
-#include "Mapping.h"
+#include "Segment.h"
 #include "Isomorph.h"
+
+#include <ucs/mapping.h>
 
 using namespace phy;
 using namespace std;
@@ -106,9 +108,10 @@ struct Net {
 struct Instance {
 	Instance();
 	Instance(int subckt, vector<int> ports=vector<int>());
-	Instance(const Subckt &ckt, const Mapping &m, int subckt);
+	Instance(const Subckt &ckt, const ucs::mapping &m, int subckt);
 	~Instance();
 
+	string name;
 	int subckt;
 	vector<int> ports;
 };
@@ -185,8 +188,8 @@ struct Subckt {
 	void combineDevices();
 	void splitDevices(const Tech &tech);
 
-	void apply(const Mapping &m);
-	Mapping canonicalize();
+	void apply(const ucs::mapping &m);
+	ucs::mapping canonicalize();
 	int compare(const Subckt &ckt) const;
 
 

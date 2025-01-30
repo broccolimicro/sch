@@ -15,12 +15,14 @@ struct Schematic {
 	// Schematic::cells.
 	vector<cl_uint> netsToCells;
 
+	// All of the nets of the root circuit are listed first, then we recurse.
+
 	// Each value is an index of the start of the port list for the net in
 	// Schematic::inputs (plus one element at end to facilitate iteration)
 	vector<cl_uint> nets;
 
-	// Each value is an index of a net that is connected to this cell in
-	// Schematic::nets.
+	// Each value is an index of a net in port order that is connected
+	// to this cell in Schematic::nets.
 	vector<cl_uint> cellsToNets;
 
 	// Each value is an index of the start of the port list for the cell in
@@ -36,6 +38,15 @@ struct Schematic {
 
 	// TODO(edward.bingham) For development purposes only, delete this
 	vector<string> netNames;
+
+	int pushNet(string name);
+	void allocPorts(cl_uint count);
+	void pushCell(int subckt, vec2i bound, cl_uint pos);
+	void pushCell(int subckt, cl_uint2 bound, cl_uint pos);
+	void pushPorts(vector<int> ports, cl_uint cell);
+	void pushPorts(int port, cl_uint cell);
+	void finish();
+	bool isCell() const;
 };
 
 struct Placement {
@@ -81,6 +92,9 @@ struct Placement {
 	void configureSource(string source, int platformId=0, int deviceId=0, bool debug=false);
 
 	// Load a design into the placer
+	void elaborateSchematicNets(const Netlist &lst, int curr, bool debug=false);
+	void elaborateSchematicInstance(const phy::Library &lib, const Netlist &lst, int curr, int idx);
+	void elaborateSchematic(const phy::Library &lib, const Netlist &lst, int curr, bool debug=false);
 	void load(const phy::Library &lib, const Netlist &lst, int root, bool debug=false);
 	
 	// Run the placement algorithm

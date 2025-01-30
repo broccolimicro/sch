@@ -1,70 +1,12 @@
-#include <limits>
 #include <algorithm>
 #include <string>
-#include <set>
 
-#include "Mapping.h"
+#include "Segment.h"
 #include "Subckt.h"
 
 using namespace std;
 
 namespace sch {
-
-Mapping::Mapping() {
-}
-
-Mapping::Mapping(const Subckt &ckt) {
-	identity(ckt);
-}
-
-Mapping::Mapping(vector<int> nets) {
-	this->nets = nets;
-}
-
-Mapping::~Mapping() {
-}
-
-int Mapping::indexOf(int net) const {
-	for (int i = 0; i < (int)nets.size(); i++) {
-		if (nets[i] == net) {
-			return i;
-		}
-	}
-	return -1;
-}
-
-void Mapping::identity(const Subckt &ckt) {
-	nets.clear();
-
-	nets.reserve(ckt.nets.size());
-	for (int i = 0; i < (int)ckt.nets.size(); i++) {
-		nets.push_back(i);
-	}
-}
-
-void Mapping::apply(const Mapping &m) {
-	// this: cell -> main
-	// m: canon -> cell
-	// want: canon -> main
-
-	vector<int> updated;
-	updated.reserve(m.nets.size());
-	for (int i = 0; i < (int)m.nets.size(); i++) {
-		updated.push_back(nets[m.nets[i]]);
-	}
-	nets = updated;
-}
-
-void Mapping::print() const {
-	printf("map{");
-	for (int i = 0; i < (int)nets.size(); i++) {
-		if (i != 0) {
-			printf(", ");
-		}
-		printf("%d -> %d", i, nets[i]);
-	}
-	printf("}\n");
-}
 
 Segment::Segment() {
 }
@@ -132,8 +74,8 @@ bool Segment::overlapsWith(const Segment &seg) const {
 	return false;
 }
 
-Mapping Segment::map(const Subckt &ckt) const {
-	Mapping result;
+ucs::mapping Segment::map(const Subckt &ckt) const {
+	ucs::mapping result;
 	for (auto i = mos.begin(); i != mos.end(); i++) {
 		result.nets.push_back(ckt.mos[*i].drain);
 		result.nets.push_back(ckt.mos[*i].gate);
@@ -145,8 +87,8 @@ Mapping Segment::map(const Subckt &ckt) const {
 	return result;
 }
 
-Mapping Segment::generate(Subckt &dst, const Subckt &src) const {
-	Mapping m0 = map(src), m1;
+ucs::mapping Segment::generate(Subckt &dst, const Subckt &src) const {
+	ucs::mapping m0 = map(src), m1;
 	for (auto i = m0.nets.begin(); i != m0.nets.end(); i++) {
 		auto n = src.nets.begin()+*i;
 

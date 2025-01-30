@@ -454,6 +454,20 @@ void drawCell(Layout &dst, const CellRouter &rt) {
 	}
 
 	dst.shift_inplace(-dst.box.center());
+	/*for (auto l = dst.layers.begin(); l != dst.layers.end(); l++) {
+		if (l->second.isWell) {
+			l->second.print();
+		}
+	}*/
+
+	/*printf("cell: (%d %d) (%d %d)\n", dst.box.ll[0], dst.box.ll[1], dst.box.ur[0], dst.box.ur[1]);
+	Rect box;
+	for (auto l = dst.layers.begin(); l != dst.layers.end(); l++) {
+		for (auto r = l->second.geo.begin(); r != l->second.geo.end(); r++) {
+			box.bound(*r);
+		}
+	}
+	printf("computed: (%d %d) (%d %d)\n", box.ll[0], box.ll[1], box.ur[0], box.ur[1]);*/
 }
 
 void drawLayout(Layout &dst, const Layout &src, vec2i pos, vec2i dir) {

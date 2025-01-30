@@ -257,7 +257,7 @@ Instance::Instance(int subckt, vector<int> ports) {
 	this->ports = ports;
 }
 
-Instance::Instance(const Subckt &ckt, const Mapping &m, int subckt) {
+Instance::Instance(const Subckt &ckt, const ucs::mapping &m, int subckt) {
 	this->subckt = subckt;
 	for (int i = 0; i < (int)ckt.ports.size(); i++) {
 		this->ports.push_back(m.nets[ckt.ports[i]]);
@@ -386,6 +386,16 @@ void Subckt::popNet(int index) {
 			d->base--;
 		} else if (d->base >= 0 and d->base == index) {
 			d->base = -1;
+		}
+	}
+
+	for (auto d = inst.begin(); d != inst.end(); d++) {
+		for (int i = 0; i < (int)d->ports.size(); i++) {
+			if (d->ports[i] > index) {
+				d->ports[i]--;
+			} else if (d->ports[i] == index) {
+				d->ports[i] = -1;
+			}
 		}
 	}
 }
@@ -730,9 +740,9 @@ void Subckt::splitDevices(const Tech &tech) {
 	}
 }
 
-void Subckt::apply(const Mapping &m) {
+void Subckt::apply(const ucs::mapping &m) {
 	for (int i = 0; i < (int)ports.size(); i++) {
-		int idx = m.indexOf(ports[i]);
+		int idx = m.unmap(ports[i]);
 		if (idx < 0) {
 			printf("error: %s not found in mapping\n", ports[i] < 0 ? "NULL" : nets[ports[i]].name.c_str());
 		}
@@ -776,7 +786,7 @@ void Subckt::apply(const Mapping &m) {
 
 	for (int i = 0; i < (int)nets.size(); i++) {
 		for (int j = 0; j < (int)nets[i].remote.size(); j++) {
-			int idx = m.indexOf(nets[i].remote[j]);
+			int idx = m.unmap(nets[i].remote[j]);
 			if (idx < 0) {
 				printf("error: %s not found in mapping\n", nets[i].remote[j] < 0 ? "NULL" : nets[nets[i].remote[j]].name.c_str());
 			}
@@ -786,7 +796,7 @@ void Subckt::apply(const Mapping &m) {
 
 	for (int i = 0; i < (int)inst.size(); i++) {
 		for (int j = 0; j < (int)inst[i].ports.size(); j++) {
-			int idx = m.indexOf(inst[i].ports[j]);
+			int idx = m.unmap(inst[i].ports[j]);
 			if (idx < 0) {
 				printf("error: %s not found in mapping\n", inst[i].ports[j] < 0 ? "NULL" : nets[inst[i].ports[j]].name.c_str());
 			}
@@ -803,8 +813,8 @@ void Subckt::apply(const Mapping &m) {
 	reorder.clear();
 }
 
-Mapping Subckt::canonicalize() {
-	Mapping lbl = canonicalLabels(*this);
+ucs::mapping Subckt::canonicalize() {
+	ucs::mapping lbl = canonicalLabels(*this);
 	apply(lbl);
 	for (int i = 0; i < (int)mos.size(); i++) {
 		if (mos[i].drain < mos[i].source) {

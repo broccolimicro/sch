@@ -1,32 +1,15 @@
 #pragma once
 
-#include <map>
 #include <string>
 #include <vector>
-#include <unordered_set>
-#include <limits>
+
+#include <ucs/mapping.h>
 
 using namespace std;
 
 namespace sch {
 
 struct Subckt;
-
-struct Mapping {
-	Mapping();
-	Mapping(const Subckt &ckt);
-	Mapping(vector<int> nets);
-	~Mapping();
-
-	// list of nets from old subckt to include in new subckt
-	vector<int> nets;
-
-	int indexOf(int net) const;	
-	void identity(const Subckt &ckt);
-	void apply(const Mapping &m);
-
-	void print() const;
-};
 
 struct Segment {
 	Segment();
@@ -43,8 +26,8 @@ struct Segment {
 
 	bool overlapsWith(const Segment &seg) const;
 
-	Mapping map(const Subckt &ckt) const;	
-	Mapping generate(Subckt &dst, const Subckt &src) const;
+	ucs::mapping map(const Subckt &ckt) const;	
+	ucs::mapping generate(Subckt &dst, const Subckt &src) const;
 	bool contains(int i) const;
 
 	void print() const;

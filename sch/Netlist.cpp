@@ -105,7 +105,7 @@ void Netlist::mapCells(bool progress) {
 
 			for (auto s = segments.begin(); s != segments.end(); s++) {
 				Subckt cell(true);
-				Mapping m = s->generate(cell, subckts[i]);
+				ucs::mapping m = s->generate(cell, subckts[i]);
 				m.apply(cell.canonicalize());
 				cell.name = "cell_" + idToString(cell.id);
 				int index = insert(cell);
