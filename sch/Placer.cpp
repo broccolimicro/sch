@@ -77,6 +77,14 @@ bool Schematic::isCell() const {
 	return cells.size() <= 1u;
 }
 
+size_t Schematic::numCells() const {
+	return cells.size()-1;
+}
+
+size_t Schematic::numNets() const {
+	return nets.size()-1;
+}
+
 void Schematic::print(const Netlist &lst) const {
 	cout << "cells " << totalArea << ": " << cells.size()-1 << endl;
 	for (int i = 0; i+1 < (int)cells.size(); i++) {
@@ -102,31 +110,42 @@ void Schematic::print(const Netlist &lst) const {
 	}
 }
 
-Placement::Placement() {
+Placer::Placer() {
 	lst = nullptr;
+	lib = nullptr;
 }
 
-Placement::~Placement() {
+Placer::Placer(phy::Library &lib, const Netlist &lst, int platformId, int deviceId, bool debug) {
+	configure(platformId, deviceId, debug);
+	load(lib, lst);
 }
 
-void Placement::configure(int platformId, int deviceId, bool debug) {
+Placer::~Placer() {
+}
+
+void Placer::configure(int platformId, int deviceId, bool debug) {
 	configureSource(placer_cpp_string, platformId, deviceId, debug); 
 }
 
-void Placement::configurePath(string kernelPath, int platformId, int deviceId, bool debug) {
+void Placer::configurePath(string kernelPath, int platformId, int deviceId, bool debug) {
 	string source;
 	FILE *fptr = fopen(kernelPath.c_str(), "r");
 	fseek(fptr, 0, SEEK_END);
 	int size = ftell(fptr);
 	fseek(fptr, 0, SEEK_SET);
 	source.resize(size, '\0');
-	fread(source.data(), 1, size, fptr);
+	int total = 0;
+	int count = 0;
+	do {
+		count = fread(source.data()+total, 1, size-total, fptr);
+		total += count;
+	} while (total < size and count > 0);
 	fclose(fptr);
 
 	configureSource(source, platformId, deviceId, debug);
 }
 
-void Placement::configureSource(string source, int platformId, int deviceId, bool debug) {
+void Placer::configureSource(string source, int platformId, int deviceId, bool debug) {
 	string platformName = "No Platform";
 	string deviceName = "No Device";
 	size_t maxComputeUnits = 0;
@@ -176,7 +195,7 @@ void Placement::configureSource(string source, int platformId, int deviceId, boo
 			std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
 		}
 		exit(1);
-	}	
+	}
 
 	initPlacement = cl::Kernel(program, "initPlacement");
 	stepPlacement = cl::Kernel(program, "stepPlacement");
@@ -196,9 +215,15 @@ void Placement::configureSource(string source, int platformId, int deviceId, boo
 	}
 }
 
-void Placement::elaborateSchematicNets(const Netlist &lst, int curr, bool debug) {
+void Placer::load(phy::Library &lib, const Netlist &lst) {
+	this->lst = &lst;
+	this->lib = &lib;
+	schem.resize(lst.subckts.size());
+}
+
+void Placer::elaborateSchematicNets(int curr, bool debug) {
 	auto currSch = schem.begin()+curr;
-	auto currCkt = lst.subckts.begin()+curr;
+	auto currCkt = lst->subckts.begin()+curr;
 
 	// Start by placing the nets for this cell
 	for (int i = 0; i < (int)currCkt->nets.size(); i++) {
@@ -208,7 +233,7 @@ void Placement::elaborateSchematicNets(const Netlist &lst, int curr, bool debug)
 		for (auto j = currCkt->nets[i].portOf.begin(); j != currCkt->nets[i].portOf.end(); j++) {
 			auto inst = currCkt->inst.begin()+*j;
 			auto nextSch = schem.begin()+inst->subckt;
-			auto nextCkt = lst.subckts.begin()+inst->subckt;
+			auto nextCkt = lst->subckts.begin()+inst->subckt;
 
 			for (int k = 0; k < (int)inst->ports.size(); k++) {
 				if (inst->ports[k] == i) {
@@ -221,14 +246,14 @@ void Placement::elaborateSchematicNets(const Netlist &lst, int curr, bool debug)
 	}
 }
 
-void Placement::elaborateSchematicInstance(const phy::Library &lib, const Netlist &lst, int curr, int idx) {
+void Placer::elaborateSchematicInstance(int curr, int sub, bool debug) {
 	auto currSch = schem.begin()+curr;
-	auto currCkt = lst.subckts.begin()+curr;
+	auto currCkt = lst->subckts.begin()+curr;
 
-	int next = currCkt->inst[idx].subckt;
-	auto nextLay = lib.macros.begin()+next;
+	int next = currCkt->inst[sub].subckt;
+	auto nextLay = lib->macros.begin()+next;
 	auto nextSch = schem.begin()+next;
-	auto nextCkt = lst.subckts.begin()+next;
+	auto nextCkt = lst->subckts.begin()+next;
 
 	cl_uint h = 0;
 	if (not currSch->cellBounds.empty()) {
@@ -239,19 +264,20 @@ void Placement::elaborateSchematicInstance(const phy::Library &lib, const Netlis
 	currSch->totalArea += nextSch->totalArea;
 	if (nextSch->isCell()) {
 		currSch->pushCell(next, nextLay->box.size(), h+nextSch->totalArea/2);
-		currSch->pushPorts(currCkt->inst[idx].ports, currSch->cells.size()-1);
-		currSch->cellsToNets.insert(currSch->cellsToNets.end(), currCkt->inst[idx].ports.begin(), currCkt->inst[idx].ports.end());
+		printf("hilbert %u/%lu\n", currSch->hilbert.back(), currSch->totalArea);
+		currSch->pushPorts(currCkt->inst[sub].ports, currSch->cells.size()-1);
+		currSch->cellsToNets.insert(currSch->cellsToNets.end(), currCkt->inst[sub].ports.begin(), currCkt->inst[sub].ports.end());
 	} else {
 		// Then place the nets of the instances
 		ucs::mapping currMap;
-		for (int j = 0; j < (int)currCkt->inst[idx].ports.size(); j++) {
-			currMap.set(nextCkt->ports[j], currCkt->inst[idx].ports[j]);
+		for (int j = 0; j < (int)currCkt->inst[sub].ports.size(); j++) {
+			currMap.set(nextCkt->ports[j], currCkt->inst[sub].ports[j]);
 		}
 
 		for (int j = 0; j+1 < (int)nextSch->nets.size(); j++) {
 			int net = currMap.map(j);
 			if (net < 0) {
-				net = currSch->pushNet("c"+idToString(idx)+"."+nextSch->netNames[j]);
+				net = currSch->pushNet("c"+idToString(sub)+"."+nextSch->netNames[j]);
 				if (net < 0) {
 					continue;
 				}
@@ -265,6 +291,7 @@ void Placement::elaborateSchematicInstance(const phy::Library &lib, const Netlis
 
 		for (int j = 0; j+1 < (int)nextSch->cells.size(); j++) {
 			currSch->pushCell(nextSch->subckts[j], nextSch->cellBounds[j], h+nextSch->hilbert[j]);
+			printf("hilbert %u/%lu\n", currSch->hilbert.back(), currSch->totalArea);
 			for (size_t k = nextSch->cells[j]; k < nextSch->cells[j+1]; k++) {
 				currSch->cellsToNets.push_back(currMap.map(nextSch->cellsToNets[k]));
 			}
@@ -272,39 +299,49 @@ void Placement::elaborateSchematicInstance(const phy::Library &lib, const Netlis
 	}
 }
 
-void Placement::elaborateSchematic(const phy::Library &lib, const Netlist &lst, int curr, bool debug) {
+void Placer::elaborateSchematic(int curr, bool debug) {
 	auto currSch = schem.begin()+curr;
-	auto currCkt = lst.subckts.begin()+curr;
+	auto currCkt = lst->subckts.begin()+curr;
 
 	// Do simulated annealing reduce total wirelength along the hilbert curve
+
+	// TODO(edward.bingham) think about threading this using a worker pool if
+	// it's too slow.
+
+	printf("Elaborating %s\n", lst->subckts[curr].name.c_str());
+	lst->subckts[curr].print();
+
 	if (currCkt->inst.empty()) {
-		auto currLay = lib.macros.begin()+curr;
+		auto currLay = lib->macros.begin()+curr;
 		currSch->totalArea = currLay->box.area();
 	} else {
-		elaborateSchematicNets(lst, curr, debug);
-		vector<int> index = doHier(*currCkt);
+		elaborateSchematicNets(curr, debug);
+		vector<int> index = computeOrder(curr);
 		for (auto i = index.begin(); i != index.end(); i++) {
-			elaborateSchematicInstance(lib, lst, curr, *i);
+			printf("next instance %s %lu\n", currCkt->inst[*i].name.c_str(), schem[currCkt->inst[*i].subckt].totalArea);
+			elaborateSchematicInstance(curr, *i, debug);
 		}
 	}
 	currSch->finish();
 
-	//printf("Elaborating %s\n", lst.subckts[curr].name.c_str());
-	//lst.subckts[curr].print();
-
-	//currSch->print(lst);
-	//printf("done\n\n");
+	currSch->print(*lst);
+	printf("done\n\n");
 }
 
-void Placement::load(const phy::Library &lib, const Netlist &lst, int root, bool debug) {
-	this->root = root;
-	this->lst = &lst;
-	schem.resize(lst.subckts.size());
+void Placer::elaborate(int subckt, bool debug) {
+	if (lst == nullptr or lib == nullptr) {
+		printf("error: the netlist and layout library have not been loaded\n");
+		return;
+	}
 
-	vector<int> stack(1, root);
+	if (not schem[subckt].cells.empty()) {
+		return;
+	}
+
+	vector<int> stack(1, subckt);
 	while (not stack.empty()) {
 		int curr = stack.back();
-		auto currCkt = lst.subckts.begin()+curr;
+		auto currCkt = lst->subckts.begin()+curr;
 		
 		bool done = true;
 		for (auto i = currCkt->inst.begin(); i != currCkt->inst.end(); i++) {
@@ -316,14 +353,14 @@ void Placement::load(const phy::Library &lib, const Netlist &lst, int root, bool
 		}
 
 		if (done) {
-			elaborateSchematic(lib, lst, curr, debug);
+			elaborateSchematic(curr, debug);
 			stack.pop_back();
 		}
 	}
 }
 
 // From Hacker's Delight
-cl_uint Placement::isqrt(cl_uint x) {
+cl_uint Placer::isqrt(cl_uint x) {
 	cl_uint a, b, m; // Limits and midpoint.
 	a = 1;
 	b = (x >> 5) + 8;
@@ -341,9 +378,11 @@ cl_uint Placement::isqrt(cl_uint x) {
 	return a - 1;
 }
 
-vector<cl_uint> Placement::hierComputeOffsets(const Subckt &ckt, const vector<int> &index) {
+vector<cl_uint> Placer::computeOffsets(int curr, const vector<int> &index) {
 	// Determine midpoint locations of instances in Hilbert space using half
 	// instance area.
+	auto currCkt = lst->subckts.begin()+curr;
+
 	
 	// position in ckt.inst -> hilbert position
 	/*printf("offsets of cells {");
@@ -356,18 +395,19 @@ vector<cl_uint> Placement::hierComputeOffsets(const Subckt &ckt, const vector<in
 	for (auto i = index.begin(); i != index.end(); i++) {
 		offset[*i] = 0;
 		if (i != index.begin()) {
-			offset[*i] = offset[*std::prev(i)] + schem[ckt.inst[*std::prev(i)].subckt].totalArea/2;
+			offset[*i] = offset[*std::prev(i)] + schem[currCkt->inst[*std::prev(i)].subckt].totalArea/2;
 		}
-		offset[*i] += schem[ckt.inst[*i].subckt].totalArea/2;
+		offset[*i] += schem[currCkt->inst[*i].subckt].totalArea/2;
 	}
 	return offset;
 }
 
-cl_uint Placement::hierComputeHPWL(const Subckt &ckt, const vector<cl_uint> &offset) {
+cl_uint Placer::computeHPWL(int curr, const vector<cl_uint> &offset) {
 	// Compute total half perimeter wire length. Estimate the expected perimeter
 	// of an interval on the hilbert curve as `sqrt(length)*4` assuming that
 	// allocated spaces on the hilbert curve tend to be rectangular and the
 	// expected area of an interval as `length`.
+	auto currCkt = lst->subckts.begin()+curr;
 	
 	/*printf("hpwl of {");
 	for (int i = 0; i < (int)offset.size(); i++) {
@@ -375,10 +415,10 @@ cl_uint Placement::hierComputeHPWL(const Subckt &ckt, const vector<cl_uint> &off
 	}
 	printf("}");*/
 	cl_uint hpwl = 0;
-	for (int i = 0; i < (int)ckt.nets.size(); i++) {
+	for (int i = 0; i < (int)currCkt->nets.size(); i++) {
 		cl_uint lo = std::numeric_limits<cl_uint>::max();
 		cl_uint hi = 0;
-		for (auto j = ckt.nets[i].portOf.begin(); j != ckt.nets[i].portOf.end(); j++) {
+		for (auto j = currCkt->nets[i].portOf.begin(); j != currCkt->nets[i].portOf.end(); j++) {
 			if (offset[*j] < lo) {
 				lo = offset[*j];
 			}
@@ -396,7 +436,7 @@ cl_uint Placement::hierComputeHPWL(const Subckt &ckt, const vector<cl_uint> &off
 	return hpwl;
 }
 
-vector<int> Placement::doHier(const Subckt &ckt, int starts, float step, float rate) {
+vector<int> Placer::computeOrder(int subckt, int starts, float step, float rate) {
 	// Order subckt instances to minimize the estimated HPWL of the layout using
 	// a Hilbert space-filling curve. This is a really rough heuristic used to
 	// quickly compute an initial placement. Since this is done hierarchically,
@@ -404,21 +444,22 @@ vector<int> Placement::doHier(const Subckt &ckt, int starts, float step, float r
 	// connections in the module hierarchy.
 
 	// This ordering is done using a simple simulated annealing algorithm. See
-	// hierComputeHPWL() to see how the total half perimeter wire length (HPWL)
-	// of an orderng is estimated. See hierComputeOffsets() to see how we place
+	// computeHPWL() to see how the total half perimeter wire length (HPWL)
+	// of an orderng is estimated. See computeOffsets() to see how we place
 	// modules on the Hilbert curve by evenly distributing module area.
+	auto currCkt = lst->subckts.begin()+subckt;
 
 	std::default_random_engine rand(0/*std::random_device{}()*/);
-	if (ckt.inst.empty()) {
+	if (currCkt->inst.empty()) {
 		return vector<int>();
 	}
 
-	vector<int> best; // hilbert order -> position in ckt.inst
-	for (int i = 0; i < (int)ckt.inst.size(); i++) {
+	vector<int> best; // hilbert order -> position in currCkt->inst
+	for (int i = 0; i < (int)currCkt->inst.size(); i++) {
 		best.push_back(i);
 	}
-	vector<cl_uint> offset = hierComputeOffsets(ckt, best);
-	cl_uint bestScore = hierComputeHPWL(ckt, offset);
+	vector<cl_uint> offset = computeOffsets(subckt, best);
+	cl_uint bestScore = computeHPWL(subckt, offset);
 
 	vector<vec2i> choices;
 	for (int j = 0; j < (int)best.size(); j++) {
@@ -430,9 +471,9 @@ vector<int> Placement::doHier(const Subckt &ckt, int starts, float step, float r
 	vector<int> curr = best;
 	for (int i = 0; i < starts; i++) {
 		shuffle(curr.begin(), curr.end(), rand);
-		offset = hierComputeOffsets(ckt, curr);
+		offset = computeOffsets(subckt, curr);
 		cl_uint score = 0;
-		cl_uint newScore = hierComputeHPWL(ckt, offset);
+		cl_uint newScore = computeHPWL(subckt, offset);
 		float currStep = step;
 
 		do {
@@ -442,8 +483,8 @@ vector<int> Placement::doHier(const Subckt &ckt, int starts, float step, float r
 				for (int j = (*choice)[0], k = (*choice)[1]; j < k; j++, k--) {
 					swap(curr[j], curr[k]);
 				}
-				offset = hierComputeOffsets(ckt, curr);
-				newScore = hierComputeHPWL(ckt, offset);
+				offset = computeOffsets(subckt, curr);
+				newScore = computeHPWL(subckt, offset);
 				if (newScore < score*currStep) {
 					break;
 				} else {
@@ -477,84 +518,74 @@ vector<int> Placement::doHier(const Subckt &ckt, int starts, float step, float r
 	return best;
 }
 
-void Placement::doGlobal() {
-	// Evenly space all cells based on area in the Hilbert space filling curve.
-	// Cells have been elaborated in a hierarchical HPWL minimizing sorted order
-	// as a fast initial guess at a placement. This placement is not optimal, so
-	// we still need to run a detail placement algorithm.
+Placement::Placement() {
+	placer = nullptr;
+	root = -1;
+	schem = nullptr;
+}
 
-	cl_uint num = (schem[root].cells.size()-1);
-	if (num == 0) {
+Placement::Placement(Placer &placer, int root) {
+	init(placer, root);
+}
+
+Placement::~Placement() {
+}
+
+void Placement::init(Placer &placer, int root) {
+	this->placer = &placer;
+	this->root = root;
+	this->schem = &placer.schem[root];
+	placer.elaborate(root);
+	position.resize(schem->numCells());
+	grid.resize(schem->numCells());
+	positionBuffer = cl::Buffer(placer.context, CL_MEM_READ_WRITE, bufferSize(position));
+	gridBuffer = cl::Buffer(placer.context, CL_MEM_READ_WRITE, bufferSize(grid));
+}
+
+// Evenly space all cells based on area in the Hilbert space filling curve.
+// Cells have been elaborated in a hierarchical HPWL minimizing sorted order as
+// a fast initial guess at a placement. This placement is not optimal, so we
+// still need to run a detail placement algorithm.
+void Placement::doGlobal() {
+	if (placer == nullptr or root < 0 or schem == nullptr) {
+		printf("error: placement has not been initialized.\n");
 		return;
 	}
 
-	position.resize(num);
+	if (schem->numCells() == 0) {
+		printf("error: no cells to place.\n");
+		return;
+	}
 
-	size_t positionSize = num * sizeof(cl_uint2);
-	size_t hilbertSize = num * sizeof(cl_uint);
-	try {
-		cl::Buffer positionBuffer(context, CL_MEM_READ_WRITE, positionSize);
-		cl::Buffer hilbertBuffer(context, CL_MEM_READ_WRITE, hilbertSize);	
-		initPlacement.setArg(0, positionBuffer);
-		initPlacement.setArg(1, hilbertBuffer);
-		initPlacement.setArg(2, num);
-		initPlacement.setArg(3, schem[root].totalArea);
+	//try {
+		cl::Buffer hilbertBuffer(placer->context, CL_MEM_READ_WRITE, bufferSize(schem->hilbert));	
+		placer->initPlacement.setArg(0, positionBuffer);
+		placer->initPlacement.setArg(1, hilbertBuffer);
+		placer->initPlacement.setArg(2, schem->numCells());
+		placer->initPlacement.setArg(3, schem->totalArea);
 
-		queue.enqueueWriteBuffer(hilbertBuffer, CL_TRUE, 0, hilbertSize, schem[root].hilbert.data());
+		placer->queue.enqueueWriteBuffer(hilbertBuffer, CL_TRUE, 0, bufferSize(schem->hilbert), schem->hilbert.data());
 
-		queue.enqueueNDRangeKernel(initPlacement, cl::NullRange, cl::NDRange(num), cl::NullRange);
-		queue.finish();
+		placer->queue.enqueueNDRangeKernel(placer->initPlacement, cl::NullRange, cl::NDRange(schem->numCells()), cl::NullRange);
+		placer->queue.finish();
 
-		queue.enqueueReadBuffer(positionBuffer, CL_TRUE, 0, positionSize, position.data());
-	} catch (cl::Error &err) {
+		placer->queue.enqueueReadBuffer(positionBuffer, CL_TRUE, 0, bufferSize(position), position.data());
+	/*} catch (cl::Error &err) {
 		std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
 		exit(1);
-	}
+	}*/
 }
 
 void Placement::doDetail() {
-	// This is a GPU optimized variant of RePlAce, a force directed graph layout
-	// with two types of forces:
-	// 1. attractive forces between cells connected by a net
-	// 2. repulsive forces between neighboring cells.
-	//
-	// Given N cells, RePlAce creates an NxN grid of bins, and computes a cell
-	// area vs capacity density value for each bin. Then it takes the fast
-	// fourier transform of that, followed by a low pass filter, then uses that
-	// as the gradiant to push cells around as the repulsive force. As cells
-	// stablize, they increase the frequency they pass.
-	//
-	// The approach we'll take does the same thing, but slightly differently. We
-	// are given an initial cell placement on the Hilbert space filing curve.
-	// 1. start with a quad tree with one node.
-	// 2. for each node in the quadtree, compute the centroid, the cell area vs
-	// capacity amplitude, and the standard deviation. As the number of points in
-	// a distribution grows, it tends toward a normal distribution. This computes
-	// that normal distribution.
-	// 3. Apply the gradient on all cells from that normal distribution.
-	// 4. When cells stabilize in a node, subdivide that node.
-	// 5. There is a constant time algorithm to identify neighbors of a quad-tree
-	// node. Use this to walk the quadtree and apply gradient forces until those
-	// forces become negligible due to distance. Use a breadth first search.
-	// 6. Stop subdividing when there are 7 to 13 cells in the node.
-	//
-	// If this method starts to lose acuity at smaller distributions, then we
-	// need to switch to a more detailed method.
-	// 1. The delauny triangulation is an optimal mesh that eliminates thin
-	// triangules, further there is a unique delauny triangulation for any
-	// distribution of vertices. This means that solving the delauny
-	// triangulation locally will also solve it globally because local solutions
-	// will be consistent with eachother.
-	// 2. The expected maximum degree of a vertex in this mesh is
-	// M = log(N)/log(log(N)). For 1T points, that's 12. for 300k points, thats 8.
-	// 3. For each cell, search for 2M nearest neighbors using the quadtree.
-	// 4. Filter out the nearest neighbors that violate the delauny constraint.
-	// 5. The remaining nearest neighbors will correctly implement the delauny
-	// triangulation. Even if there is a mistake, that doesn't matter.
-	// 6. In the next iteration on the GPU, we now have the complete delauny triangulation.
-	// 7. Walk this graph using Breadth first search, and apply electrostatic repulsion forces.
-	// 8. do a natural interpolation of nearest neighbors to determine gradient.
+	if (placer == nullptr or root < 0 or schem == nullptr) {
+		printf("error: Placement has not been initialized.\n");
+		return;
+	}
 
+	if (schem->numCells() == 0) {
+		printf("error: no cells to place.\n");
+		return;
+	}
 
 	/*for (int i = 0; i < (int)position.size(); i++) {
 		int idx = lst->cellAt(root, i);
@@ -565,23 +596,23 @@ void Placement::doDetail() {
 		cout << cellName << "(" << i << "): {" << position[i].s[0] << " " << position[i].s[1] << "}" << endl;
 	}
 
-	size_t dataSize = (schem[root].cells.size()-1) * sizeof(cl_float2);
+	size_t dataSize = (schem->cells.size()-1) * sizeof(cl_float2);
 	cl::Buffer positionBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, dataSize, position.data());
 	cl::Buffer velocityBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, dataSize, velocity.data());
 	cl::Buffer forceBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, dataSize, force.data());
 
-	size_t netsToCellsSize = schem[root].netsToCells.size() * sizeof(size_t);
-	size_t netsSize = schem[root].nets.size() * sizeof(size_t);
-	size_t cellsToNetsSize = schem[root].cellsToNets.size() * sizeof(size_t);
-	size_t cellsSize = schem[root].cells.size() * sizeof(size_t);
+	size_t netsToCellsSize = schem->netsToCells.size() * sizeof(size_t);
+	size_t netsSize = schem->nets.size() * sizeof(size_t);
+	size_t cellsToNetsSize = schem->cellsToNets.size() * sizeof(size_t);
+	size_t cellsSize = schem->cells.size() * sizeof(size_t);
 
-	cl::Buffer netsToCellsBuffer(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, netsToCellsSize, schem[root].netsToCells.data());
-	cl::Buffer netsBuffer(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, netsSize, schem[root].nets.data());
-	cl::Buffer cellsToNetsBuffer(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, cellsToNetsSize, schem[root].cellsToNets.data());
-	cl::Buffer cellsBuffer(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, cellsSize, schem[root].cells.data());
+	cl::Buffer netsToCellsBuffer(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, netsToCellsSize, schem->netsToCells.data());
+	cl::Buffer netsBuffer(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, netsSize, schem->nets.data());
+	cl::Buffer cellsToNetsBuffer(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, cellsToNetsSize, schem->cellsToNets.data());
+	cl::Buffer cellsBuffer(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, cellsSize, schem->cells.data());
 
-	size_t nets = schem[root].nets.size()-1;
-	size_t cells = schem[root].cells.size()-1;
+	size_t nets = schem->nets.size()-1;
+	size_t cells = schem->cells.size()-1;
 	float k = 1.0f;
 	float damping = 0.85f;
 	float step = 0.1f;
@@ -629,33 +660,18 @@ void Placement::doDetail() {
 	}*/
 }
 
-void Placement::doLegal(phy::Library &lib) {
-	// For legalization, we need to first divide the space up into columns, then
-	// divide the space up into rows. Column clusters should seek to reduce the
-	// standard deviation of the height of the cells within each row while
-	// maximizing the number of cells in the column (to a point). Row clusters
-	// should seek to reduce the standard deviation of the total width of the
-	// column across rows while bucketing cells by cell height. This algorithm
-	// also needs to be easily parallelizeable.
-
-	// 1. break cells into columns
-	//    a. parallel kernel to compute column based on x coordinate / column width
-	//    b. for each column, compute average cell height `h`
-	// 3. put cells into H/2h rows based on y coordinate / row height
-	//    a. another parallel kernel given column assignments and average cell height per column
-	// 4. for each row, sort based on cell height, find midpoint of cell width to determine weighted median of cell height `m`
-	// 5. break each row into two with all cells shorter than `m` in one and all cells taller than `m` in the other. Compute max height of each row.
-	// 6. lock y-coordinates into rows based on each row height
-	// 7. create a database of cell offsets for every pair of cells in the design
-	// 8. use this to pack x-coordinates in each row. Rows to the right of midpoint should be packed left to right and visa versa for left of midpoint.
-	// 9. record row and column geometry.
-
-	cl_uint num = (schem[root].cells.size()-1);
-	if (num == 0) {
+void Placement::doLegal() {
+	if (placer == nullptr or root < 0 or schem == nullptr) {
+		printf("error: Placement has not been initialized.\n");
 		return;
 	}
 
-	cl_uint side = isqrt(schem[root].totalArea);
+	if (schem->numCells() == 0) {
+		printf("error: no cells to place.\n");
+		return;
+	}
+
+	cl_uint side = placer->isqrt(schem->totalArea);
 	side += side >> 3;
 
 	// TODO(edward.bingham) Get tap to diff enclosure rule Column is then N times
@@ -673,13 +689,14 @@ void Placement::doLegal(phy::Library &lib) {
 
 	// Start by assigning columns based only on the x-coord
 	vector<cl_uint> rows(numCol, 0);
-	grid.resize(num);
 	for (int i = 0; i < (int)position.size(); i++) {
 		grid[i].s[0] = position[i].s[0] / colWidth;
-		rows[grid[i].s[0]] += schem[root].cellBounds[i].s[0];
+		rows[grid[i].s[0]] += schem->cellBounds[i].s[0];
 	}
 
-	// Then compute the number of rows needed in each column
+	// Then compute the number of rows needed in each column by dividing the
+	// total aggregated width of all cells in that column by the width of the
+	// column.
 	// x-coord, x-bound, y-bound, cell index
 	vector<vector<vector<cl_uint4> > > assign(numCol);
 	for (int i = 0; i < (int)rows.size(); i++) {
@@ -693,12 +710,13 @@ void Placement::doLegal(phy::Library &lib) {
 	for (int i = 0; i < (int)position.size(); i++) {
 		cl_uint x = position[i].s[0];
 		cl_uint y = position[i].s[1];
-		cl_uint2 b = schem[root].cellBounds[i];
+		cl_uint2 b = schem->cellBounds[i];
 		cl_uint c = grid[i].s[0];
 		grid[i].s[1] = 2 * (y * assign[c].size() / (side * 2));
 		assign[c][grid[i].s[1]].push_back({x, b.s[0], b.s[1], (cl_uint)i});
 	}
 
+	// separate every other row into two using the width-weighted median height of the row
 	vector<vector<cl_uint> > rowHeight(numCol);
 	for (int c = 0; c < (int)assign.size(); c++) {
 		rowHeight[c].resize(assign[c].size(), 0);
@@ -731,133 +749,6 @@ void Placement::doLegal(phy::Library &lib) {
 	}
 	// assign is now x-coord, XXXXXXX, y-bound, idx
 
-	/*size_t positionSize = num * sizeof(cl_uint2);
-	size_t boundSize = num * sizeof(cl_uint2);
-	size_t colSize = num * sizeof(cl_uint);
-	size_t colHeightSize = numCol * sizeof(cl_uint);
-	size_t colTotalWidthSize = numCol * sizeof(cl_uint);
-	size_t colCountSize = numCol * sizeof(cl_uint);
-
-	vector<cl_uint> colHeight(numCol, 0);
-	vector<cl_uint> colTotalWidth(numCol, 0);
-	vector<cl_uint> colCount(numCol, 0);
-	col.resize(num, 0);
-
-	try {
-		cl::Buffer positionBuffer(context, CL_MEM_READ_WRITE, positionSize);
-		cl::Buffer boundBuffer(context, CL_MEM_READ_WRITE, boundSize);	
-		cl::Buffer colBuffer(context, CL_MEM_READ_WRITE, colSize);
-		cl::Buffer colHeightBuffer(context, CL_MEM_READ_WRITE, colHeightSize);
-		cl::Buffer colTotalWidthBuffer(context, CL_MEM_READ_WRITE, colTotalWidthSize);
-		cl::Buffer colCountBuffer(context, CL_MEM_READ_WRITE, colCountSize);
-		//cl::Buffer rowBuffer(context, CL_MEM_READ_WRITE, rowSize);
-
-		partitionCols.setArg(0, positionBuffer);
-		partitionCols.setArg(1, boundBuffer);
-		partitionCols.setArg(2, num);
-		partitionCols.setArg(3, colBuffer);
-		partitionCols.setArg(4, colHeightBuffer);
-		partitionCols.setArg(5, colTotalWidthBuffer);
-		partitionCols.setArg(6, colCountBuffer);
-		partitionCols.setArg(7, colWidth);
-
-		queue.enqueueWriteBuffer(positionBuffer, CL_TRUE, 0, positionSize, position.data());
-		queue.enqueueWriteBuffer(boundBuffer, CL_TRUE, 0, boundSize, schem[root].cellBounds.data());
-		queue.enqueueWriteBuffer(colHeightBuffer, CL_TRUE, 0, colHeightSize, colHeight.data());
-		queue.enqueueWriteBuffer(colTotalWidthBuffer, CL_TRUE, 0, colTotalWidthSize, colTotalWidth.data());
-		queue.enqueueWriteBuffer(colCountBuffer, CL_TRUE, 0, colCountSize, colCount.data());
-
-		queue.enqueueNDRangeKernel(partitionCols, cl::NullRange, cl::NDRange(num), cl::NullRange);
-		queue.finish();
-
-		queue.enqueueReadBuffer(colBuffer, CL_TRUE, 0, colSize, col.data());
-		queue.enqueueReadBuffer(colHeightBuffer, CL_TRUE, 0, colHeightSize, colHeight.data());
-		queue.enqueueReadBuffer(colTotalWidthBuffer, CL_TRUE, 0, colTotalWidthSize, colTotalWidth.data());
-		queue.enqueueReadBuffer(colCountBuffer, CL_TRUE, 0, colCountSize, colCount.data());
-	} catch (cl::Error &err) {
-		std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
-		exit(1);
-	}
-
-	row.resize(num, 0);
-
-	size_t rowSize = num * sizeof(cl_uint);
-
-	try {
-		cl::Buffer positionBuffer(context, CL_MEM_READ_WRITE, positionSize);
-		cl::Buffer colBuffer(context, CL_MEM_READ_WRITE, colSize);
-		cl::Buffer colHeightBuffer(context, CL_MEM_READ_WRITE, colHeightSize);
-		cl::Buffer colCountBuffer(context, CL_MEM_READ_WRITE, colCountSize);
-		cl::Buffer rowBuffer(context, CL_MEM_READ_WRITE, rowSize);
-
-		partitionRows.setArg(0, positionBuffer);
-		partitionRows.setArg(1, num);
-		partitionRows.setArg(2, colBuffer);
-		partitionRows.setArg(3, colHeightBuffer);
-		partitionRows.setArg(4, colCountBuffer);
-		partitionRows.setArg(5, rowBuffer);
-
-		queue.enqueueWriteBuffer(positionBuffer, CL_TRUE, 0, positionSize, position.data());
-		queue.enqueueWriteBuffer(colBuffer, CL_TRUE, 0, colSize, col.data());
-		queue.enqueueWriteBuffer(colHeightBuffer, CL_TRUE, 0, colHeightSize, colHeight.data());
-		queue.enqueueWriteBuffer(colCountBuffer, CL_TRUE, 0, colCountSize, colCount.data());
-
-		queue.enqueueNDRangeKernel(partitionRows, cl::NullRange, cl::NDRange(num), cl::NullRange);
-		queue.finish();
-
-		queue.enqueueReadBuffer(rowBuffer, CL_TRUE, 0, rowSize, row.data());
-	} catch (cl::Error &err) {
-		std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
-		exit(1);
-	}*/
-
-	/*for (int i = 0; i < (int)num; i++) {
-		printf("position %d:(%u %u) col=%u row=%u\n", i, position[i].s[0], position[i].s[1], col[i], row[i]);
-	}
-
-	for (int i = 0; i < (int)numCol; i++) {
-		printf("col %d height=%d count=%d\n", i, colHeight[i], colCount[i]);
-	}
-
-	vector<vector<vector<cl_uint3> > > rowWidth(numCol);
-	vector<vector<cl_uint> > rowMedian(numCol);
-
-	for (int i = 0; i < (int)row.size(); i++) {
-		if (row[i] >= rowWidth[col[i]].size()) {
-			rowWidth[col[i]].resize(row[i]+1);
-		}
-		rowWidth[col[i]][row[i]].push_back(cl_uint3{schem[root].cellBounds[i].s[0], schem[root].cellBounds[i].s[1], (cl_uint)i});
-	}
-
-	vector<vector<vector<cl_uint2> > > rowAssign(numCol);
-	vector<vector<cl_uint> > rowHeight(numCol);
-	for (int c = 0; c < (int)rowWidth.size(); c++) {
-		rowAssign[c].resize(rowWidth[c].size()*2);
-		rowHeight[c].resize(rowWidth[c].size()*2, 0);
-		for (int i = 0; i < (int)rowWidth[c].size(); i++) {
-			sort(rowWidth[c][i].begin(), rowWidth[c][i].end(), [](const cl_uint3 &a, const cl_uint3 &b) { 
-				return a.s[1] < b.s[1]; 
-			});
-			for (int j = 1; j < (int)rowWidth[c][i].size(); j++) {
-				rowWidth[c][i][j].s[0] += rowWidth[c][i][j-1].s[0];
-			}
-
-			int s = 0;
-			for (int j = 0; j < (int)rowWidth[c][i].size(); j++) {
-				if (rowWidth[c][i][j].s[0] > rowWidth[c][i].back().s[0]/2) {
-					s = 1;
-				}
-
-				cl_uint index = rowWidth[c][i][j].s[2];
-				row[index] = i*2+s;
-				rowAssign[c][i*2+s].push_back(cl_uint2{position[index].s[0], index});
-				cl_uint2 bound = schem[root].cellBounds[index];
-				if (bound.s[1] > rowHeight[c][i*2+s]) {
-					rowHeight[c][i*2+s] = bound.s[1];
-				}
-			}
-		}
-	}*/
 
 	map<pair<int, int>, int> offset;
 	int colStart = 0;
@@ -878,11 +769,11 @@ void Placement::doLegal(phy::Library &lib) {
 			ucs::mapping prevChildToParent;
 			for (int j = 0; j < (int)assign[c][i].size(); j++) {
 				cl_uint index = assign[c][i][j].s[3];
-				int currSubckt = schem[root].subckts[index];
-				cl_uint2 bound = schem[root].cellBounds[index];
+				int currSubckt = schem->subckts[index];
+				cl_uint2 bound = schem->cellBounds[index];
 				ucs::mapping currChildToParent;
-				for (int k = 0; k < (int)lst->subckts[currSubckt].ports.size(); k++) {
-					currChildToParent.set(lst->toLayout[currSubckt].map(lst->subckts[currSubckt].ports[k]), schem[root].cellsToNets[schem[root].cells[index]+k]);
+				for (int k = 0; k < (int)placer->lst->subckts[currSubckt].ports.size(); k++) {
+					currChildToParent.set(placer->lst->toLayout[currSubckt].map(placer->lst->subckts[currSubckt].ports[k]), schem->cellsToNets[schem->cells[index]+k]);
 				}
 
 				int currPos = prevPos;
@@ -895,16 +786,8 @@ void Placement::doLegal(phy::Library &lib) {
 						currPos += off->second;
 					} else {
 						int value = 0;
-						//printf("COMPARING CELLS %s -> %s\n", lib.macros[prevSubckt].name.c_str(), lib.macros[currSubckt].name.c_str());
-						//lib.macros[prevSubckt].print();
-						//prevChildToParent.print();
-						//printf("\n\n");
-						//lib.macros[currSubckt].print();
-						//currChildToParent.print();
-						//printf("\n\n");
-						bool conf = minOffset(&value, 0, lib.macros[prevSubckt], 0, lib.macros[currSubckt], 0, Layout::MERGENET, Layout::DEFAULT, true, prevChildToParent, currChildToParent);
+						minOffset(&value, 0, placer->lib->macros[prevSubckt], 0, placer->lib->macros[currSubckt], 0, Layout::MERGENET, Layout::DEFAULT, true, prevChildToParent, currChildToParent);
 						offset.insert({{prevSubckt, currSubckt}, value});
-						//printf("from %d %s({%d %d} {%d %d}) to %s({%d %d} {%d %d}): %d\n", conf, lib.macros[prevSubckt].name.c_str(), lib.macros[prevSubckt].box.ll[0], lib.macros[prevSubckt].box.ll[1], lib.macros[prevSubckt].box.ur[0], lib.macros[prevSubckt].box.ur[1], lib.macros[currSubckt].name.c_str(), lib.macros[currSubckt].box.ll[0], lib.macros[currSubckt].box.ll[1], lib.macros[currSubckt].box.ur[0], lib.macros[currSubckt].box.ur[1], value);
 						currPos += value;
 					}
 				}
@@ -929,24 +812,47 @@ void Placement::doLegal(phy::Library &lib) {
 	}
 }
 
-void Placement::save(phy::Library &lib, const sch::Netlist &lst) {
-	for (int i = 0; i < (int)position.size(); i++) {
-		int idx = schem[root].subckts[i];
-		string cellName = "nil";
-		if (idx < (int)lst.subckts.size()) {
-			cellName = lst.subckts[idx].name;
-		}
-		vec2i pos((int)position[i].s[0], (int)position[i].s[1]);
-		vec2i dir(1, 1-2*(grid[i].s[1]%2));
-
-		//cout << cellName << "(" << i << "): pos={" << pos[0] << " " << pos[1] << "} dir={" << dir[0] << " " << dir[1] << "} " << schem[root].hilbert[i] << endl;
-		lib.macros[root].inst.push_back(phy::Instance(idx, pos, dir));
+void Placement::solve() {
+	if (placer == nullptr or root < 0 or schem == nullptr) {
+		printf("error: Placement has not been initialized.\n");
+		return;
 	}
 
+	if (schem->numCells() == 0) {
+		printf("error: no cells to place.\n");
+		return;
+	}
+
+	doGlobal();
+	doDetail();
+	doLegal();
+}
+
+void Placement::save(phy::Layout &layout) {
+	for (int i = 0; i < (int)position.size(); i++) {
+		vec2i pos((int)position[i].s[0], (int)position[i].s[1]);
+		vec2i dir(1,1);
+		if (i < (int)grid.size()) {
+			// Alternate orientation to line up power rails
+			dir[1] = 1-2*(grid[i].s[1]%2);
+		}
+
+		layout.inst.push_back(phy::Instance(schem->subckts[i], pos, dir));
+	}
+
+	// TODO(do remainder of layout operations)
 	// 1. draw power grid
 	// 2. route to power
 	// 3. draw well taps
 	// 4. draw filler
+}
+
+void Placement::save(phy::Library &lib) {
+	save(lib.macros[root]);
+}
+
+void Placement::save() {
+	save(*placer->lib);
 }
 
 }

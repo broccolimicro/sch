@@ -48,30 +48,16 @@ struct Schematic {
 	void finish();
 	bool isCell() const;
 
+	size_t numCells() const;
+	size_t numNets() const;
+
 	void print(const Netlist &lst) const;
 };
 
-struct Placement {
-	Placement();
-	~Placement();
-
-	// 1. treat cells as particles
-	// 2. each gets a position, velocity, acceleration, and force
-	// 3. wires between cells are springs
-	//   a. lock the "springs" along the vertical and horizontal axes.
-	//  ----O      O
-	//  |          |
-	//  O      O----
-	// Use OpenCL to run the simulation for millions of particles
-	// Simulated Annealing
-	// 1. Cells start very light and springs very springy
-	// 2. As time goes on, add more and more damping
-
-	// export ascii file with cell locations?
-
-
-	// TODO(edward.bingham) For development purposes only, delete this
-	const Netlist *lst;
+struct Placer {
+	Placer();
+	Placer(phy::Library &lib, const Netlist &lst, int platformId=0, int deviceId=0, bool debug=false);
+	~Placer();
 
 	cl::Context context;
 	cl::CommandQueue queue;
@@ -81,35 +67,64 @@ struct Placement {
 	cl::Kernel partitionCols;
 	cl::Kernel partitionRows;
 
-	int root;
-	vector<Schematic> schem;
+	const sch::Netlist *lst;
+	phy::Library *lib;
 
-	// x-coord, y-coord, cell index
-	vector<cl_uint3> grid;
-	vector<cl_uint2> position;
+	vector<Schematic> schem;
 
 	// Configure the OpenCL Driver and Kernel
 	void configure(int platformId=0, int deviceId=0, bool debug=false);
 	void configurePath(string kernalPath, int platformId=0, int deviceId=0, bool debug=false);
 	void configureSource(string source, int platformId=0, int deviceId=0, bool debug=false);
 
+	void load(phy::Library &lib, const Netlist &lst);
+
 	// Load a design into the placer
-	void elaborateSchematicNets(const Netlist &lst, int curr, bool debug=false);
-	void elaborateSchematicInstance(const phy::Library &lib, const Netlist &lst, int curr, int idx);
-	void elaborateSchematic(const phy::Library &lib, const Netlist &lst, int curr, bool debug=false);
-	void load(const phy::Library &lib, const Netlist &lst, int root, bool debug=false);
-	
-	// Run the placement algorithm
+	void elaborateSchematicNets(int curr, bool debug=false);
+	void elaborateSchematicInstance(int curr, int sub, bool debug=false);
+	void elaborateSchematic(int curr, bool debug=false);
+	void elaborate(int subckt, bool debug=false);
+
 	cl_uint isqrt(cl_uint x);
-	vector<cl_uint> hierComputeOffsets(const Subckt &ckt, const vector<int> &index);
-	cl_uint hierComputeHPWL(const Subckt &ckt, const vector<cl_uint> &offset);
-	vector<int> doHier(const Subckt &ckt, int starts=10, float step=2.0, float rate=0.02);
+	vector<cl_uint> computeOffsets(int curr, const vector<int> &index);
+	cl_uint computeHPWL(int curr, const vector<cl_uint> &offset);
+	vector<int> computeOrder(int subckt, int starts=10, float step=2.0, float rate=0.02);
+};
+
+struct Placement {
+	Placement();
+	Placement(Placer &placer, int root);
+	~Placement();
+
+	Placer *placer;
+	int root;
+	Schematic *schem;
+
+	// x-coord, y-coord, cell index
+	vector<cl_uint3> grid;
+	vector<cl_uint2> position;
+	
+	cl::Buffer positionBuffer;
+	cl::Buffer gridBuffer;
+
+	template <typename T>
+	size_t bufferSize(const vector<T> &v) {
+		return v.size() * sizeof(T);
+	}
+
+	void init(Placer &placer, int root);
+
+	// Run the placement algorithm
 	void doGlobal();
 	void doDetail();
-	void doLegal(phy::Library &lib);
+	void doLegal();
+
+	void solve();
 
 	// Save the result to the layout library
-	void save(phy::Library &lib, const sch::Netlist &lst);
+	void save();
+	void save(phy::Layout &layout);
+	void save(phy::Library &lib);
 };
 
 }

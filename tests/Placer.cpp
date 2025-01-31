@@ -45,14 +45,10 @@ TEST(Placer, solve)
 	lib.macros[0].box = Rect(-1, vec2i(0, 0), vec2i(10, 10));
 
 	// Run the placer
-	Placement result;
-	result.configure(0, 0, true);
-	result.load(lib, lst, 2, true);	
-	result.doGlobal();
-	//result.doDetail();
-	result.doLegal(lib);
-
-	result.save(lib, lst);
+	Placer placer(lib, lst, 0, 0, true);
+	Placement result(placer, 2);
+	result.solve();
+	result.save();
 
 	for (int i = 0; i < 4; i++) {
 		cout << "at " << i << " = " << lst.cellAt(1, i) << endl;
