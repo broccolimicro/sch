@@ -3,7 +3,11 @@
 #include "Netlist.h"
 #include <phy/Library.h>
 
+#ifdef OSX
+#include <OpenCL/opencl.hpp>
+#else
 #include <CL/opencl.hpp>
+#endif
 
 namespace sch {
 

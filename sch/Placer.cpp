@@ -3,7 +3,11 @@
 #include <limits>
 #include <random>
 
+#ifdef OSX
+#include <OpenCL/opencl.hpp>
+#else
 #include <CL/opencl.hpp>
+#endif
 
 using namespace std;
 
