@@ -32,7 +32,7 @@ struct Schematic {
 	cl_ulong totalArea;
 	// Each value is the area of a particular cell.
 	vector<cl_uint2> cellBounds;
-	vector<cl_uint> hilbert;
+	vector<cl_ulong> hilbert;
 
 	vector<int> subckts;
 
@@ -41,8 +41,8 @@ struct Schematic {
 
 	int pushNet(string name);
 	void allocPorts(cl_uint count);
-	void pushCell(int subckt, vec2i bound, cl_uint pos);
-	void pushCell(int subckt, cl_uint2 bound, cl_uint pos);
+	void pushCell(int subckt, vec2i bound, cl_ulong pos);
+	void pushCell(int subckt, cl_uint2 bound, cl_ulong pos);
 	void pushPorts(vector<int> ports, cl_uint cell);
 	void pushPorts(int port, cl_uint cell);
 	void finish();
@@ -85,10 +85,12 @@ struct Placer {
 	void elaborateSchematic(int curr, bool debug=false);
 	void elaborate(int subckt, bool debug=false);
 
-	cl_uint isqrt(cl_uint x);
+	cl_uint isqrt(cl_ulong x);
 	vector<cl_uint> computeOffsets(int curr, const vector<int> &index);
 	cl_uint computeHPWL(int curr, const vector<cl_uint> &offset);
 	vector<int> computeOrder(int subckt, int starts=10, float step=2.0, float rate=0.02);
+
+	void place(int subckt);
 };
 
 struct Placement {

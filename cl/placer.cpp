@@ -1,18 +1,19 @@
-inline uint hilbertFromCartesian(uint2 v) {
-	uint state = 0, s = 0;
-	for (uint i = 32; i > 0; i--) {
-		uint row = 4*state | 2*((v.x >> (i-1)) & 1) | (v.y >> (i-1)) & 1;
+inline ulong hilbertFromCartesian(uint2 v) {
+	uchar state = 0;
+	ulong s = 0;
+	for (char i = 31; i > 0; i--) {
+		uchar row = 4*state | 2*((v.x >> i) & 1) | (v.y >> i) & 1;
 		s = (s << 2) | (0x361E9CB4 >> 2*row) & 3;
 		state = (0x8FE65831 >> 2*row) & 3;
 	}
 	return s;
 }
 
-inline uint2 cartesianFromHilbert(uint s) {
+inline uint2 cartesianFromHilbert(ulong s) {
 	uint2 vp = {0,0};
-	uint state = 0;
-	for (uint i = 2*32; i > 0; i -= 2) {
-		uint row = 4*state | (s >> (i-2)) & 3;
+	uchar state = 0;
+	for (char i = 62; i >= 0; i -= 2) {
+		uchar row = 4*state | (uchar)((s >> i) & 3);
 		vp.x = (vp.x << 1) | (0x936C >> row) & 1;
 		vp.y = (vp.y << 1) | (0x39C6 >> row) & 1;
 		state = (0x3E6B94C1 >> 2*row) & 3;
@@ -20,13 +21,13 @@ inline uint2 cartesianFromHilbert(uint s) {
 	return vp;
 }
 
-inline ulong isqrt(ulong x) {
+inline uint isqrt(ulong x) {
 	// Limits and midpoint
 	ulong a, b, m;
 	a = 1;
 	b = (x >> 5) + 8;
-	if (b > 65535) {
-		b = 65535;
+	if (b > UINT_MAX) {
+		b = UINT_MAX;
 	}
 	do {
 		m = (a + b) >> 1;
@@ -36,27 +37,21 @@ inline ulong isqrt(ulong x) {
 			a = m + 1;
 		}
 	} while (b >= a);
-	return a - 1;
+	return (uint)(a - 1);
 }
 
 kernel void initPlacement(
 	global uint2* position,
-	global uint* hilbert,
+	global ulong* hilbert,
 	const uint num,
-	const ulong total
+	const ulong total,
+	const uint scale
 ) {
 	uint i = get_global_id(0);
 	if (i >= num) return;
 
-	uint h = hilbert[i] * (UINT_MAX / total);
-	uint side = isqrt(total);
-	side += side >> 3;
-	if (side == 0) {
-		side = 1;
-	}
-
-	uint scale = UINT_MAX / side;
-	position[i] = cartesianFromHilbert(h)/scale;
+	ulong h = hilbert[i] * (ULONG_MAX / total);
+	position[i] = cartesianFromHilbert(h) / scale;
 }
 
 kernel void stepPlacement(

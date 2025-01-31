@@ -19,7 +19,7 @@ Schematic::~Schematic() {
 int Schematic::pushNet(string name) {
 	int result = (int)nets.size();
 	nets.push_back(netsToCells.size());
-	netNames.push_back(name);
+	//netNames.push_back(name);
 	return result;
 }
 
@@ -28,14 +28,14 @@ void Schematic::allocPorts(cl_uint count) {
 	netsToCells.resize(netsToCells.size()+count, blank);
 }
 
-void Schematic::pushCell(int subckt, vec2i bound, cl_uint pos) {
+void Schematic::pushCell(int subckt, vec2i bound, cl_ulong pos) {
 	cells.push_back(cellsToNets.size());
 	subckts.push_back(subckt);
 	cellBounds.push_back({(cl_uint)bound[0], (cl_uint)bound[1]});
 	hilbert.push_back(pos);
 }
 
-void Schematic::pushCell(int subckt, cl_uint2 bound, cl_uint pos) {
+void Schematic::pushCell(int subckt, cl_uint2 bound, cl_ulong pos) {
 	cells.push_back(cellsToNets.size());
 	subckts.push_back(subckt);
 	cellBounds.push_back(bound);
@@ -102,7 +102,8 @@ void Schematic::print(const Netlist &lst) const {
 	for (int i = 0; i+1 < (int)nets.size(); i++) {
 		size_t start = nets[i];
 		size_t end = nets[i+1];
-		cout << netNames[i] << "(" << i << "): {";
+		//cout << netNames[i] << "(" << i << "): {";
+		cout << i << ": {";
 		for (size_t j = start; j < end; j++) {
 			cout << netsToCells[j] << " ";
 		}
@@ -255,16 +256,16 @@ void Placer::elaborateSchematicInstance(int curr, int sub, bool debug) {
 	auto nextSch = schem.begin()+next;
 	auto nextCkt = lst->subckts.begin()+next;
 
-	cl_uint h = 0;
+	cl_ulong h = 0;
 	if (not currSch->cellBounds.empty()) {
 		cl_uint2 bound = currSch->cellBounds.back();
-		h = currSch->hilbert.back() + (bound.s[0]*bound.s[1])/2;
+		h = currSch->hilbert.back() + (cl_ulong)(bound.s[0]*bound.s[1])/2;
 	}
 
 	currSch->totalArea += nextSch->totalArea;
 	if (nextSch->isCell()) {
 		currSch->pushCell(next, nextLay->box.size(), h+nextSch->totalArea/2);
-		printf("hilbert %u/%lu\n", currSch->hilbert.back(), currSch->totalArea);
+		printf("hilbert %lu/%lu\n", currSch->hilbert.back(), currSch->totalArea);
 		currSch->pushPorts(currCkt->inst[sub].ports, currSch->cells.size()-1);
 		currSch->cellsToNets.insert(currSch->cellsToNets.end(), currCkt->inst[sub].ports.begin(), currCkt->inst[sub].ports.end());
 	} else {
@@ -277,7 +278,7 @@ void Placer::elaborateSchematicInstance(int curr, int sub, bool debug) {
 		for (int j = 0; j+1 < (int)nextSch->nets.size(); j++) {
 			int net = currMap.map(j);
 			if (net < 0) {
-				net = currSch->pushNet("c"+idToString(sub)+"."+nextSch->netNames[j]);
+				net = currSch->pushNet("");//"c"+idToString(sub)+"."+nextSch->netNames[j]);
 				if (net < 0) {
 					continue;
 				}
@@ -291,7 +292,7 @@ void Placer::elaborateSchematicInstance(int curr, int sub, bool debug) {
 
 		for (int j = 0; j+1 < (int)nextSch->cells.size(); j++) {
 			currSch->pushCell(nextSch->subckts[j], nextSch->cellBounds[j], h+nextSch->hilbert[j]);
-			printf("hilbert %u/%lu\n", currSch->hilbert.back(), currSch->totalArea);
+			printf("hilbert %lu/%lu\n", currSch->hilbert.back(), currSch->totalArea);
 			for (size_t k = nextSch->cells[j]; k < nextSch->cells[j+1]; k++) {
 				currSch->cellsToNets.push_back(currMap.map(nextSch->cellsToNets[k]));
 			}
@@ -324,7 +325,7 @@ void Placer::elaborateSchematic(int curr, bool debug) {
 	}
 	currSch->finish();
 
-	currSch->print(*lst);
+	//currSch->print(*lst);
 	printf("done\n\n");
 }
 
@@ -360,12 +361,12 @@ void Placer::elaborate(int subckt, bool debug) {
 }
 
 // From Hacker's Delight
-cl_uint Placer::isqrt(cl_uint x) {
-	cl_uint a, b, m; // Limits and midpoint.
+cl_uint Placer::isqrt(cl_ulong x) {
+	cl_ulong a, b, m; // Limits and midpoint.
 	a = 1;
 	b = (x >> 5) + 8;
-	if (b > 65535) {
-		b = 65535;
+	if (b > std::numeric_limits<cl_uint>::max()) {
+		b = std::numeric_limits<cl_uint>::max();
 	}
 	do {
 		m = (a + b) >> 1;
@@ -375,7 +376,7 @@ cl_uint Placer::isqrt(cl_uint x) {
 			a = m + 1;
 		}
 	} while (b >= a);
-	return a - 1;
+	return (cl_uint)(a - 1);
 }
 
 vector<cl_uint> Placer::computeOffsets(int curr, const vector<int> &index) {
@@ -518,6 +519,12 @@ vector<int> Placer::computeOrder(int subckt, int starts, float step, float rate)
 	return best;
 }
 
+void Placer::place(int subckt) {
+	Placement prob(*this, subckt);
+	prob.solve();
+	prob.save();
+}
+
 Placement::Placement() {
 	placer = nullptr;
 	root = -1;
@@ -557,12 +564,20 @@ void Placement::doGlobal() {
 		return;
 	}
 
-	//try {
+	cl_uint side = placer->isqrt(schem->totalArea);
+	side += side >> 3;
+	if (side == 0) {
+		side = 1;
+	}
+	cl_uint scale = std::numeric_limits<cl_uint>::max() / side;
+
+	try {
 		cl::Buffer hilbertBuffer(placer->context, CL_MEM_READ_WRITE, bufferSize(schem->hilbert));	
 		placer->initPlacement.setArg(0, positionBuffer);
 		placer->initPlacement.setArg(1, hilbertBuffer);
 		placer->initPlacement.setArg(2, schem->numCells());
 		placer->initPlacement.setArg(3, schem->totalArea);
+		placer->initPlacement.setArg(4, scale);
 
 		placer->queue.enqueueWriteBuffer(hilbertBuffer, CL_TRUE, 0, bufferSize(schem->hilbert), schem->hilbert.data());
 
@@ -570,10 +585,10 @@ void Placement::doGlobal() {
 		placer->queue.finish();
 
 		placer->queue.enqueueReadBuffer(positionBuffer, CL_TRUE, 0, bufferSize(position), position.data());
-	/*} catch (cl::Error &err) {
+	} catch (cl::Error &err) {
 		std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
 		exit(1);
-	}*/
+	}
 }
 
 void Placement::doDetail() {
@@ -673,6 +688,9 @@ void Placement::doLegal() {
 
 	cl_uint side = placer->isqrt(schem->totalArea);
 	side += side >> 3;
+	if (side == 0) {
+		side = 1;
+	}
 
 	// TODO(edward.bingham) Get tap to diff enclosure rule Column is then N times
 	// tap to diff enclosure rule with a well tap on either side of the column.
@@ -683,7 +701,7 @@ void Placement::doLegal() {
 	cl_uint colWidth = coeff * (diffTap - buffer);
 
 	cl_uint numCol = (side / colWidth) + 1;
-	colWidth = side / numCol;
+	colWidth = (side+numCol-1) / numCol;
 
 	//printf("num=%u numCol=%u side=%u colWidth=%u diffTap=%u buffer=%u\n", num, numCol, side, colWidth, diffTap, buffer);
 
@@ -824,7 +842,7 @@ void Placement::solve() {
 	}
 
 	doGlobal();
-	doDetail();
+	//doDetail();
 	doLegal();
 }
 

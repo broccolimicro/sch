@@ -41,19 +41,6 @@ int buildCell(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debu
 	return 0;
 }
 
-int buildProcess(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debug) {
-	if ((int)lib.macros.size() < idx+1) {
-		lib.macros.resize(idx+1, Layout(*lst.tech));
-	}
-	lib.macros[idx].name = lst.subckts[idx].name;
-
-	Placer placer(lib, lst, 0, 0, debug);
-	Placement prob(placer, idx);
-	prob.solve();
-	prob.save();
-	return 0;
-}
-
 bool extract(Subckt &dst, Layout &src, bool forceTrace) {
 	if (forceTrace or src.nets.empty()) {
 		src.trace();
