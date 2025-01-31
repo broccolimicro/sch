@@ -11,9 +11,9 @@ GTEST_L      := -L$(GTEST)/build/lib -L.
 
 INCLUDE_PATHS = $(DEPEND:%=-I../%) -I../gdstk/build/include $(shell python3-config --includes) -I.
 LIBRARY_PATHS = $(DEPEND:%=-L../%) -L$(shell python3-config --prefix)/lib -L.
-LIBRARIES     = $(DEPEND:%=-l%) -l$(PYTHON_RELEASE) -lOpenCL
+LIBRARIES     = $(DEPEND:%=-l%) -l$(PYTHON_RELEASE)
 LIBFILES      = $(foreach dep,$(DEPEND),../$(dep)/lib$(dep).a)
-CXXFLAGS      = -std=c++17 -O2 -g -Wall -fmessage-length=0 -D CL_HPP_TARGET_OPENCL_VERSION=300 -D CL_HPP_ENABLE_EXCEPTIONS $(DEPEND:%=-I../%) -I../gdstk/include -I.
+CXXFLAGS      = -std=c++17 -O2 -g -Wall -fmessage-length=0 -D CL_HPP_MINIMUM_OPENCL_VERSION=120 -D CL_HPP_TARGET_OPENCL_VERSION=120 -D CL_HPP_ENABLE_EXCEPTIONS $(DEPEND:%=-I../%) -I../gdstk/include -I.
 LDFLAGS       =  
 
 SOURCES	     := $(shell mkdir -p $(SRCDIR); find $(SRCDIR) -name '*.cpp')
@@ -28,6 +28,7 @@ TEST_TARGET   = test
 
 ifeq ($(OS),Windows_NT)
     CXXFLAGS += -D WIN32
+    LIBRARIES += -lOpenCL
     ifeq ($(PROCESSOR_ARCHITEW6432),AMD64)
         CXXFLAGS += -D AMD64
     else
@@ -42,9 +43,12 @@ else
     UNAME_S := $(shell uname -s)
     ifeq ($(UNAME_S),Linux)
         CXXFLAGS += -D LINUX
+        LIBRARIES += -lOpenCL
     endif
     ifeq ($(UNAME_S),Darwin)
         CXXFLAGS += -D OSX -mmacos-version-min=12.0 -Wno-varargs
+	INCLUDE_PATHS += -I$(shell brew --prefix opencl-headers)/include -I$(shell brew --prefix opencl-clhpp-headers)/include
+        LIBRARIES += -framework OpenCL
     endif
     UNAME_P := $(shell uname -p)
     ifeq ($(UNAME_P),x86_64)
@@ -70,13 +74,13 @@ $(TARGET): $(OBJECTS)
 
 build/$(SRCDIR)/%.o: $(SRCDIR)/%.cpp
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(LDFLAGS) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ -c $<
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -c -o $@ $<
+	@$(CXX) $(INCLUDE_PATHS) $(CXXFLAGS) $(LDFLAGS) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ -c $<
+	$(CXX) $(INCLUDE_PATHS) $(CXXFLAGS) $(LDFLAGS) -c -o $@ $<
 
 sch/Placer.cpp: sch/Kernel.h
 
 sch/Kernel.h: cl/placer.cpp
-	echo -n "#pragma once\n\nnamespace sch {\n\nconst string placer_cpp_string = " > sch/Kernel.h
+	echo "#pragma once\n\nnamespace sch {\n\nconst string placer_cpp_string = " > sch/Kernel.h
 	cat cl/placer.cpp | sed 's/\\/\\\\/g;s/"/\\"/g;s/^/"/g;s/$$/\\n"/g' >> sch/Kernel.h
 	echo ";\n}\n" >> sch/Kernel.h
 
@@ -85,8 +89,8 @@ $(TEST_TARGET): $(TEST_OBJECTS) $(TARGET) $(LIBFILES)
 
 build/$(TESTDIR)/%.o: $(TESTDIR)/%.cpp
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(GTEST_I) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ -c $<
-	$(CXX) $(CXXFLAGS) $(GTEST_I) $< -c -o $@
+	@$(CXX) $(INCLUDE_PATHS) $(CXXFLAGS) $(GTEST_I) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ -c $<
+	$(CXX) $(INCLUDE_PATHS) $(CXXFLAGS) $(GTEST_I) $< -c -o $@
 
 build/$(TESTDIR)/gtest_main.o: $(GTEST)/googletest/src/gtest_main.cc
 	@mkdir -p $(dir $@)
