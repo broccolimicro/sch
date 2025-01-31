@@ -80,9 +80,9 @@ build/$(SRCDIR)/%.o: $(SRCDIR)/%.cpp
 sch/Placer.cpp: sch/Kernel.h
 
 sch/Kernel.h: cl/placer.cpp
-	echo "#pragma once\n\nnamespace sch {\n\nconst string placer_cpp_string = " > sch/Kernel.h
+	printf "#pragma once\n\nnamespace sch {\n\nconst string placer_cpp_string = " > sch/Kernel.h
 	cat cl/placer.cpp | sed 's/\\/\\\\/g;s/"/\\"/g;s/^/"/g;s/$$/\\n"/g' >> sch/Kernel.h
-	echo ";\n}\n" >> sch/Kernel.h
+	printf ";\n}\n" >> sch/Kernel.h
 
 $(TEST_TARGET): $(TEST_OBJECTS) $(TARGET) $(LIBFILES)
 	$(CXX) $(LIBRARY_PATHS) $(GTEST_L) $(CXXFLAGS) $(LDFLAGS) $(TEST_OBJECTS) -o $(TEST_TARGET) -pthread -l$(NAME) -lgtest $(LIBRARIES)
