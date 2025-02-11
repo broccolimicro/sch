@@ -198,16 +198,17 @@ void Placer::configureSource(string source, int platformId, int deviceId, bool d
 		exit(1);
 	}
 
-	initPlacement = cl::Kernel(program, "initPlacement");
-	stepPlacement = cl::Kernel(program, "stepPlacement");
+	globalStep = cl::Kernel(program, "globalStep");
+	detailStep0 = cl::Kernel(program, "detailStep0");
+	detailStep1 = cl::Kernel(program, "detailStep1");
 	partitionCols = cl::Kernel(program, "partitionCols");
 	partitionRows = cl::Kernel(program, "partitionRows");
 
 	size_t kernelMaxWorkGroupSize = 0;
 	size_t preferredWorkGroupMultiple = 0;
 	if (deviceId < (int)devices.size()) {
-		initPlacement.getWorkGroupInfo(devices[deviceId], CL_KERNEL_WORK_GROUP_SIZE, &kernelMaxWorkGroupSize);
-		initPlacement.getWorkGroupInfo(devices[deviceId], CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, &preferredWorkGroupMultiple);
+		globalStep.getWorkGroupInfo(devices[deviceId], CL_KERNEL_WORK_GROUP_SIZE, &kernelMaxWorkGroupSize);
+		globalStep.getWorkGroupInfo(devices[deviceId], CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, &preferredWorkGroupMultiple);
 	}
 
 	if (debug) {
@@ -573,15 +574,15 @@ void Placement::doGlobal() {
 
 	try {
 		cl::Buffer hilbertBuffer(placer->context, CL_MEM_READ_WRITE, bufferSize(schem->hilbert));	
-		placer->initPlacement.setArg(0, positionBuffer);
-		placer->initPlacement.setArg(1, hilbertBuffer);
-		placer->initPlacement.setArg(2, schem->numCells());
-		placer->initPlacement.setArg(3, schem->totalArea);
-		placer->initPlacement.setArg(4, scale);
+		placer->globalStep.setArg(0, positionBuffer);
+		placer->globalStep.setArg(1, hilbertBuffer);
+		placer->globalStep.setArg(2, schem->numCells());
+		placer->globalStep.setArg(3, schem->totalArea);
+		placer->globalStep.setArg(4, scale);
 
 		placer->queue.enqueueWriteBuffer(hilbertBuffer, CL_TRUE, 0, bufferSize(schem->hilbert), schem->hilbert.data());
 
-		placer->queue.enqueueNDRangeKernel(placer->initPlacement, cl::NullRange, cl::NDRange(schem->numCells()), cl::NullRange);
+		placer->queue.enqueueNDRangeKernel(placer->globalStep, cl::NullRange, cl::NDRange(schem->numCells()), cl::NullRange);
 		placer->queue.finish();
 
 		placer->queue.enqueueReadBuffer(positionBuffer, CL_TRUE, 0, bufferSize(position), position.data());

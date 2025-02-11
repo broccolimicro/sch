@@ -62,8 +62,9 @@ struct Placer {
 	cl::Context context;
 	cl::CommandQueue queue;
 	cl::Program program;
-	cl::Kernel initPlacement;
-	cl::Kernel stepPlacement;
+	cl::Kernel globalStep;
+	cl::Kernel detailStep0;
+	cl::Kernel detailStep1;
 	cl::Kernel partitionCols;
 	cl::Kernel partitionRows;
 
@@ -102,11 +103,24 @@ struct Placement {
 	int root;
 	Schematic *schem;
 
+	// x-coord, y-coord, index
+	vector<cl_uint3> position;
+
+	// DETAIL ROUTING
+	// mean x-coord, mean y-coord, variance x-axis, variance y-axis
+	// sum(i=0 to (ceil(log_4(n))-1) of 4^i) = 1/3 (4^ceiling(log(n)/log(4)) - 1) elems
+	vector<cl_uint4> cluster;
+	// total cell area in cluster, total of (cell area^2) in cluster
+	vector<cl_uint2> clusterArea;
+
+	vector<cl_uint4> wirelse;
+
+	// LEGALIZATION
 	// x-coord, y-coord, cell index
 	vector<cl_uint3> grid;
-	vector<cl_uint2> position;
 	
 	cl::Buffer positionBuffer;
+	cl::Buffer clusterBuffer;
 	cl::Buffer gridBuffer;
 
 	template <typename T>
