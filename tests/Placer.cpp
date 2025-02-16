@@ -12,7 +12,7 @@ using namespace std;
 TEST(Placer, solve)
 {
 	Tech tech;
-	Netlist lst(tech);
+	Netlist lst;
 	lst.subckts.resize(3);
 	lst.subckts[0].name = "ckt0";
 	lst.subckts[0].push(sch::Net("a", true));

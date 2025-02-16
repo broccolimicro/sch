@@ -15,8 +15,7 @@ using namespace std;
 
 namespace sch {
 
-Netlist::Netlist(const Tech &tech) {
-	this->tech = &tech;
+Netlist::Netlist() {
 }
 
 Netlist::~Netlist() {
@@ -76,7 +75,7 @@ void Netlist::erase(int idx) {
 	toLayout.erase(toLayout.begin()+idx);
 }
 
-void Netlist::mapCells(bool progress) {
+void Netlist::mapCells(const Tech &tech, bool progress) {
 	// check existing cells
 	for (int i = (int)subckts.size()-1; i >= 0; i--) {
 		if (subckts[i].isCell and not subckts[i].mos.empty()) {
@@ -96,7 +95,7 @@ void Netlist::mapCells(bool progress) {
 			}
 			steady_clock::time_point start = steady_clock::now();
 
-			subckts[i].splitDevices(*tech);
+			subckts[i].splitDevices(tech);
 
 			auto segments = subckts[i].segment();
 
