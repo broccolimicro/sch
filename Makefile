@@ -1,7 +1,7 @@
 PYTHON_RELEASE = python$(shell python3 -c "import sys;sys.stdout.write('{}.{}'.format(sys.version_info[0],sys.version_info[1]))")
 
 NAME          = sch
-DEPEND        = interpret_phy phy ucs
+DEPEND        = interpret_phy phy boolean
 
 SRCDIR        = $(NAME)
 TESTDIR       = tests

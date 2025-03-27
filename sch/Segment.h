@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include <ucs/mapping.h>
+#include <boolean/mapping.h>
 
 using namespace std;
 
@@ -26,8 +26,8 @@ struct Segment {
 
 	bool overlapsWith(const Segment &seg) const;
 
-	ucs::mapping map(const Subckt &ckt) const;	
-	ucs::mapping generate(Subckt &dst, const Subckt &src) const;
+	boolean::mapping map(const Subckt &ckt) const;	
+	boolean::mapping generate(Subckt &dst, const Subckt &src) const;
 	bool contains(int i) const;
 
 	void print() const;

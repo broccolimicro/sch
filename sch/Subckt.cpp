@@ -257,7 +257,7 @@ Instance::Instance(int subckt, vector<int> ports) {
 	this->ports = ports;
 }
 
-Instance::Instance(const Subckt &ckt, const ucs::mapping &m, int subckt) {
+Instance::Instance(const Subckt &ckt, const boolean::mapping &m, int subckt) {
 	this->subckt = subckt;
 	for (int i = 0; i < (int)ckt.ports.size(); i++) {
 		this->ports.push_back(m.map(ckt.ports[i]));
@@ -745,7 +745,7 @@ void Subckt::splitDevices(const Tech &tech) {
 	}
 }
 
-void Subckt::apply(const ucs::mapping &m) {
+void Subckt::apply(const boolean::mapping &m) {
 	for (int i = 0; i < (int)ports.size(); i++) {
 		int idx = m.unmap(ports[i]);
 		if (idx < 0) {
@@ -819,8 +819,8 @@ void Subckt::apply(const ucs::mapping &m) {
 	reorder.clear();
 }
 
-ucs::mapping Subckt::canonicalize() {
-	ucs::mapping lbl = canonicalLabels(*this);
+boolean::mapping Subckt::canonicalize() {
+	boolean::mapping lbl = canonicalLabels(*this);
 	apply(lbl);
 	for (int i = 0; i < (int)mos.size(); i++) {
 		if (mos[i].drain < mos[i].source) {
@@ -943,8 +943,8 @@ int Subckt::compare(const Subckt &ckt) const {
 	}*/
 }
 
-ucs::mapping Subckt::mapToLayout(const Layout &layout) const {
-	ucs::mapping result(false);
+boolean::mapping Subckt::mapToLayout(const Layout &layout) const {
+	boolean::mapping result(false);
 	for (int i = 0; i < (int)layout.nets.size(); i++) {
 		for (auto name = layout.nets[i].names.begin(); name != layout.nets[i].names.end(); name++) {
 			int uid = findNet(*name);

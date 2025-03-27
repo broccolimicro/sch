@@ -74,8 +74,8 @@ bool Segment::overlapsWith(const Segment &seg) const {
 	return false;
 }
 
-ucs::mapping Segment::map(const Subckt &ckt) const {
-	ucs::mapping result;
+boolean::mapping Segment::map(const Subckt &ckt) const {
+	boolean::mapping result;
 	for (auto i = mos.begin(); i != mos.end(); i++) {
 		result.nets.push_back(ckt.mos[*i].drain);
 		result.nets.push_back(ckt.mos[*i].gate);
@@ -87,8 +87,8 @@ ucs::mapping Segment::map(const Subckt &ckt) const {
 	return result;
 }
 
-ucs::mapping Segment::generate(Subckt &dst, const Subckt &src) const {
-	ucs::mapping m0 = map(src), m1(false);
+boolean::mapping Segment::generate(Subckt &dst, const Subckt &src) const {
+	boolean::mapping m0 = map(src), m1(false);
 	for (auto i = m0.nets.begin(); i != m0.nets.end(); i++) {
 		auto n = src.nets.begin()+*i;
 

@@ -15,7 +15,7 @@
 #include "Segment.h"
 #include "Isomorph.h"
 
-#include <ucs/mapping.h>
+#include <boolean/mapping.h>
 
 using namespace phy;
 using namespace std;
@@ -108,7 +108,7 @@ struct Net {
 struct Instance {
 	Instance();
 	Instance(int subckt, vector<int> ports=vector<int>());
-	Instance(const Subckt &ckt, const ucs::mapping &m, int subckt);
+	Instance(const Subckt &ckt, const boolean::mapping &m, int subckt);
 	~Instance();
 
 	string name;
@@ -189,10 +189,10 @@ struct Subckt {
 	void combineDevices();
 	void splitDevices(const Tech &tech);
 
-	void apply(const ucs::mapping &m);
-	ucs::mapping canonicalize();
+	void apply(const boolean::mapping &m);
+	boolean::mapping canonicalize();
 	int compare(const Subckt &ckt) const;
-	ucs::mapping mapToLayout(const Layout &layout) const;
+	boolean::mapping mapToLayout(const Layout &layout) const;
 
 	vector<PartitionKey> createPartitionKey(int v, const Partition &beta) const;
 	PartitionKey lambda(const Partition::Cell &c0, const Partition::Cell &c1) const;
