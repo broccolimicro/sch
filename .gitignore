@@ -1,6 +1,7 @@
 *.o
-*.d
 *.a
-sch/Kernel.h
+*.so
 build
 test
+coverage*
+sch/Kernel.h
