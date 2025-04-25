@@ -1,6 +1,6 @@
 NAME          = sch
-DEPEND        = interpret_phy phy boolean
-TEST_DEPEND   = interpret_phy phy boolean
+DEPEND        = interpret_phy phy common
+TEST_DEPEND   = interpret_phy phy common
 
 COVERAGE ?= 0
 

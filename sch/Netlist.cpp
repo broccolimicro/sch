@@ -48,7 +48,7 @@ int Netlist::insert(const Subckt &cell) {
 	if (index >= (int)subckts.size()) {
 		pos.first->second.insert(index);
 		subckts.push_back(cell);
-		toLayout.push_back(boolean::mapping(true));
+		toLayout.push_back(mapping(true));
 	}
 	return index;
 }
@@ -106,7 +106,7 @@ void Netlist::mapCells(const Tech &tech, bool progress) {
 
 			for (auto s = segments.begin(); s != segments.end(); s++) {
 				Subckt cell(true);
-				boolean::mapping m = s->generate(cell, subckts[i]);
+				mapping m = s->generate(cell, subckts[i]);
 				m.apply(cell.canonicalize());
 				// TODO(edward.bingham) clean dangling?
 				cell.name = "cell_" + idToString(cell.id);
@@ -182,7 +182,7 @@ size_t Netlist::countCells(int root) const {
 
 void Netlist::mapToLayout(int idx, const Layout &layout) {
 	if (idx >= (int)toLayout.size()) {
-		toLayout.resize(idx+1, boolean::mapping(true));
+		toLayout.resize(idx+1, mapping(true));
 	}
 	toLayout[idx] = subckts[idx].mapToLayout(layout);
 }

@@ -9,7 +9,7 @@
 #include <set>
 #include <stdint.h>
 
-#include <boolean/mapping.h>
+#include <common/mapping.h>
 
 using namespace std;
 
@@ -22,7 +22,7 @@ struct Netlist {
 
 	map<size_t, set<int> > cells;
 	vector<Subckt> subckts; 
-	vector<boolean::mapping> toLayout;
+	vector<mapping> toLayout;
 
 	int insert(int idx);
 	int insert(const Subckt &cell);

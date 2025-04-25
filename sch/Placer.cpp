@@ -271,7 +271,7 @@ void Placer::elaborateSchematicInstance(int curr, int sub, bool debug) {
 		currSch->cellsToNets.insert(currSch->cellsToNets.end(), currCkt->inst[sub].ports.begin(), currCkt->inst[sub].ports.end());
 	} else {
 		// Then place the nets of the instances
-		boolean::mapping currMap;
+		mapping currMap;
 		for (int j = 0; j < (int)currCkt->inst[sub].ports.size(); j++) {
 			currMap.set(nextCkt->ports[j], currCkt->inst[sub].ports[j]);
 		}
@@ -785,12 +785,12 @@ void Placement::doLegal() {
 
 			int prevPos = colStart;
 			int prevSubckt = -1;
-			boolean::mapping prevChildToParent;
+			mapping prevChildToParent;
 			for (int j = 0; j < (int)assign[c][i].size(); j++) {
 				cl_uint index = assign[c][i][j].s[3];
 				int currSubckt = schem->subckts[index];
 				cl_uint2 bound = schem->cellBounds[index];
-				boolean::mapping currChildToParent;
+				mapping currChildToParent;
 				for (int k = 0; k < (int)placer->lst->subckts[currSubckt].ports.size(); k++) {
 					currChildToParent.set(placer->lst->toLayout[currSubckt].map(placer->lst->subckts[currSubckt].ports[k]), schem->cellsToNets[schem->cells[index]+k]);
 				}
@@ -805,7 +805,7 @@ void Placement::doLegal() {
 						currPos += off->second;
 					} else {
 						int value = 0;
-						minOffset(&value, 0, placer->lib->macros[prevSubckt], 0, placer->lib->macros[currSubckt], 0, Layout::MERGENET, Layout::DEFAULT, true, prevChildToParent, currChildToParent);
+						minOffset(&value, 0, placer->lib->macros[prevSubckt], 0, placer->lib->macros[currSubckt], 0, Layout::MERGENET, Layout::DEFAULT, true, prevChildToParent.nets, currChildToParent.nets);
 						offset.insert({{prevSubckt, currSubckt}, value});
 						currPos += value;
 					}
