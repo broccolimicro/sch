@@ -276,14 +276,14 @@ Subckt::~Subckt() {
 }
 
 int Subckt::createNet(string name) {
-	int uid = findNet(name);
+	int uid = netIndex(name);
 	if (uid < 0) {
 		uid = push(Net(name));
 	}
 	return uid;
 }
 
-int Subckt::findNet(string name) const {
+int Subckt::netIndex(string name) const {
 	for (int i = 0; i < (int)nets.size(); i++) {
 		if (nets[i].name == name) {
 			return i;
@@ -292,7 +292,7 @@ int Subckt::findNet(string name) const {
 	return -1;
 }
 
-string Subckt::netName(int net) const {
+string Subckt::netAt(int net) const {
 	if (net < 0) {
 		return "_";
 	}
@@ -947,7 +947,7 @@ mapping Subckt::mapToLayout(const Layout &layout) const {
 	mapping result(false);
 	for (int i = 0; i < (int)layout.nets.size(); i++) {
 		for (auto name = layout.nets[i].names.begin(); name != layout.nets[i].names.end(); name++) {
-			int uid = findNet(*name);
+			int uid = netIndex(*name);
 			if (uid >= 0) {
 				result.set(uid, i);
 			}

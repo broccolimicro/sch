@@ -167,8 +167,8 @@ struct Subckt {
 	vector<Instance> inst;
 
 	int createNet(string name);
-	int findNet(string name) const;
-	string netName(int net) const;
+	int netIndex(string name) const;
+	string netAt(int net) const;
 
 	int push(Net n);
 	int push(Mos m);

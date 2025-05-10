@@ -3112,13 +3112,13 @@ void CellRouter::print() {
 	printf("NMOS\n");
 	for (int i = 0; i < (int)this->stack[0].pins.size(); i++) {
 		const Pin &pin = this->stack[0].pins[i];
-		printf("pin[%d] dev=%d nets=%s(%d) -> %s(%d) -> %s(%d) size=%dx%d pos=%d,%d bound=%d,%d lo=%d hi=%d\n", i, pin.device, ckt->netName(pin.leftNet).c_str(), pin.leftNet, ckt->netName(pin.outNet).c_str(), pin.outNet, ckt->netName(pin.rightNet).c_str(), pin.rightNet, pin.width, pin.height, pin.offset[0], pin.offset[1], pin.bound[0], pin.bound[1], pin.lo, pin.hi);
+		printf("pin[%d] dev=%d nets=%s(%d) -> %s(%d) -> %s(%d) size=%dx%d pos=%d,%d bound=%d,%d lo=%d hi=%d\n", i, pin.device, ckt->netAt(pin.leftNet).c_str(), pin.leftNet, ckt->netAt(pin.outNet).c_str(), pin.outNet, ckt->netAt(pin.rightNet).c_str(), pin.rightNet, pin.width, pin.height, pin.offset[0], pin.offset[1], pin.bound[0], pin.bound[1], pin.lo, pin.hi);
 	}
 
 	printf("\nPMOS\n");
 	for (int i = 0; i < (int)this->stack[1].pins.size(); i++) {
 		const Pin &pin = this->stack[1].pins[i];
-		printf("pin[%d] dev=%d nets=%s(%d) -> %s(%d) -> %s(%d) size=%dx%d pos=%d,%d bound=%d,%d lo=%d hi=%d\n", i, pin.device, ckt->netName(pin.leftNet).c_str(), pin.leftNet, ckt->netName(pin.outNet).c_str(), pin.outNet, ckt->netName(pin.rightNet).c_str(), pin.rightNet, pin.width, pin.height, pin.offset[0], pin.offset[1], pin.bound[0], pin.bound[1], pin.lo, pin.hi);
+		printf("pin[%d] dev=%d nets=%s(%d) -> %s(%d) -> %s(%d) size=%dx%d pos=%d,%d bound=%d,%d lo=%d hi=%d\n", i, pin.device, ckt->netAt(pin.leftNet).c_str(), pin.leftNet, ckt->netAt(pin.outNet).c_str(), pin.outNet, ckt->netAt(pin.rightNet).c_str(), pin.rightNet, pin.width, pin.height, pin.offset[0], pin.offset[1], pin.bound[0], pin.bound[1], pin.lo, pin.hi);
 	}
 
 	printf("\nRoutes\n");
