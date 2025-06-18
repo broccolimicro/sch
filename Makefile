@@ -66,7 +66,8 @@ else
     endif
     ifeq ($(UNAME_S),Darwin)
         CXXFLAGS += -D OSX -mmacos-version-min=15.0 -Wno-missing-braces
-        INCLUDE_PATHS += -I$(shell brew --prefix opencl-headers)/include -I$(shell brew --prefix opencl-clhpp-headers)/include -I$(shell brew --prefix qhull)/include
+        INCLUDE_PATHS += -I$(shell brew --prefix qhull)/include -I$(shell brew --prefix opencl-headers)/include -I$(shell brew --prefix opencl-clhpp-headers)/include
+        TEST_INCLUDE_PATHS += -I$(shell brew --prefix qhull)/include -I$(shell brew --prefix opencl-headers)/include -I$(shell brew --prefix opencl-clhpp-headers)/include
         TEST_LIBRARY_PATHS += -L../gdstk/build/lib -L$(shell brew --prefix qhull)/lib
         TEST_LIBRARIES += -lgdstk -lclipper -lqhullstatic_r -lz -framework OpenCL
         LDFLAGS	      += -Wl,-rpath,/opt/homebrew/opt/python@3.15/Frameworks/Python.framework/Versions/Current/lib \
