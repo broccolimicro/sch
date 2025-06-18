@@ -65,7 +65,7 @@ else
         TEST_LIBRARY_PATHS += -L../gdstk/build/lib -L../gdstk/build/lib64
     endif
     ifeq ($(UNAME_S),Darwin)
-        CXXFLAGS += -D OSX -mmacos-version-min=12.0 -Wno-missing-braces
+        CXXFLAGS += -D OSX -mmacos-version-min=15.0 -Wno-missing-braces
         INCLUDE_PATHS += -I$(shell brew --prefix opencl-headers)/include -I$(shell brew --prefix opencl-clhpp-headers)/include -I$(shell brew --prefix qhull)/include
         TEST_LIBRARY_PATHS += -L../gdstk/build/lib -L$(shell brew --prefix qhull)/lib
         TEST_LIBRARIES += -lgdstk -lclipper -lqhullstatic_r -lz -framework OpenCL
