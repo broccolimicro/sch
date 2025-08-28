@@ -11,7 +11,7 @@ using namespace std;
 
 TEST(Placer, solve)
 {
-	Tech tech;
+	Tech tech("", "");
 	Netlist lst;
 	lst.subckts.resize(3);
 	lst.subckts[0].name = "ckt0";
