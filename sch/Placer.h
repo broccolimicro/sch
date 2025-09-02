@@ -56,7 +56,7 @@ struct Schematic {
 
 struct Placer {
 	Placer();
-	Placer(phy::Library &lib, const Netlist &lst, int platformId=0, int deviceId=0, bool debug=false);
+	Placer(phy::Library &lib, const Netlist &lst, int platformId=0, int deviceId=0, bool progress=false, bool debug=false);
 	~Placer();
 
 	cl::Context context;
@@ -73,18 +73,21 @@ struct Placer {
 
 	vector<Schematic> schem;
 
+	bool progress;
+	bool debug;
+
 	// Configure the OpenCL Driver and Kernel
-	void configure(int platformId=0, int deviceId=0, bool debug=false);
-	void configurePath(string kernalPath, int platformId=0, int deviceId=0, bool debug=false);
-	void configureSource(string source, int platformId=0, int deviceId=0, bool debug=false);
+	void configure(int platformId=0, int deviceId=0);
+	void configurePath(string kernalPath, int platformId=0, int deviceId=0);
+	void configureSource(string source, int platformId=0, int deviceId=0);
 
 	void load(phy::Library &lib, const Netlist &lst);
 
 	// Load a design into the placer
-	void elaborateSchematicNets(int curr, bool debug=false);
-	void elaborateSchematicInstance(int curr, int sub, bool debug=false);
-	void elaborateSchematic(int curr, bool debug=false);
-	void elaborate(int subckt, bool debug=false);
+	void elaborateSchematicNets(int curr);
+	void elaborateSchematicInstance(int curr, int sub);
+	void elaborateSchematic(int curr);
+	void elaborate(int subckt);
 
 	cl_uint isqrt(cl_ulong x);
 	vector<cl_uint> computeOffsets(int curr, const vector<int> &index);

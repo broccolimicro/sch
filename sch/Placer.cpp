@@ -114,21 +114,25 @@ void Schematic::print(const Netlist &lst) const {
 Placer::Placer() {
 	lst = nullptr;
 	lib = nullptr;
+	progress = false;
+	debug = false;
 }
 
-Placer::Placer(phy::Library &lib, const Netlist &lst, int platformId, int deviceId, bool debug) {
-	configure(platformId, deviceId, debug);
+Placer::Placer(phy::Library &lib, const Netlist &lst, int platformId, int deviceId, bool progress, bool debug) {
+	this->progress = progress;
+	this->debug = debug;
+	configure(platformId, deviceId);
 	load(lib, lst);
 }
 
 Placer::~Placer() {
 }
 
-void Placer::configure(int platformId, int deviceId, bool debug) {
-	configureSource(placer_cpp_string, platformId, deviceId, debug); 
+void Placer::configure(int platformId, int deviceId) {
+	configureSource(placer_cpp_string, platformId, deviceId); 
 }
 
-void Placer::configurePath(string kernelPath, int platformId, int deviceId, bool debug) {
+void Placer::configurePath(string kernelPath, int platformId, int deviceId) {
 	string source;
 	FILE *fptr = fopen(kernelPath.c_str(), "r");
 	fseek(fptr, 0, SEEK_END);
@@ -143,10 +147,10 @@ void Placer::configurePath(string kernelPath, int platformId, int deviceId, bool
 	} while (total < size and count > 0);
 	fclose(fptr);
 
-	configureSource(source, platformId, deviceId, debug);
+	configureSource(source, platformId, deviceId);
 }
 
-void Placer::configureSource(string source, int platformId, int deviceId, bool debug) {
+void Placer::configureSource(string source, int platformId, int deviceId) {
 	string platformName = "No Platform";
 	string deviceName = "No Device";
 	size_t maxComputeUnits = 0;
@@ -223,7 +227,7 @@ void Placer::load(phy::Library &lib, const Netlist &lst) {
 	schem.resize(lst.subckts.size());
 }
 
-void Placer::elaborateSchematicNets(int curr, bool debug) {
+void Placer::elaborateSchematicNets(int curr) {
 	auto currSch = schem.begin()+curr;
 	auto currCkt = lst->subckts.begin()+curr;
 
@@ -248,7 +252,7 @@ void Placer::elaborateSchematicNets(int curr, bool debug) {
 	}
 }
 
-void Placer::elaborateSchematicInstance(int curr, int sub, bool debug) {
+void Placer::elaborateSchematicInstance(int curr, int sub) {
 	auto currSch = schem.begin()+curr;
 	auto currCkt = lst->subckts.begin()+curr;
 
@@ -266,7 +270,9 @@ void Placer::elaborateSchematicInstance(int curr, int sub, bool debug) {
 	currSch->totalArea += nextSch->totalArea;
 	if (nextSch->isCell()) {
 		currSch->pushCell(next, nextLay->box.size(), h+nextSch->totalArea/2);
-		printf("hilbert %lu/%lu\n", currSch->hilbert.back(), currSch->totalArea);
+		if (debug) {
+			printf("hilbert %lu/%lu\n", currSch->hilbert.back(), currSch->totalArea);
+		}
 		currSch->pushPorts(currCkt->inst[sub].ports, currSch->cells.size()-1);
 		currSch->cellsToNets.insert(currSch->cellsToNets.end(), currCkt->inst[sub].ports.begin(), currCkt->inst[sub].ports.end());
 	} else {
@@ -293,7 +299,9 @@ void Placer::elaborateSchematicInstance(int curr, int sub, bool debug) {
 
 		for (int j = 0; j+1 < (int)nextSch->cells.size(); j++) {
 			currSch->pushCell(nextSch->subckts[j], nextSch->cellBounds[j], h+nextSch->hilbert[j]);
-			printf("hilbert %lu/%lu\n", currSch->hilbert.back(), currSch->totalArea);
+			if (debug) {
+				printf("hilbert %lu/%lu\n", currSch->hilbert.back(), currSch->totalArea);
+			}
 			for (size_t k = nextSch->cells[j]; k < nextSch->cells[j+1]; k++) {
 				currSch->cellsToNets.push_back(currMap.map(nextSch->cellsToNets[k]));
 			}
@@ -301,7 +309,7 @@ void Placer::elaborateSchematicInstance(int curr, int sub, bool debug) {
 	}
 }
 
-void Placer::elaborateSchematic(int curr, bool debug) {
+void Placer::elaborateSchematic(int curr) {
 	auto currSch = schem.begin()+curr;
 	auto currCkt = lst->subckts.begin()+curr;
 
@@ -310,27 +318,39 @@ void Placer::elaborateSchematic(int curr, bool debug) {
 	// TODO(edward.bingham) think about threading this using a worker pool if
 	// it's too slow.
 
-	printf("Elaborating %s\n", lst->subckts[curr].name.c_str());
-	lst->subckts[curr].print();
+	if (progress or debug) {
+		printf("Elaborating %s\n", lst->subckts[curr].name.c_str());
+	}
+	if (debug) {
+		lst->subckts[curr].print();
+	}
 
 	if (currCkt->inst.empty()) {
 		auto currLay = lib->macros.begin()+curr;
 		currSch->totalArea = currLay->box.area();
 	} else {
-		elaborateSchematicNets(curr, debug);
+		elaborateSchematicNets(curr);
 		vector<int> index = computeOrder(curr);
 		for (auto i = index.begin(); i != index.end(); i++) {
-			printf("next instance %s %lu\n", currCkt->inst[*i].name.c_str(), schem[currCkt->inst[*i].subckt].totalArea);
-			elaborateSchematicInstance(curr, *i, debug);
+			if (progress) {
+				printf("\t%s(%lu)...", currCkt->inst[*i].name.c_str(), schem[currCkt->inst[*i].subckt].totalArea);
+				fflush(stdout);
+			}
+			elaborateSchematicInstance(curr, *i);
+			if (progress) {
+				printf("[DONE]\n");
+			}
 		}
 	}
 	currSch->finish();
 
 	//currSch->print(*lst);
-	printf("done\n\n");
+	if (progress) {
+		printf("done\n\n");
+	}
 }
 
-void Placer::elaborate(int subckt, bool debug) {
+void Placer::elaborate(int subckt) {
 	if (lst == nullptr or lib == nullptr) {
 		printf("error: the netlist and layout library have not been loaded\n");
 		return;
@@ -355,7 +375,7 @@ void Placer::elaborate(int subckt, bool debug) {
 		}
 
 		if (done) {
-			elaborateSchematic(curr, debug);
+			elaborateSchematic(curr);
 			stack.pop_back();
 		}
 	}
