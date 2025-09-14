@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <limits>
 #include <array>
+#include <common/mapping.h>
 
 using namespace std;
 
@@ -27,7 +28,7 @@ struct Partition {
 	Partition pop(int ci, int vi);
 	void swap(Partition &other);
 	void merge(const Partition &other, int from=0);
-	vector<int> toLabels() const;
+	Mapping<int> toLabels() const;
 
 
 	template <typename Graph>
@@ -165,7 +166,7 @@ struct Frame {
 // };
 
 template <typename Graph>
-vector<int> canonicalLabels(const Graph &g) {
+Mapping<int> canonicalLabels(const Graph &g) {
 	// TODO(edward.bingham) map discreteCellsOf() -> omega() and use this to
 	// prune automorphisms from the search tree.
 	// map<vector<int>, vector<int> > stored;

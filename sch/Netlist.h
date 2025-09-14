@@ -22,7 +22,7 @@ struct Netlist {
 
 	map<size_t, set<int> > cells;
 	vector<Subckt> subckts; 
-	vector<mapping> toLayout;
+	vector<Mapping<int> > toLayout;
 
 	int insert(int idx);
 	int insert(const Subckt &cell);

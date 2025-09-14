@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <string>
 #include <set>
+#include <common/message.h>
 
 using namespace std;
 
@@ -257,10 +258,10 @@ Instance::Instance(int subckt, vector<int> ports) {
 	this->ports = ports;
 }
 
-Instance::Instance(const Subckt &ckt, const mapping &m, int subckt) {
+Instance::Instance(const Subckt &ckt, const Mapping<int> &cktToThis, int subckt) {
 	this->subckt = subckt;
 	for (int i = 0; i < (int)ckt.ports.size(); i++) {
-		this->ports.push_back(m.map(ckt.ports[i]));
+		this->ports.push_back(cktToThis.map(ckt.ports[i]));
 	}
 }
 
@@ -745,44 +746,32 @@ void Subckt::splitDevices(const Tech &tech) {
 	}
 }
 
-void Subckt::apply(const mapping &m) {
+void Subckt::apply(const Mapping<int> &m) {
 	for (int i = 0; i < (int)ports.size(); i++) {
-		int idx = m.unmap(ports[i]);
+		int idx = m.map(ports[i]);
 		if (idx < 0) {
-			printf("error: %s not found in mapping\n", ports[i] < 0 ? "NULL" : nets[ports[i]].name.c_str());
+			error("", (ports[i] < 0 ? "NULL" : nets[ports[i]].name) + " not found in mapping", __FILE__, __LINE__);
 		}
 		ports[i] = idx;
 	}
 
 	for (int i = 0; i < (int)mos.size(); i++) {
-		int gate = -1, source = -1, drain = -1, base = -1;
-		for (int j = 0; j < m.size(); j++) {
-			int net = m.map(j);
-			if (mos[i].gate == net) {
-				gate = j;
-			}
-			if (mos[i].source == net) {
-				source = j;
-			}
-			if (mos[i].drain == net) {
-				drain = j;
-			}
-			if (mos[i].base == net) {
-				base = j;
-			}
-		}
+		int gate = m.map(mos[i].gate);
+		int source = m.map(mos[i].source);
+		int drain = m.map(mos[i].drain);
+		int base = m.map(mos[i].base);
 
-		if (gate < 0) {
-			printf("error: gate %s not found in mapping\n", mos[i].gate < 0 ? "NULL" : nets[mos[i].gate].name.c_str());
+		if (gate == m.undef) {
+			error("", "gate " + (mos[i].gate < 0 ? "NULL" : nets[mos[i].gate].name) + " not found in mapping", __FILE__, __LINE__);
 		}
-		if (source < 0) {
-			printf("error: source %s not found in mapping\n", mos[i].source < 0 ? "NULL" : nets[mos[i].source].name.c_str());
+		if (source == m.undef) {
+			error("", "source " + (mos[i].source < 0 ? "NULL" : nets[mos[i].source].name) + " not found in mapping", __FILE__, __LINE__);
 		}
-		if (drain < 0) {
-			printf("error: drain %s not found in mapping\n", mos[i].drain < 0 ? "NULL" : nets[mos[i].drain].name.c_str());
+		if (drain == m.undef) {
+			error("", "drain " + (mos[i].drain < 0 ? "NULL" : nets[mos[i].drain].name) + " not found in mapping", __FILE__, __LINE__);
 		}
-		if (base < 0) {
-			printf("error: base %s not found in mapping\n", mos[i].base < 0 ? "NULL" : nets[mos[i].base].name.c_str());
+		if (base == m.undef) {
+			error("", "base " + (mos[i].base < 0 ? "NULL" : nets[mos[i].base].name) + " not found in mapping", __FILE__, __LINE__);
 		}
 		mos[i].gate = gate;
 		mos[i].source = source;
@@ -792,9 +781,9 @@ void Subckt::apply(const mapping &m) {
 
 	for (int i = 0; i < (int)nets.size(); i++) {
 		for (int j = 0; j < (int)nets[i].remote.size(); j++) {
-			int idx = m.unmap(nets[i].remote[j]);
+			int idx = m.map(nets[i].remote[j]);
 			if (idx < 0) {
-				printf("error: %s not found in mapping\n", nets[i].remote[j] < 0 ? "NULL" : nets[nets[i].remote[j]].name.c_str());
+				error("", (nets[i].remote[j] < 0 ? "NULL" : nets[nets[i].remote[j]].name) + " not found in mapping", __FILE__, __LINE__);
 			}
 			nets[i].remote[j] = idx;
 		}
@@ -802,25 +791,24 @@ void Subckt::apply(const mapping &m) {
 
 	for (int i = 0; i < (int)inst.size(); i++) {
 		for (int j = 0; j < (int)inst[i].ports.size(); j++) {
-			int idx = m.unmap(inst[i].ports[j]);
+			int idx = m.map(inst[i].ports[j]);
 			if (idx < 0) {
-				printf("error: %s not found in mapping\n", inst[i].ports[j] < 0 ? "NULL" : nets[inst[i].ports[j]].name.c_str());
+				error("", (inst[i].ports[j] < 0 ? "NULL" : nets[inst[i].ports[j]].name) + " not found in mapping", __FILE__, __LINE__);
 			}
 			inst[i].ports[j] = idx;
 		}
 	}
 
-	vector<Net> reorder;
-	reorder.reserve(m.size());
-	for (int i = 0; i < m.size(); i++) {
-		reorder.push_back(nets[m.map(i)]);
+	vector<Net> reorder(m.toMax()+1, Net());
+	for (auto i = m.fwd.begin(); i != m.fwd.end(); i++) {
+		reorder[i->second] = nets[i->first];
 	}
 	std::swap(nets, reorder);
 	reorder.clear();
 }
 
-mapping Subckt::canonicalize() {
-	mapping lbl = canonicalLabels(*this);
+Mapping<int> Subckt::canonicalize() {
+	Mapping<int> lbl = canonicalLabels(*this);
 	apply(lbl);
 	for (int i = 0; i < (int)mos.size(); i++) {
 		if (mos[i].drain < mos[i].source) {
@@ -943,8 +931,8 @@ int Subckt::compare(const Subckt &ckt) const {
 	}*/
 }
 
-mapping Subckt::mapToLayout(const Layout &layout) const {
-	mapping result(false);
+Mapping<int> Subckt::mapToLayout(const Layout &layout) const {
+	Mapping<int> result(-1, false);
 	for (int i = 0; i < (int)layout.nets.size(); i++) {
 		for (auto name = layout.nets[i].names.begin(); name != layout.nets[i].names.end(); name++) {
 			int uid = netIndex(*name);

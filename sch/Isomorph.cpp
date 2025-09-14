@@ -80,10 +80,10 @@ void Partition::merge(const Partition &other, int from) {
 	cells.insert(cells.end(), other.cells.begin()+from, other.cells.end());
 }
 
-vector<int> Partition::toLabels() const {
-	vector<int> result;
-	for (auto cell = cells.begin(); cell != cells.end(); cell++) {
-		result.push_back(cell->back());
+Mapping<int> Partition::toLabels() const {
+	Mapping<int> result(-1, true);
+	for (int i = 0; i < (int)cells.size(); i++) {
+		result.set(cells[i].back(), i);
 	}
 	return result;
 }

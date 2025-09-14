@@ -38,7 +38,7 @@ TEST(Placer, solve)
 	lst.subckts[2].push(sch::Instance(1, {2, 3}));
 	lst.subckts[2].push(sch::Instance(1, {3, 0}));
 
-	lst.toLayout.resize(3, mapping(true));
+	lst.toLayout.resize(3, Mapping<int>(-1, true));
 
 	phy::Library lib(tech);
 	lib.macros.resize(3, Layout(tech));

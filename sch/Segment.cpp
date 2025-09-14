@@ -74,22 +74,20 @@ bool Segment::overlapsWith(const Segment &seg) const {
 	return false;
 }
 
-mapping Segment::map(const Subckt &ckt) const {
-	mapping result;
+// Return a mapping from the dst to the src that will be used to instantiate the dst in the src.
+Mapping<int> Segment::generate(Subckt &dst, const Subckt &src) const {
+	vector<int> dstNets;
 	for (auto i = mos.begin(); i != mos.end(); i++) {
-		result.nets.push_back(ckt.mos[*i].drain);
-		result.nets.push_back(ckt.mos[*i].gate);
-		result.nets.push_back(ckt.mos[*i].source);
-		result.nets.push_back(ckt.mos[*i].base);
+		dstNets.push_back(src.mos[*i].drain);
+		dstNets.push_back(src.mos[*i].gate);
+		dstNets.push_back(src.mos[*i].source);
+		dstNets.push_back(src.mos[*i].base);
 	}
-	sort(result.nets.begin(), result.nets.end());
-	result.nets.erase(unique(result.nets.begin(), result.nets.end()), result.nets.end());
-	return result;
-}
+	sort(dstNets.begin(), dstNets.end());
+	dstNets.erase(unique(dstNets.begin(), dstNets.end()), dstNets.end());
 
-mapping Segment::generate(Subckt &dst, const Subckt &src) const {
-	mapping m0 = map(src), m1(false);
-	for (auto i = m0.nets.begin(); i != m0.nets.end(); i++) {
+	Mapping<int> srcToDst(-1, false);
+	for (auto i = dstNets.begin(); i != dstNets.end(); i++) {
 		auto n = src.nets.begin()+*i;
 
 		bool isIO = n->isIO or not n->portOf.empty();
@@ -112,29 +110,20 @@ mapping Segment::generate(Subckt &dst, const Subckt &src) const {
 			}
 		}
 
-		m1.set(dst.push(Net(n->name, isIO)), *i);
+		srcToDst.set(*i, dst.push(Net(n->name, isIO)));
 	}
 
 	for (auto i = mos.begin(); i != mos.end(); i++) {
 		auto d = src.mos.begin()+*i;
-		int gate = -1, source = -1, drain = -1, base = -1;
-		for (int j = 0; j < m1.size(); j++) {
-			int net = m1.map(j);
-			if (d->gate == net) {
-				gate = j;
-			}
-			if (d->source == net) {
-				source = j;
-			}
-			if (d->drain == net) {
-				drain = j;
-			}
-			if (d->base == net) {
-				base = j;
-			}
-		}
+		int gate = srcToDst.map(d->gate);
+		int source = srcToDst.map(d->source);
+		int drain = srcToDst.map(d->drain);
+		int base = srcToDst.map(d->base);
 
-		if (gate < 0 or source < 0 or drain < 0 or base < 0) {
+		if (gate == srcToDst.undef
+			or source == srcToDst.undef
+			or drain == srcToDst.undef
+			or base == srcToDst.undef) {
 			printf("internal %s:%d: cell net map missing nets\n", __FILE__, __LINE__);
 		}
 
@@ -145,19 +134,17 @@ mapping Segment::generate(Subckt &dst, const Subckt &src) const {
 		dst.mos.back().params = d->params;
 	}
 
-	for (int i = 0; i < m1.size(); i++) {
-		if (m1.has(i)) {
-			if (dst.nets[i].isIO and dst.nets[i].isOutput()) {
-				dst.nets[i].name = "o" + to_string(i);
-			} else if (dst.nets[i].isIO and dst.nets[i].isInput()) {
-				dst.nets[i].name = "i" + to_string(i);
-			} else if (not dst.nets[i].isIO) {
-				dst.nets[i].name = "_" + to_string(i);
-			}
+	for (int i = 0; i < (int)dst.nets.size(); i++) {
+		if (dst.nets[i].isIO and dst.nets[i].isOutput()) {
+			dst.nets[i].name = "o" + to_string(i);
+		} else if (dst.nets[i].isIO and dst.nets[i].isInput()) {
+			dst.nets[i].name = "i" + to_string(i);
+		} else if (not dst.nets[i].isIO) {
+			dst.nets[i].name = "_" + to_string(i);
 		}
 	}
 
-	return m1;
+	return srcToDst;
 }
 
 bool Segment::contains(int i) const {

@@ -26,8 +26,7 @@ struct Segment {
 
 	bool overlapsWith(const Segment &seg) const;
 
-	mapping map(const Subckt &ckt) const;	
-	mapping generate(Subckt &dst, const Subckt &src) const;
+	Mapping<int> generate(Subckt &dst, const Subckt &src) const;
 	bool contains(int i) const;
 
 	void print() const;
