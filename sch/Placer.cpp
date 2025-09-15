@@ -284,7 +284,7 @@ void Placer::elaborateSchematicInstance(int curr, int sub) {
 
 		for (int j = 0; j+1 < (int)nextSch->nets.size(); j++) {
 			int net = currMap.map(j);
-			if (net < 0) {
+			if (net == currMap.undef) {
 				net = currSch->pushNet("");//"c"+idToString(sub)+"."+nextSch->netNames[j]);
 				if (net < 0) {
 					continue;
@@ -812,7 +812,9 @@ void Placement::doLegal() {
 				cl_uint2 bound = schem->cellBounds[index];
 				Mapping<int> currChildToParent(-1, false);
 				for (int k = 0; k < (int)placer->lst->subckts[currSubckt].ports.size(); k++) {
-					currChildToParent.set(placer->lst->toLayout[currSubckt].map(placer->lst->subckts[currSubckt].ports[k]), schem->cellsToNets[schem->cells[index]+k]);
+					int childNet = placer->lst->toLayout[currSubckt].map(placer->lst->subckts[currSubckt].ports[k]);
+					int parentNet = schem->cellsToNets[schem->cells[index]+k];
+					currChildToParent.set(childNet, parentNet);
 				}
 
 				int currPos = prevPos;
