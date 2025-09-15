@@ -178,7 +178,7 @@ Mapping<int> canonicalLabels(const Graph &g) {
 		frames.pop_back();
 	}
 
-	int explored = 0;
+	//int explored = 0;
 	while (not frames.empty()) {
 		Frame<Graph> next = frames.back();
 		if (not frames.back().inc()) {
@@ -193,7 +193,7 @@ Mapping<int> canonicalLabels(const Graph &g) {
 
 		if (next.pop(g)) {
 			// found a discrete partition
-			explored++;
+			//explored++;
 			// found terminal node in tree
 			int cmp = best.empty() ? 1 : g.comparePartitions(next.part, best.back().part);
 			if (cmp == 1) {

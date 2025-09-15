@@ -99,10 +99,10 @@ void Netlist::mapCells(const Tech &tech, bool progress) {
 
 			auto segments = subckts[i].segment();
 
-			int total = 0;
-			for (auto s = segments.begin(); s != segments.end(); s++) {
-				total += (int)s->mos.size();
-			}
+			//int total = 0;
+			//for (auto s = segments.begin(); s != segments.end(); s++) {
+			//	total += (int)s->mos.size();
+			//}
 
 			for (auto s = segments.begin(); s != segments.end(); s++) {
 				Subckt cell(true);
