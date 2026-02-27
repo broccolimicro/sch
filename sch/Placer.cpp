@@ -271,7 +271,7 @@ void Placer::elaborateSchematicInstance(int curr, int sub) {
 	if (nextSch->isCell()) {
 		currSch->pushCell(next, nextLay->box.size(), h+nextSch->totalArea/2);
 		if (debug) {
-			printf("hilbert %lu/%lu\n", currSch->hilbert.back(), currSch->totalArea);
+			printf("hilbert %u/%u\n", (uint32_t)currSch->hilbert.back(), (uint32_t)currSch->totalArea);
 		}
 		currSch->pushPorts(currCkt->inst[sub].ports, currSch->cells.size()-1);
 		currSch->cellsToNets.insert(currSch->cellsToNets.end(), currCkt->inst[sub].ports.begin(), currCkt->inst[sub].ports.end());
@@ -300,7 +300,7 @@ void Placer::elaborateSchematicInstance(int curr, int sub) {
 		for (int j = 0; j+1 < (int)nextSch->cells.size(); j++) {
 			currSch->pushCell(nextSch->subckts[j], nextSch->cellBounds[j], h+nextSch->hilbert[j]);
 			if (debug) {
-				printf("hilbert %lu/%lu\n", currSch->hilbert.back(), currSch->totalArea);
+				printf("hilbert %u/%u\n", (uint32_t)currSch->hilbert.back(), (uint32_t)currSch->totalArea);
 			}
 			for (size_t k = nextSch->cells[j]; k < nextSch->cells[j+1]; k++) {
 				currSch->cellsToNets.push_back(currMap.map(nextSch->cellsToNets[k]));
@@ -333,7 +333,7 @@ void Placer::elaborateSchematic(int curr) {
 		vector<int> index = computeOrder(curr);
 		for (auto i = index.begin(); i != index.end(); i++) {
 			if (progress) {
-				printf("\t%s(%lu)...", currCkt->inst[*i].name.c_str(), schem[currCkt->inst[*i].subckt].totalArea);
+				printf("\t%s(%u)...", currCkt->inst[*i].name.c_str(), (uint32_t)schem[currCkt->inst[*i].subckt].totalArea);
 				fflush(stdout);
 			}
 			elaborateSchematicInstance(curr, *i);
@@ -409,7 +409,7 @@ vector<cl_uint> Placer::computeOffsets(int curr, const vector<int> &index) {
 	// position in ckt.inst -> hilbert position
 	/*printf("offsets of cells {");
 	for (int i = 0; i < (int)schem.size(); i++) {
-		printf("%llu ", schem[i].totalArea);
+		printf("%u ", (uint32_t)schem[i].totalArea);
 	}
 	printf("}\n");*/
 
