@@ -7,7 +7,7 @@ using namespace std;
 
 TEST(CellPlacer, solve)
 {
-	Tech tech("", "");
+	Tech tech;
 	Subckt ckt;
 	ckt.name = "test";
 	// Create an inverter

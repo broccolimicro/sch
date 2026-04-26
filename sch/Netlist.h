@@ -19,9 +19,15 @@ struct Netlist {
 	Netlist();
 	~Netlist();
 
-
+	// DESIGN(edward.bingham) This provides a fast lookup mechanism while
+	// respecting hash collisions.
+	// subckt id (hash) -> index into subckts
 	map<size_t, set<int> > cells;
-	vector<Subckt> subckts; 
+
+	// DESIGN(edward.bingham) These have matching indices, one is the
+	// subckt definition, the other is a mapping of nets in the subckt to
+	// the associated nets in the layout.
+	vector<Subckt> subckts;
 	vector<Mapping<int> > toLayout;
 
 	int insert(int idx);
@@ -29,13 +35,11 @@ struct Netlist {
 	void erase(int idx);
 
 	void mapCells(const Tech &tech, bool progress=false);
-
+	void mapToLayout(int idx, const Layout &layout);
 	int cellAt(int root, size_t index) const;
 	size_t countCells(int root) const;
-
-	void mapToLayout(int idx, const Layout &layout);
 };
 
-string idToString(size_t id);
+bool mapCells(const Tech &tech, Netlist &net, int idx, vector<int> *cells=nullptr, bool progress=false);
 
 }

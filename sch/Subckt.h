@@ -158,6 +158,7 @@ struct Subckt {
 	bool isCell;
 	size_t id;
 
+	// index into nets, represents the external IO for this subckt.
 	vector<int> ports;
 
 	// These are loaded directly from the spice file It's the list of nets and

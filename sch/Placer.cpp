@@ -5,6 +5,8 @@
 
 #include <CL/opencl.hpp>
 
+// #include <common/text.h>
+
 using namespace std;
 
 namespace sch {
@@ -285,7 +287,7 @@ void Placer::elaborateSchematicInstance(int curr, int sub) {
 		for (int j = 0; j+1 < (int)nextSch->nets.size(); j++) {
 			int net = currMap.map(j);
 			if (net == currMap.undef) {
-				net = currSch->pushNet("");//"c"+idToString(sub)+"."+nextSch->netNames[j]);
+				net = currSch->pushNet("");//"c"+encodeBase32(sub)+"."+nextSch->netNames[j]);
 				if (net < 0) {
 					continue;
 				}

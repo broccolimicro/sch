@@ -3,14 +3,11 @@
 #include "CellPlacer.h"
 #include "CellRouter.h"
 
-#include <chrono>
-#define KNRM  "\x1B[0m"
-#define KRED  "\x1B[31m"
-#define KGRN  "\x1B[32m"
-#define KYEL  "\x1B[33m"
-#define KBLU  "\x1B[34m"
-using namespace std::chrono;
+#include <common/text.h>
 
+#include <chrono>
+
+using namespace std::chrono;
 using namespace std;
 
 namespace sch {
@@ -84,62 +81,59 @@ void Netlist::mapCells(const Tech &tech, bool progress) {
 		}
 	}
 
-	// break large subckts into new cells
 	for (int i = (int)subckts.size()-1; i >= 0; i--) {
-		if (not subckts[i].isCell and not subckts[i].mos.empty()) {
-			int count = (int)subckts.size();
+		if (not sch::mapCells(tech, *this, i, nullptr, progress)) {
+			printf("failed to segment all devices\n");
+		}
+	}
+}
 
-			if (progress) {
-				printf("  %s...", subckts[i].name.c_str());
-				fflush(stdout);
-			}
-			steady_clock::time_point start = steady_clock::now();
+bool mapCells(const Tech &tech, Netlist &net, int idx, vector<int> *cells, bool progress) {
+	if (net.subckts[idx].isCell and not net.subckts[idx].mos.empty()) {
+		net.subckts[idx].canonicalize();
+		net.insert(idx);
+		return true;
+	} else if (net.subckts[idx].mos.empty()) {
+		return true;
+	}
 
-			subckts[i].splitDevices(tech);
+	net.subckts[idx].splitDevices(tech);
 
-			auto segments = subckts[i].segment();
+	auto segments = net.subckts[idx].segment();
+	for (auto s = segments.begin(); s != segments.end(); s++) {
+		Subckt cell(true);
+		Mapping<int> m = s->generate(cell, net.subckts[idx]);
+		m *= cell.canonicalize();
+		// TODO(edward.bingham) clean dangling?
+		cell.name = "cell_" + encodeBase32(cell.id);
+		int index = net.insert(cell);
+		if (cells != nullptr) {
+			cells->push_back(index);
+		}
 
-			//int total = 0;
-			//for (auto s = segments.begin(); s != segments.end(); s++) {
-			//	total += (int)s->mos.size();
-			//}
+		net.subckts[idx].extract(*s);
+		net.subckts[idx].push(Instance(net.subckts[index], m.flip(), index));
 
-			for (auto s = segments.begin(); s != segments.end(); s++) {
-				Subckt cell(true);
-				Mapping<int> m = s->generate(cell, subckts[i]);
-				m *= cell.canonicalize();
-				// TODO(edward.bingham) clean dangling?
-				cell.name = "cell_" + idToString(cell.id);
-				int index = insert(cell);
+		//print();
+		for (auto s1 = s+1; s1 != segments.end(); s1++) {
+			// DESIGN(edward.bingham) if two segments overlap, then we just remove
+			// the extra devices from one of the segments. It's only ok to have those
+			// devices in a different cell if the signals connecting them don't
+			// switch (for example, shared weak ground). Otherwise it's an isochronic
+			// fork assumption violation.
 
-				subckts[i].extract(*s);
-				subckts[i].push(Instance(subckts[index], m.flip(), index));
-
-				//print();
-				for (auto s1 = s+1; s1 != segments.end(); s1++) {
-					// DESIGN(edward.bingham) if two segments overlap, then we just remove
-					// the extra devices from one of the segments. It's only ok to have those
-					// devices in a different cell if the signals connecting them don't
-					// switch (for example, shared weak ground). Otherwise it's an isochronic
-					// fork assumption violation.
-
-					if (not s1->extract(*s)) {
-						printf("internal %s:%d: overlapping cells found\n", __FILE__, __LINE__);
-					}
-					//segments[j].print();
-				}
-			}
-
-			subckts[i].cleanDangling();
-
-			if (progress) {
-				printf("[%s%d UNIQUE/%d CELLS%s]\t%gs\n", KGRN, (int)subckts.size()-count, (int)segments.size(), KNRM, (float)(chrono::duration_cast<chrono::microseconds>(chrono::steady_clock::now() - start).count())/1e6);
-			}
-			if (not subckts[i].mos.empty()) {
-				printf("failed to segment all devices\n");
+			if (not s1->extract(*s)) {
+				printf("internal %s:%d: overlapping cells found\n", __FILE__, __LINE__);
 			}
 		}
 	}
+
+	net.subckts[idx].cleanDangling();
+	if (cells != nullptr) {
+		sort(cells->begin(), cells->end());
+		cells->erase(unique(cells->begin(), cells->end()), cells->end());
+	}
+	return net.subckts[idx].mos.empty();
 }
 
 int Netlist::cellAt(int root, size_t index) const {
@@ -185,20 +179,6 @@ void Netlist::mapToLayout(int idx, const Layout &layout) {
 		toLayout.resize(idx+1, Mapping<int>(-1, true));
 	}
 	toLayout[idx] = subckts[idx].mapToLayout(layout);
-}
-
-string idToString(size_t id) {
-	// spice names are not sensitive to capitalization, and only support alphanum
-	// characters. Not enough character types to support base64.
-	static const string digits = "abcdefghijklmnopqrstuvwxyz012345";
-
-	std::string result;
-	for (int i = 0; i < (int)sizeof(size_t); i++) {
-		int idx = id & 0x1F;
-		id >>= 5;
-		result.push_back(digits[idx]);
-	}
-	return result;
 }
 
 }
