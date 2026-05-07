@@ -88,54 +88,6 @@ void Netlist::mapCells(const Tech &tech, bool progress) {
 	}
 }
 
-bool mapCells(const Tech &tech, Netlist &net, int idx, vector<int> *cells, bool progress) {
-	if (net.subckts[idx].isCell and not net.subckts[idx].mos.empty()) {
-		net.subckts[idx].canonicalize();
-		net.insert(idx);
-		return true;
-	} else if (net.subckts[idx].mos.empty()) {
-		return true;
-	}
-
-	net.subckts[idx].splitDevices(tech);
-
-	auto segments = net.subckts[idx].segment();
-	for (auto s = segments.begin(); s != segments.end(); s++) {
-		Subckt cell(true);
-		Mapping<int> m = s->generate(cell, net.subckts[idx]);
-		m *= cell.canonicalize();
-		// TODO(edward.bingham) clean dangling?
-		cell.name = "cell_" + encodeBase32(cell.id);
-		int index = net.insert(cell);
-		if (cells != nullptr) {
-			cells->push_back(index);
-		}
-
-		net.subckts[idx].extract(*s);
-		net.subckts[idx].push(Instance(net.subckts[index], m.flip(), index));
-
-		//print();
-		for (auto s1 = s+1; s1 != segments.end(); s1++) {
-			// DESIGN(edward.bingham) if two segments overlap, then we just remove
-			// the extra devices from one of the segments. It's only ok to have those
-			// devices in a different cell if the signals connecting them don't
-			// switch (for example, shared weak ground). Otherwise it's an isochronic
-			// fork assumption violation.
-
-			if (not s1->extract(*s)) {
-				printf("internal %s:%d: overlapping cells found\n", __FILE__, __LINE__);
-			}
-		}
-	}
-
-	net.subckts[idx].cleanDangling();
-	if (cells != nullptr) {
-		sort(cells->begin(), cells->end());
-		cells->erase(unique(cells->begin(), cells->end()), cells->end());
-	}
-	return net.subckts[idx].mos.empty();
-}
-
 int Netlist::cellAt(int root, size_t index) const {
 	while (root < (int)subckts.size() and not subckts[root].inst.empty()) {
 		int next = (int)(index % (size_t)subckts[root].inst.size());

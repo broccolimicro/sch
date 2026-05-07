@@ -1,6 +1,5 @@
 #include "Tapeout.h"
 
-#include "Netlist.h"
 #include "Draw.h"
 #include "CellPlacer.h"
 #include "CellRouter.h"
@@ -11,28 +10,65 @@
 
 #include <filesystem>
 
+#include <common/text.h>
+
 #include <chrono>
-#define KNRM  "\x1B[0m"
-#define KRED  "\x1B[31m"
-#define KGRN  "\x1B[32m"
-#define KYEL  "\x1B[33m"
-#define KBLU  "\x1B[34m"
 using namespace std::chrono;
 
 using namespace std;
 using namespace phy;
 
-
 namespace sch {
 
-int buildCell(phy::Library &lib, Netlist &lst, int idx, bool progress, bool debug) {
+vector<Subckt> mapCells(const Tech &tech, Subckt &ckt, std::string prefix, bool progress) {
+	std::vector<Subckt> cells;
+	if (ckt.isCell and not ckt.mos.empty()) {
+		ckt.canonicalize();
+		return cells;
+	} else if (ckt.mos.empty()) {
+		return cells;
+	}
+
+	ckt.splitDevices(tech);
+
+	auto segments = ckt.segment();
+	cells.reserve(segments.size());
+	for (auto s = segments.begin(); s != segments.end(); s++) {
+		cells.push_back(Subckt(true));
+		Mapping<int> m = s->generate(cells.back(), ckt);
+		m *= cells.back().canonicalize();
+		// TODO(edward.bingham) clean dangling?
+		cells.back().name = prefix + "cell_" + encodeBase32(cells.back().id);
+
+		ckt.extract(*s);
+		ckt.push(Instance(cells.back(), m.flip()));
+
+		//print();
+		for (auto s1 = s+1; s1 != segments.end(); s1++) {
+			// DESIGN(edward.bingham) if two segments overlap, then we just remove
+			// the extra devices from one of the segments. It's only ok to have those
+			// devices in a different cell if the signals connecting them don't
+			// switch (for example, shared weak ground). Otherwise it's an isochronic
+			// fork assumption violation.
+
+			if (not s1->extract(*s)) {
+				printf("internal %s:%d: overlapping cells found\n", __FILE__, __LINE__);
+			}
+		}
+	}
+
+	ckt.cleanDangling();
+	return cells;
+}
+
+int buildCell(Layout &dst, Subckt &src, bool progress, bool debug) {
 	bool place = true;
 	bool route = true;
-	CellPlacement pl = CellPlacement::solve(*lib.tech, lst.subckts[idx]);
-	CellRouter rt(*lib.tech, pl, progress, debug);
+	CellPlacement pl = CellPlacement::solve(*dst.tech, src);
+	CellRouter rt(*dst.tech, pl, progress, debug);
 	route = rt.solve();
-	drawCell(lib.macros[idx], rt);
-	rt.annotateAreaPerim(lst.subckts[idx]);
+	drawCell(dst, rt);
+	rt.annotateAreaPerim(src);
 	if (not place) {
 		return 1;
 	} else if (not route) {
@@ -163,17 +199,6 @@ bool extract(Subckt &dst, Layout &src, bool forceTrace) {
 	dst.cleanDangling();
 
 	return true;
-}
-
-bool extract(Netlist &net, phy::Library &lib, bool forceTrace) {
-	bool result = true;
-	int start = (int)net.subckts.size();
-	net.subckts.resize(start+(int)lib.macros.size());
-	for (int i = 0; i < (int)lib.macros.size(); i++) {
-		result = extract(net.subckts[start+i], lib.macros[i], forceTrace) and result;
-		net.subckts[start+i].canonicalize();
-	}
-	return result;
 }
 
 }

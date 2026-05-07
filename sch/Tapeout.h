@@ -1,12 +1,13 @@
 #pragma once
 
-#include "Netlist.h"
-#include <phy/Library.h>
+#include "Subckt.h"
+#include <phy/Tech.h>
+#include <phy/Layout.h>
 
 namespace sch {
 
-int buildCell(phy::Library &lib, Netlist &lst, int idx, bool progress=false, bool debug=false);
+vector<Subckt> mapCells(const Tech &tech, Subckt &ckt, bool progress=false);
+int buildCell(Layout &dst, Subckt &src, bool progress=false, bool debug=false);
 bool extract(Subckt &dst, Layout &src, bool forceTrace=false);
-bool extract(Netlist &net, phy::Library &lib, bool forceTrace=false);
 
 }

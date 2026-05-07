@@ -107,12 +107,12 @@ struct Net {
 
 struct Instance {
 	Instance();
-	Instance(int subckt, vector<int> ports=vector<int>());
-	Instance(const Subckt &ckt, const Mapping<int> &cktToThis, int subckt);
+	Instance(std::string type, vector<int> ports=vector<int>());
+	Instance(const Subckt &ckt, const Mapping<int> &cktToThis);
 	~Instance();
 
+	std::string type;
 	string name;
-	int subckt;
 	vector<int> ports;
 };
 

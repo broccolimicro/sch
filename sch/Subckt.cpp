@@ -250,16 +250,15 @@ bool Net::isAnonymous() const {
 }
 
 Instance::Instance() {
-	subckt = -1;
 }
 
-Instance::Instance(int subckt, vector<int> ports) {
-	this->subckt = subckt;
+Instance::Instance(std::string type, vector<int> ports) {
+	this->type = type;
 	this->ports = ports;
 }
 
-Instance::Instance(const Subckt &ckt, const Mapping<int> &cktToThis, int subckt) {
-	this->subckt = subckt;
+Instance::Instance(const Subckt &ckt, const Mapping<int> &cktToThis) {
+	this->type = ckt.name;
 	for (int i = 0; i < (int)ckt.ports.size(); i++) {
 		this->ports.push_back(cktToThis.map(ckt.ports[i]));
 	}
@@ -1260,7 +1259,7 @@ void Subckt::printMos(int i) const {
 }
 
 void Subckt::printInst(int i) const {
-	printf("%s[%d](%d) {", inst[i].name.c_str(), i, inst[i].subckt);
+	printf("%s[%d] {", inst[i].name.c_str(), i);
 	for (int j = 0; j < (int)inst[i].ports.size(); j++) {
 		printf("%d ", inst[i].ports[j]);
 	}

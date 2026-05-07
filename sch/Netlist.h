@@ -40,6 +40,4 @@ struct Netlist {
 	size_t countCells(int root) const;
 };
 
-bool mapCells(const Tech &tech, Netlist &net, int idx, vector<int> *cells=nullptr, bool progress=false);
-
 }
