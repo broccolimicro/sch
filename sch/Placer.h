@@ -1,11 +1,11 @@
 #pragma once
 
-#include "Netlist.h"
-#include <phy/Library.h>
-
 #include <CL/opencl.hpp>
+#include "Subckt.h"
 
 namespace sch {
+
+struct Placer;
 
 struct Schematic {
 	Schematic();
@@ -34,6 +34,7 @@ struct Schematic {
 	vector<cl_uint2> cellBounds;
 	vector<cl_ulong> hilbert;
 
+	vector<int> inst;
 	vector<int> subckts;
 
 	// TODO(edward.bingham) For development purposes only, delete this
@@ -51,12 +52,25 @@ struct Schematic {
 	size_t numCells() const;
 	size_t numNets() const;
 
-	void print(const Netlist &lst) const;
+	void print(const Placer &placer) const;
+};
+
+struct Implementation {
+	const sch::Subckt *ckt;
+	phy::Layout *macro;
+	Mapping<int> cktToMacro;
+};
+
+struct Linker {
+	Linker();
+	virtual ~Linker() = 0;
+
+	virtual Implementation find(std::string type) = 0;
 };
 
 struct Placer {
 	Placer();
-	Placer(phy::Library &lib, const Netlist &lst, int platformId=0, int deviceId=0, bool progress=false, bool debug=false);
+	Placer(Linker *linker, int platformId=0, int deviceId=0, bool progress=false, bool debug=false);
 	~Placer();
 
 	cl::Context context;
@@ -68,10 +82,11 @@ struct Placer {
 	cl::Kernel partitionCols;
 	cl::Kernel partitionRows;
 
-	const sch::Netlist *lst;
-	phy::Library *lib;
+	Linker *linker;
 
 	vector<Schematic> schem;
+	vector<Implementation> procs;
+	map<std::string, int> table;
 
 	bool progress;
 	bool debug;
@@ -81,13 +96,16 @@ struct Placer {
 	void configurePath(string kernalPath, int platformId=0, int deviceId=0);
 	void configureSource(string source, int platformId=0, int deviceId=0);
 
-	void load(phy::Library &lib, const Netlist &lst);
+	void load(Linker *linker);
 
 	// Load a design into the placer
+	int find(std::string type);
+
+	void elaborateSchematicInstances(int curr);
 	void elaborateSchematicNets(int curr);
 	void elaborateSchematicInstance(int curr, int sub);
 	void elaborateSchematic(int curr);
-	void elaborate(int subckt);
+	void elaborate(int top);
 
 	cl_uint isqrt(cl_ulong x);
 	vector<cl_uint> computeOffsets(int curr, const vector<int> &index);
@@ -141,9 +159,7 @@ struct Placement {
 	void solve();
 
 	// Save the result to the layout library
-	void save();
 	void save(phy::Layout &layout);
-	void save(phy::Library &lib);
 };
 
 }

@@ -87,12 +87,12 @@ size_t Schematic::numNets() const {
 	return nets.size()-1;
 }
 
-void Schematic::print(const Netlist &lst) const {
+void Schematic::print(const Placer &placer) const {
 	cout << "cells " << totalArea << ": " << cells.size()-1 << endl;
 	for (int i = 0; i+1 < (int)cells.size(); i++) {
 		size_t start = cells[i];
 		size_t end = cells[i+1];
-		string cellName = lst.subckts[subckts[i]].name;
+		string cellName = placer.procs[subckts[i]].ckt->name;
 		cout << cellName << "(" << i << ") " << cellBounds[i].s[0] << "," << cellBounds[i].s[1] << ": {";
 		for (size_t j = start; j < end; j++) {
 			cout << cellsToNets[j] << " ";
@@ -114,17 +114,16 @@ void Schematic::print(const Netlist &lst) const {
 }
 
 Placer::Placer() {
-	lst = nullptr;
-	lib = nullptr;
+	linker = nullptr;
 	progress = false;
 	debug = false;
 }
 
-Placer::Placer(phy::Library &lib, const Netlist &lst, int platformId, int deviceId, bool progress, bool debug) {
+Placer::Placer(Linker *linker, int platformId, int deviceId, bool progress, bool debug) {
 	this->progress = progress;
 	this->debug = debug;
 	configure(platformId, deviceId);
-	load(lib, lst);
+	load(linker);
 }
 
 Placer::~Placer() {
@@ -223,60 +222,77 @@ void Placer::configureSource(string source, int platformId, int deviceId) {
 	}
 }
 
-void Placer::load(phy::Library &lib, const Netlist &lst) {
-	this->lst = &lst;
-	this->lib = &lib;
-	schem.resize(lst.subckts.size());
+void Placer::load(Linker *linker) {
+	this->linker = linker;
+}
+
+int Placer::find(std::string type) {
+	auto pos = table.insert({type, -1});
+	if (not pos.second) {
+		Implementation impl = linker->find(type);
+		if (impl.ckt == nullptr) {
+			return -1;
+		}
+		pos.first->second = (int)procs.size();
+		procs.push_back(impl);
+		schem.push_back(Schematic());
+	}
+	return pos.first->second;
+}
+
+void Placer::elaborateSchematicInstances(int curr) {
+	auto currCkt = procs[curr].ckt;
+
+	for (auto i = currCkt->inst.begin(); i != currCkt->inst.end(); i++) {
+		schem[curr].inst.push_back(find(i->type));
+	}
 }
 
 void Placer::elaborateSchematicNets(int curr) {
-	auto currSch = schem.begin()+curr;
-	auto currCkt = lst->subckts.begin()+curr;
+	auto currCkt = procs[curr].ckt;
 
 	// Start by placing the nets for this cell
 	for (int i = 0; i < (int)currCkt->nets.size(); i++) {
-		currSch->pushNet(currCkt->nets[i].name);
+		schem[curr].pushNet(currCkt->nets[i].name);
 
 		int count = 0;
-		for (auto j = currCkt->nets[i].portOf.begin(); j != currCkt->nets[i].portOf.end(); j++) {
-			auto inst = currCkt->inst.begin()+*j;
-			auto nextSch = schem.begin()+inst->subckt;
-			auto nextCkt = lst->subckts.begin()+inst->subckt;
+		for (int j : currCkt->nets[i].portOf) {
+			auto inst = currCkt->inst.begin()+j;
+			int next = schem[curr].inst[j];
+			auto nextCkt = procs[next].ckt;
 
 			for (int k = 0; k < (int)inst->ports.size(); k++) {
 				if (inst->ports[k] == i) {
 					int net = nextCkt->ports[k];
-					count += nextSch->isCell() ? 1 : nextSch->nets[net+1]-nextSch->nets[net];
+					count += schem[next].isCell() ? 1 : schem[next].nets[net+1]-schem[next].nets[net];
 				}
 			}
 		}
-		currSch->allocPorts(count);
+		schem[curr].allocPorts(count);
 	}
 }
 
 void Placer::elaborateSchematicInstance(int curr, int sub) {
-	auto currSch = schem.begin()+curr;
-	auto currCkt = lst->subckts.begin()+curr;
+	auto currCkt = procs[curr].ckt;
 
-	int next = currCkt->inst[sub].subckt;
-	auto nextLay = lib->macros.begin()+next;
-	auto nextSch = schem.begin()+next;
-	auto nextCkt = lst->subckts.begin()+next;
+	int next = schem[curr].inst[sub];
+	auto nextLay = procs[next].macro;
+	auto nextCkt = procs[next].ckt;
 
 	cl_ulong h = 0;
-	if (not currSch->cellBounds.empty()) {
-		cl_uint2 bound = currSch->cellBounds.back();
-		h = currSch->hilbert.back() + (cl_ulong)(bound.s[0]*bound.s[1])/2;
+	if (not schem[curr].cellBounds.empty()) {
+		cl_uint2 bound = schem[curr].cellBounds.back();
+		h = schem[curr].hilbert.back() + (cl_ulong)(bound.s[0]*bound.s[1])/2;
 	}
 
-	currSch->totalArea += nextSch->totalArea;
-	if (nextSch->isCell()) {
-		currSch->pushCell(next, nextLay->box.size(), h+nextSch->totalArea/2);
+	schem[curr].totalArea += schem[next].totalArea;
+	if (schem[next].isCell()) {
+		schem[curr].pushCell(next, nextLay->box.size(), h+schem[next].totalArea/2);
 		if (debug) {
-			printf("hilbert %u/%u\n", (uint32_t)currSch->hilbert.back(), (uint32_t)currSch->totalArea);
+			printf("hilbert %u/%u\n", (uint32_t)schem[curr].hilbert.back(), (uint32_t)schem[curr].totalArea);
 		}
-		currSch->pushPorts(currCkt->inst[sub].ports, currSch->cells.size()-1);
-		currSch->cellsToNets.insert(currSch->cellsToNets.end(), currCkt->inst[sub].ports.begin(), currCkt->inst[sub].ports.end());
+		schem[curr].pushPorts(currCkt->inst[sub].ports, schem[curr].cells.size()-1);
+		schem[curr].cellsToNets.insert(schem[curr].cellsToNets.end(), currCkt->inst[sub].ports.begin(), currCkt->inst[sub].ports.end());
 	} else {
 		// Then place the nets of the instances
 		Mapping<int> currMap(-1, false);
@@ -284,36 +300,35 @@ void Placer::elaborateSchematicInstance(int curr, int sub) {
 			currMap.set(nextCkt->ports[j], currCkt->inst[sub].ports[j]);
 		}
 
-		for (int j = 0; j+1 < (int)nextSch->nets.size(); j++) {
+		for (int j = 0; j+1 < (int)schem[next].nets.size(); j++) {
 			int net = currMap.map(j);
 			if (net == currMap.undef) {
-				net = currSch->pushNet("");//"c"+encodeBase32(sub)+"."+nextSch->netNames[j]);
+				net = schem[curr].pushNet("");//"c"+encodeBase32(sub)+"."+schem[next].netNames[j]);
 				if (net < 0) {
 					continue;
 				}
 				currMap.set(j, net);
 			}
 
-			for (size_t port = nextSch->nets[j]; port < nextSch->nets[j+1]; port++) {
-				currSch->pushPorts(net, currSch->cells.size()+nextSch->netsToCells[port]);
+			for (size_t port = schem[next].nets[j]; port < schem[next].nets[j+1]; port++) {
+				schem[curr].pushPorts(net, schem[curr].cells.size()+schem[next].netsToCells[port]);
 			}
 		}
 
-		for (int j = 0; j+1 < (int)nextSch->cells.size(); j++) {
-			currSch->pushCell(nextSch->subckts[j], nextSch->cellBounds[j], h+nextSch->hilbert[j]);
+		for (int j = 0; j+1 < (int)schem[next].cells.size(); j++) {
+			schem[curr].pushCell(schem[next].subckts[j], schem[next].cellBounds[j], h+schem[next].hilbert[j]);
 			if (debug) {
-				printf("hilbert %u/%u\n", (uint32_t)currSch->hilbert.back(), (uint32_t)currSch->totalArea);
+				printf("hilbert %u/%u\n", (uint32_t)schem[curr].hilbert.back(), (uint32_t)schem[curr].totalArea);
 			}
-			for (size_t k = nextSch->cells[j]; k < nextSch->cells[j+1]; k++) {
-				currSch->cellsToNets.push_back(currMap.map(nextSch->cellsToNets[k]));
+			for (size_t k = schem[next].cells[j]; k < schem[next].cells[j+1]; k++) {
+				schem[curr].cellsToNets.push_back(currMap.map(schem[next].cellsToNets[k]));
 			}
 		}
 	}
 }
 
 void Placer::elaborateSchematic(int curr) {
-	auto currSch = schem.begin()+curr;
-	auto currCkt = lst->subckts.begin()+curr;
+	auto currCkt = procs[curr].ckt;
 
 	// Do simulated annealing reduce total wirelength along the hilbert curve
 
@@ -321,21 +336,22 @@ void Placer::elaborateSchematic(int curr) {
 	// it's too slow.
 
 	if (progress or debug) {
-		printf("Elaborating %s\n", lst->subckts[curr].name.c_str());
+		printf("Elaborating %s\n", procs[curr].ckt->name.c_str());
 	}
 	if (debug) {
-		lst->subckts[curr].print();
+		procs[curr].ckt->print();
 	}
 
 	if (currCkt->inst.empty()) {
-		auto currLay = lib->macros.begin()+curr;
-		currSch->totalArea = currLay->box.area();
+		schem[curr].totalArea = procs[curr].macro->box.area();
 	} else {
+		elaborateSchematicInstances(curr);
 		elaborateSchematicNets(curr);
 		vector<int> index = computeOrder(curr);
 		for (auto i = index.begin(); i != index.end(); i++) {
 			if (progress) {
-				printf("\t%s(%u)...", currCkt->inst[*i].name.c_str(), (uint32_t)schem[currCkt->inst[*i].subckt].totalArea);
+				int subckt = schem[curr].inst[*i];
+				printf("\t%s(%u)...", currCkt->inst[*i].name.c_str(), (uint32_t)schem[subckt].totalArea);
 				fflush(stdout);
 			}
 			elaborateSchematicInstance(curr, *i);
@@ -344,35 +360,34 @@ void Placer::elaborateSchematic(int curr) {
 			}
 		}
 	}
-	currSch->finish();
+	schem[curr].finish();
 
-	//currSch->print(*lst);
+	//schem[curr].print(*this);
 	if (progress) {
 		printf("done\n\n");
 	}
 }
 
-void Placer::elaborate(int subckt) {
-	if (lst == nullptr or lib == nullptr) {
-		printf("error: the netlist and layout library have not been loaded\n");
+void Placer::elaborate(int top) {
+	if (linker == nullptr) {
+		printf("error: the linker has not been loaded\n");
 		return;
 	}
 
-	if (not schem[subckt].cells.empty()) {
+	if (not schem[top].cells.empty()) {
 		return;
 	}
 
-	vector<int> stack(1, subckt);
+	vector<int> stack(1, top);
 	while (not stack.empty()) {
 		int curr = stack.back();
-		auto currCkt = lst->subckts.begin()+curr;
 		
 		bool done = true;
-		for (auto i = currCkt->inst.begin(); i != currCkt->inst.end(); i++) {
-			if (schem[i->subckt].cells.empty()) {
+		for (int subckt : schem[curr].inst) {
+			if (schem[subckt].cells.empty()) {
 				done = false;
-				stack.erase(remove(stack.begin(), stack.end(), i->subckt), stack.end());
-				stack.push_back(i->subckt);
+				stack.erase(remove(stack.begin(), stack.end(), subckt), stack.end());
+				stack.push_back(subckt);
 			}
 		}
 
@@ -405,8 +420,6 @@ cl_uint Placer::isqrt(cl_ulong x) {
 vector<cl_uint> Placer::computeOffsets(int curr, const vector<int> &index) {
 	// Determine midpoint locations of instances in Hilbert space using half
 	// instance area.
-	auto currCkt = lst->subckts.begin()+curr;
-
 	
 	// position in ckt.inst -> hilbert position
 	/*printf("offsets of cells {");
@@ -416,12 +429,12 @@ vector<cl_uint> Placer::computeOffsets(int curr, const vector<int> &index) {
 	printf("}\n");*/
 
 	vector<cl_uint> offset(index.size(), 0);
-	for (auto i = index.begin(); i != index.end(); i++) {
+	for (auto i = index.begin(), j = index.end(); i != index.end(); j = i++) {
 		offset[*i] = 0;
-		if (i != index.begin()) {
-			offset[*i] = offset[*std::prev(i)] + schem[currCkt->inst[*std::prev(i)].subckt].totalArea/2;
+		if (j != index.end()) {
+			offset[*i] = offset[*j] + schem[schem[curr].inst[*j]].totalArea/2;
 		}
-		offset[*i] += schem[currCkt->inst[*i].subckt].totalArea/2;
+		offset[*i] += schem[schem[curr].inst[*i]].totalArea/2;
 	}
 	return offset;
 }
@@ -431,7 +444,7 @@ cl_uint Placer::computeHPWL(int curr, const vector<cl_uint> &offset) {
 	// of an interval on the hilbert curve as `sqrt(length)*4` assuming that
 	// allocated spaces on the hilbert curve tend to be rectangular and the
 	// expected area of an interval as `length`.
-	auto currCkt = lst->subckts.begin()+curr;
+	auto currCkt = procs[curr].ckt;
 	
 	/*printf("hpwl of {");
 	for (int i = 0; i < (int)offset.size(); i++) {
@@ -471,7 +484,7 @@ vector<int> Placer::computeOrder(int subckt, int starts, float step, float rate)
 	// computeHPWL() to see how the total half perimeter wire length (HPWL)
 	// of an orderng is estimated. See computeOffsets() to see how we place
 	// modules on the Hilbert curve by evenly distributing module area.
-	auto currCkt = lst->subckts.begin()+subckt;
+	auto currCkt = procs[subckt].ckt;
 
 	std::default_random_engine rand(0/*std::random_device{}()*/);
 	if (currCkt->inst.empty()) {
@@ -545,7 +558,6 @@ vector<int> Placer::computeOrder(int subckt, int starts, float step, float rate)
 void Placer::place(int subckt) {
 	Placement prob(*this, subckt);
 	prob.solve();
-	prob.save();
 }
 
 Placement::Placement() {
@@ -813,8 +825,8 @@ void Placement::doLegal() {
 				int currSubckt = schem->subckts[index];
 				cl_uint2 bound = schem->cellBounds[index];
 				Mapping<int> currChildToParent(-1, false);
-				for (int k = 0; k < (int)placer->lst->subckts[currSubckt].ports.size(); k++) {
-					int childNet = placer->lst->toLayout[currSubckt].map(placer->lst->subckts[currSubckt].ports[k]);
+				for (int k = 0; k < (int)placer->procs[currSubckt].ckt->ports.size(); k++) {
+					int childNet = placer->procs[currSubckt].cktToMacro.map(placer->procs[currSubckt].ckt->ports[k]);
 					int parentNet = schem->cellsToNets[schem->cells[index]+k];
 					currChildToParent.set(childNet, parentNet);
 				}
@@ -829,7 +841,7 @@ void Placement::doLegal() {
 						currPos += off->second;
 					} else {
 						int value = 0;
-						minOffset(&value, 0, placer->lib->macros[prevSubckt], 0, placer->lib->macros[currSubckt], 0, Layout::MERGENET, Layout::DEFAULT, true, prevChildToParent, currChildToParent);
+						minOffset(&value, 0, *placer->procs[prevSubckt].macro, 0, *placer->procs[currSubckt].macro, 0, Layout::MERGENET, Layout::DEFAULT, true, prevChildToParent, currChildToParent);
 						offset.insert({{prevSubckt, currSubckt}, value});
 						currPos += value;
 					}
@@ -888,14 +900,6 @@ void Placement::save(phy::Layout &layout) {
 	// 2. route to power
 	// 3. draw well taps
 	// 4. draw filler
-}
-
-void Placement::save(phy::Library &lib) {
-	save(lib.macros[root]);
-}
-
-void Placement::save() {
-	save(*placer->lib);
 }
 
 }
