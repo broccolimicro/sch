@@ -9,10 +9,10 @@ CXXFLAGS = -std=c++20 -g -Wall -fmessage-length=0 -O2
 LDFLAGS  =
 else
 CXXFLAGS = -std=c++20 -g -Wall -fmessage-length=0 -O0 --coverage -fprofile-arcs -ftest-coverage
-LDFLAGS  = --coverage -fprofile-arcs -ftest-coverage 
+LDFLAGS  = --coverage -fprofile-arcs -ftest-coverage
 endif
 
-CXXFLAGS += -D CL_HPP_MINIMUM_OPENCL_VERSION=120 -D CL_HPP_TARGET_OPENCL_VERSION=120 -D CL_HPP_ENABLE_EXCEPTIONS 
+CXXFLAGS += -D CL_HPP_MINIMUM_OPENCL_VERSION=120 -D CL_HPP_TARGET_OPENCL_VERSION=120 -D CL_HPP_ENABLE_EXCEPTIONS
 
 PYTHON_RELEASE = python$(shell python3 -c "import sys;sys.stdout.write('{}.{}'.format(sys.version_info[0],sys.version_info[1]))")
 
@@ -109,9 +109,9 @@ coverage: clean
 $(TARGET): $(OBJECTS)
 	ar rvs $(TARGET) $(OBJECTS)
 
-build/$(SRCDIR)/%.o: $(SRCDIR)/%.cpp 
+build/$(SRCDIR)/%.o: $(SRCDIR)/%.cpp
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(LDFLAGS) $(INCLUDE_PATHS) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ -c $<
+	@$(CXX) $(CXXFLAGS) $(LDFLAGS) $(INCLUDE_PATHS) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ $<
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(INCLUDE_PATHS) -c -o $@ $<
 
 sch/Placer.cpp: sch/Kernel.h
@@ -126,7 +126,7 @@ $(TEST_TARGET): $(TEST_OBJECTS) $(OBJECTS) $(TARGET)
 
 build/$(TESTDIR)/%.o: $(TESTDIR)/%.cpp
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(TEST_INCLUDE_PATHS) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ -c $<
+	@$(CXX) $(CXXFLAGS) $(TEST_INCLUDE_PATHS) -MM -MF $(patsubst %.o,%.d,$@) -MT $@ $<
 	$(CXX) $(CXXFLAGS) $(TEST_INCLUDE_PATHS) $< -c -o $@
 
 build/$(TESTDIR)/gtest_main.o: $(GTEST)/googletest/src/gtest_main.cc
