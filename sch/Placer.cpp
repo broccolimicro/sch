@@ -240,12 +240,17 @@ int Placer::find(std::string type) {
 	return pos.first->second;
 }
 
-void Placer::elaborateSchematicInstances(int curr) {
+bool Placer::elaborateSchematicInstances(int curr) {
 	auto currCkt = procs[curr].ckt;
 
 	for (auto i = currCkt->inst.begin(); i != currCkt->inst.end(); i++) {
-		schem[curr].inst.push_back(find(i->type));
+		int subckt = find(i->type);
+		if (subckt < 0) {
+			return false;
+		}
+		schem[curr].inst.push_back(subckt);
 	}
+	return true;
 }
 
 void Placer::elaborateSchematicNets(int curr) {
@@ -327,7 +332,7 @@ void Placer::elaborateSchematicInstance(int curr, int sub) {
 	}
 }
 
-void Placer::elaborateSchematic(int curr) {
+bool Placer::elaborateSchematic(int curr) {
 	auto currCkt = procs[curr].ckt;
 
 	// Do simulated annealing reduce total wirelength along the hilbert curve
@@ -345,7 +350,10 @@ void Placer::elaborateSchematic(int curr) {
 	if (currCkt->inst.empty()) {
 		schem[curr].totalArea = procs[curr].macro->box.area();
 	} else {
-		elaborateSchematicInstances(curr);
+		if (not elaborateSchematicInstances(curr)) {
+			printf("error: failed to lookup instances\n");
+			return false;
+		}
 		elaborateSchematicNets(curr);
 		vector<int> index = computeOrder(curr);
 		for (auto i = index.begin(); i != index.end(); i++) {
@@ -366,16 +374,17 @@ void Placer::elaborateSchematic(int curr) {
 	if (progress) {
 		printf("done\n\n");
 	}
+	return true;
 }
 
-void Placer::elaborate(int top) {
+bool Placer::elaborate(int top) {
 	if (linker == nullptr) {
 		printf("error: the linker has not been loaded\n");
-		return;
+		return false;
 	}
 
 	if (not schem[top].cells.empty()) {
-		return;
+		return true;
 	}
 
 	vector<int> stack(1, top);
@@ -392,10 +401,13 @@ void Placer::elaborate(int top) {
 		}
 
 		if (done) {
-			elaborateSchematic(curr);
+			if (not elaborateSchematic(curr)) {
+				return false;
+			}
 			stack.pop_back();
 		}
 	}
+	return true;
 }
 
 // From Hacker's Delight
@@ -563,7 +575,6 @@ void Placer::place(int subckt) {
 Placement::Placement() {
 	placer = nullptr;
 	root = -1;
-	schem = nullptr;
 }
 
 Placement::Placement(Placer &placer, int root) {
@@ -573,15 +584,18 @@ Placement::Placement(Placer &placer, int root) {
 Placement::~Placement() {
 }
 
-void Placement::init(Placer &placer, int root) {
+bool Placement::init(Placer &placer, int root) {
 	this->placer = &placer;
 	this->root = root;
-	this->schem = &placer.schem[root];
-	placer.elaborate(root);
-	position.resize(schem->numCells());
-	grid.resize(schem->numCells());
+	if (not placer.elaborate(root)) {
+		return false;
+	}
+	int numCells = placer.schem[root].numCells();
+	position.resize(numCells);
+	grid.resize(numCells);
 	positionBuffer = cl::Buffer(placer.context, CL_MEM_READ_WRITE, bufferSize(position));
 	gridBuffer = cl::Buffer(placer.context, CL_MEM_READ_WRITE, bufferSize(grid));
+	return true;
 }
 
 // Evenly space all cells based on area in the Hilbert space filling curve.
@@ -589,10 +603,11 @@ void Placement::init(Placer &placer, int root) {
 // a fast initial guess at a placement. This placement is not optimal, so we
 // still need to run a detail placement algorithm.
 void Placement::doGlobal() {
-	if (placer == nullptr or root < 0 or schem == nullptr) {
+	if (placer == nullptr or root < 0) {
 		printf("error: placement has not been initialized.\n");
 		return;
 	}
+	auto schem = &placer->schem[root];
 
 	if (schem->numCells() == 0) {
 		printf("error: no cells to place.\n");
@@ -627,10 +642,12 @@ void Placement::doGlobal() {
 }
 
 void Placement::doDetail() {
-	if (placer == nullptr or root < 0 or schem == nullptr) {
+	if (placer == nullptr or root < 0) {
 		printf("error: Placement has not been initialized.\n");
 		return;
 	}
+	
+	auto schem = &placer->schem[root];
 
 	if (schem->numCells() == 0) {
 		printf("error: no cells to place.\n");
@@ -711,10 +728,12 @@ void Placement::doDetail() {
 }
 
 void Placement::doLegal() {
-	if (placer == nullptr or root < 0 or schem == nullptr) {
+	if (placer == nullptr or root < 0) {
 		printf("error: Placement has not been initialized.\n");
 		return;
 	}
+
+	auto schem = &placer->schem[root];
 
 	if (schem->numCells() == 0) {
 		printf("error: no cells to place.\n");
@@ -868,12 +887,12 @@ void Placement::doLegal() {
 }
 
 void Placement::solve() {
-	if (placer == nullptr or root < 0 or schem == nullptr) {
+	if (placer == nullptr or root < 0) {
 		printf("error: Placement has not been initialized.\n");
 		return;
 	}
-
-	if (schem->numCells() == 0) {
+	
+	if (placer->schem[root].numCells() == 0) {
 		printf("error: no cells to place.\n");
 		return;
 	}
@@ -884,6 +903,7 @@ void Placement::solve() {
 }
 
 void Placement::save(phy::Layout &layout) {
+	auto schem = &placer->schem[root];
 	for (int i = 0; i < (int)position.size(); i++) {
 		vec2i pos((int)position[i].s[0], (int)position[i].s[1]);
 		vec2i dir(1,1);

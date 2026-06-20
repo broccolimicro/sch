@@ -176,6 +176,8 @@ struct Subckt {
 	void push(Instance ckt);
 	void popNet(int index);
 	void popMos(int index);
+
+	void renameType(std::string from, std::string to);
 	
 	void connectRemote(int n0, int n1);
 

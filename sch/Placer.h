@@ -101,11 +101,11 @@ struct Placer {
 	// Load a design into the placer
 	int find(std::string type);
 
-	void elaborateSchematicInstances(int curr);
+	bool elaborateSchematicInstances(int curr);
 	void elaborateSchematicNets(int curr);
 	void elaborateSchematicInstance(int curr, int sub);
-	void elaborateSchematic(int curr);
-	void elaborate(int top);
+	bool elaborateSchematic(int curr);
+	bool elaborate(int top);
 
 	cl_uint isqrt(cl_ulong x);
 	vector<cl_uint> computeOffsets(int curr, const vector<int> &index);
@@ -122,7 +122,6 @@ struct Placement {
 
 	Placer *placer;
 	int root;
-	Schematic *schem;
 
 	// x-coord, y-coord, index
 	vector<cl_uint3> position;
@@ -149,7 +148,7 @@ struct Placement {
 		return v.size() * sizeof(T);
 	}
 
-	void init(Placer &placer, int root);
+	bool init(Placer &placer, int root);
 
 	// Run the placement algorithm
 	void doGlobal();

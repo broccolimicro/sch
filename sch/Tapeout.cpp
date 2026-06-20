@@ -20,7 +20,7 @@ using namespace phy;
 
 namespace sch {
 
-vector<Subckt> mapCells(const Tech &tech, Subckt &ckt, std::string prefix, bool progress) {
+vector<Subckt> mapCells(const Tech &tech, Subckt &ckt, bool progress) {
 	std::vector<Subckt> cells;
 	if (ckt.isCell and not ckt.mos.empty()) {
 		ckt.canonicalize();
@@ -34,11 +34,12 @@ vector<Subckt> mapCells(const Tech &tech, Subckt &ckt, std::string prefix, bool 
 	auto segments = ckt.segment();
 	cells.reserve(segments.size());
 	for (auto s = segments.begin(); s != segments.end(); s++) {
+		int index = cells.size();
 		cells.push_back(Subckt(true));
 		Mapping<int> m = s->generate(cells.back(), ckt);
 		m *= cells.back().canonicalize();
 		// TODO(edward.bingham) clean dangling?
-		cells.back().name = prefix + "cell_" + encodeBase32(cells.back().id);
+		cells.back().name = "cell_" + encodeBase32(index);
 
 		ckt.extract(*s);
 		ckt.push(Instance(cells.back(), m.flip()));

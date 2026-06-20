@@ -340,6 +340,7 @@ int Subckt::push(Mos m) {
 void Subckt::push(Instance ckt) {
 	int index = (int)inst.size();
 	inst.push_back(ckt);
+	inst.back().name = "s" + std::to_string(index);
 	for (auto p = inst.back().ports.begin(); p != inst.back().ports.end(); p++) {
 		for (auto n = nets[*p].remote.begin(); n != nets[*p].remote.end(); n++) {
 			nets[*n].portOf.push_back(index);
@@ -438,6 +439,14 @@ void Subckt::popMos(int index) {
 					n->baseOf[type].erase(n->baseOf[type].begin()+j);
 				}
 			}
+		}
+	}
+}
+
+void Subckt::renameType(std::string from, std::string to) {
+	for (auto i = inst.begin(); i != inst.end(); i++) {
+		if (i->type == from) {
+			i->type = to;
 		}
 	}
 }
