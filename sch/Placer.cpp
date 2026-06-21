@@ -912,7 +912,7 @@ void Placement::save(phy::Layout &layout) {
 			dir[1] = 1-2*(grid[i].s[1]%2);
 		}
 
-		layout.inst.push_back(phy::Instance(schem->subckts[i], pos, dir));
+		layout.inst.push_back(phy::Instance(placer->procs[schem->subckts[i]].macro->name, pos, dir));
 	}
 
 	// TODO(do remainder of layout operations)
