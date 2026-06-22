@@ -1260,6 +1260,15 @@ void Subckt::printNet(int i) const {
 		}
 		printf("%d", nets[i].portOf[j]);
 	}
+	printf("}");
+
+	printf(" remote={");
+	for (int j = 0; j < (int)nets[i].remote.size(); j++) {
+		if (j != 0) {
+			printf(", ");
+		}
+		printf("%d", nets[i].remote[j]);
+	}
 	printf("}\n");
 }
 
@@ -1276,7 +1285,13 @@ void Subckt::printInst(int i) const {
 }
 
 void Subckt::print() const {
-	printf("nets\n");
+	printf("subckt: %s\n", name.c_str());
+	printf("ports: [");
+	for (int port : ports) {
+		printf("%d ", port);
+	}
+	printf("]");
+	printf("\nnets\n");
 	for (int i = 0; i < (int)nets.size(); i++) {
 		printNet(i);
 	}
