@@ -113,6 +113,20 @@ void Schematic::print(const Placer &placer) const {
 	}
 }
 
+Implementation::Implementation() {
+}
+
+Implementation::Implementation(const sch::Subckt *ckt, phy::Layout *macro) {
+	this->ckt = ckt;
+	this->macro = macro;
+	if (ckt != nullptr and macro != nullptr) {
+		this->cktToMacro = ckt->mapToLayout(*macro);
+	}
+}
+
+Implementation::~Implementation() {
+}
+
 Placer::Placer() {
 	linker = nullptr;
 	progress = false;
@@ -226,16 +240,20 @@ void Placer::load(Linker *linker) {
 	this->linker = linker;
 }
 
+int Placer::load(Implementation impl) {
+	if (impl.ckt == nullptr) {
+		return -1;
+	}
+	int result = (int)procs.size();
+	procs.push_back(impl);
+	schem.push_back(Schematic());
+	return result;
+}
+
 int Placer::find(std::string type) {
 	auto pos = table.insert({type, -1});
-	if (not pos.second) {
-		Implementation impl = linker->find(type);
-		if (impl.ckt == nullptr) {
-			return -1;
-		}
-		pos.first->second = (int)procs.size();
-		procs.push_back(impl);
-		schem.push_back(Schematic());
+	if (pos.second or pos.first->second < 0) {
+		pos.first->second = load(linker->find(type));
 	}
 	return pos.first->second;
 }

@@ -59,12 +59,13 @@ struct Implementation {
 	const sch::Subckt *ckt;
 	phy::Layout *macro;
 	Mapping<int> cktToMacro;
+
+	Implementation();
+	Implementation(const sch::Subckt *ckt, phy::Layout *macro);
+	~Implementation();
 };
 
 struct Linker {
-	Linker();
-	virtual ~Linker() = 0;
-
 	virtual Implementation find(std::string type) = 0;
 };
 
@@ -99,6 +100,7 @@ struct Placer {
 	void load(Linker *linker);
 
 	// Load a design into the placer
+	int load(Implementation impl);
 	int find(std::string type);
 
 	bool elaborateSchematicInstances(int curr);
