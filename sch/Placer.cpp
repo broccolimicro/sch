@@ -250,19 +250,17 @@ int Placer::load(Implementation impl) {
 	return result;
 }
 
-int Placer::find(std::string type) {
-	auto pos = table.insert({type, -1});
+int Placer::find(const Instance &inst) {
+	auto pos = table.insert({inst.type, -1});
 	if (pos.second or pos.first->second < 0) {
-		pos.first->second = load(linker->find(type));
+		pos.first->second = load(linker->find(inst));
 	}
 	return pos.first->second;
 }
 
 bool Placer::elaborateSchematicInstances(int curr) {
-	auto currCkt = procs[curr].ckt;
-
-	for (auto i = currCkt->inst.begin(); i != currCkt->inst.end(); i++) {
-		int subckt = find(i->type);
+	for (const Instance &inst : procs[curr].ckt->inst) {
+		int subckt = find(inst);
 		if (subckt < 0) {
 			return false;
 		}

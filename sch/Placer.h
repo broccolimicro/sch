@@ -66,7 +66,7 @@ struct Implementation {
 };
 
 struct Linker {
-	virtual Implementation find(std::string type) = 0;
+	virtual Implementation find(const Instance &inst) = 0;
 };
 
 struct Placer {
@@ -101,7 +101,7 @@ struct Placer {
 
 	// Load a design into the placer
 	int load(Implementation impl);
-	int find(std::string type);
+	int find(const Instance &inst);
 
 	bool elaborateSchematicInstances(int curr);
 	void elaborateSchematicNets(int curr);

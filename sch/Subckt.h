@@ -55,6 +55,8 @@ struct Mos {
 	vec2i area; // [drain, source]
 	vec2i perim; // [drain, source]
 
+	string comment;
+
 	void setSize(const Tech &tech, vec2i size);
 	int left(bool flip = false) const;
 	int right(bool flip = false) const;
@@ -114,6 +116,8 @@ struct Instance {
 	std::string type;
 	string name;
 	vector<int> ports;
+
+	string comment;
 };
 
 struct Subckt {
@@ -155,6 +159,7 @@ struct Subckt {
 
 	// Name of this cell
 	string name;
+	string comment;
 	bool isCell;
 	size_t id;
 

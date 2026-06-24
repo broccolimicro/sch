@@ -1273,10 +1273,16 @@ void Subckt::printNet(int i) const {
 }
 
 void Subckt::printMos(int i) const {
+	if (not mos[i].comment.empty()) {
+		printf("# %s\n", mos[i].comment.c_str());
+	}
 	printf("%s[%d](%d) d=%s(%d) g=%s(%d) s=%s(%d) b=%s(%d) w=%d l=%d\n", (mos[i].type == 0 ? "nmos" : "pmos"), mos[i].model, i, nets[mos[i].drain].name.c_str(), mos[i].drain, nets[mos[i].gate].name.c_str(), mos[i].gate, nets[mos[i].source].name.c_str(), mos[i].source, nets[mos[i].base].name.c_str(), mos[i].base, mos[i].size[1], mos[i].size[0]);
 }
 
 void Subckt::printInst(int i) const {
+	if (not inst[i].comment.empty()) {
+		printf("# %s\n", inst[i].comment.c_str());
+	}
 	printf("%s[%d] {", inst[i].name.c_str(), i);
 	for (int j = 0; j < (int)inst[i].ports.size(); j++) {
 		printf("%d ", inst[i].ports[j]);
@@ -1285,6 +1291,9 @@ void Subckt::printInst(int i) const {
 }
 
 void Subckt::print() const {
+	if (not comment.empty()) {
+		printf("# %s\n", comment.c_str());
+	}
 	printf("subckt: %s\n", name.c_str());
 	printf("ports: [");
 	for (int port : ports) {
