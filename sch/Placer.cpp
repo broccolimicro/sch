@@ -114,6 +114,8 @@ void Schematic::print(const Placer &placer) const {
 }
 
 Implementation::Implementation() {
+	this->ckt = nullptr;
+	this->macro = nullptr;
 }
 
 Implementation::Implementation(const sch::Subckt *ckt, phy::Layout *macro) {
