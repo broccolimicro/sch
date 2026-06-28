@@ -189,7 +189,7 @@ void Placer::configureSource(string source, int platformId, int deviceId) {
 			context = cl::Context({devices[deviceId]});
 		}
 	}
-	
+
 	if (debug) {
 		cout << "Configured for " << platformName << ", " << deviceName << endl;
 		cout << "CL_DEVICE_MAX_COMPUTE_UNITS: " << maxComputeUnits << endl;
@@ -368,10 +368,6 @@ bool Placer::elaborateSchematic(int curr) {
 	if (currCkt->inst.empty()) {
 		schem[curr].totalArea = procs[curr].macro->box.area();
 	} else {
-		if (not elaborateSchematicInstances(curr)) {
-			printf("error: failed to lookup instances\n");
-			return false;
-		}
 		elaborateSchematicNets(curr);
 		vector<int> index = computeOrder(curr);
 		for (auto i = index.begin(); i != index.end(); i++) {
@@ -408,7 +404,11 @@ bool Placer::elaborate(int top) {
 	vector<int> stack(1, top);
 	while (not stack.empty()) {
 		int curr = stack.back();
-		
+		if (not elaborateSchematicInstances(curr)) {
+			printf("error: failed to lookup instances\n");
+			return false;
+		}
+
 		bool done = true;
 		for (int subckt : schem[curr].inst) {
 			if (schem[subckt].cells.empty()) {
@@ -450,7 +450,7 @@ cl_uint Placer::isqrt(cl_ulong x) {
 vector<cl_uint> Placer::computeOffsets(int curr, const vector<int> &index) {
 	// Determine midpoint locations of instances in Hilbert space using half
 	// instance area.
-	
+
 	// position in ckt.inst -> hilbert position
 	/*printf("offsets of cells {");
 	for (int i = 0; i < (int)schem.size(); i++) {
@@ -475,7 +475,7 @@ cl_uint Placer::computeHPWL(int curr, const vector<cl_uint> &offset) {
 	// allocated spaces on the hilbert curve tend to be rectangular and the
 	// expected area of an interval as `length`.
 	auto currCkt = procs[curr].ckt;
-	
+
 	/*printf("hpwl of {");
 	for (int i = 0; i < (int)offset.size(); i++) {
 		printf("%u ", offset[i]);
@@ -637,10 +637,10 @@ void Placement::doGlobal() {
 	if (side == 0) {
 		side = 1;
 	}
-	cl_uint scale = std::numeric_limits<cl_uint>::max() / side;
+	cl_uint scale = std::numeric_limits<cl_uint>::max() / (side-1);
 
 	try {
-		cl::Buffer hilbertBuffer(placer->context, CL_MEM_READ_WRITE, bufferSize(schem->hilbert));	
+		cl::Buffer hilbertBuffer(placer->context, CL_MEM_READ_WRITE, bufferSize(schem->hilbert));
 		placer->globalStep.setArg(0, positionBuffer);
 		placer->globalStep.setArg(1, hilbertBuffer);
 		placer->globalStep.setArg(2, schem->numCells());
@@ -664,7 +664,7 @@ void Placement::doDetail() {
 		printf("error: Placement has not been initialized.\n");
 		return;
 	}
-	
+
 	auto schem = &placer->schem[root];
 
 	if (schem->numCells() == 0) {
@@ -709,7 +709,7 @@ void Placement::doDetail() {
 	//   c. Then I need to compute the bin x and y and use that to compute the bin index
 	//   d. Then I need to add the cell area to that bin's density
 	//   e. Use the bin's density to compute the repulsive forces
-	
+
 	kernel.setArg(0, netsToCellsBuffer);
 	kernel.setArg(1, netsBuffer);
 	kernel.setArg(2, cellsToNetsBuffer);
@@ -766,7 +766,7 @@ void Placement::doLegal() {
 
 	// TODO(edward.bingham) Get tap to diff enclosure rule Column is then N times
 	// tap to diff enclosure rule with a well tap on either side of the column.
-	
+
 	cl_uint coeff = 8;
 	cl_uint diffTap = 848; //tech.getEnclosing()
 	cl_uint buffer = diffTap >> 3;
@@ -828,7 +828,7 @@ void Placement::doLegal() {
 			if (not assign[c][r].empty()) {
 				rowHeight[c][r+1] = assign[c][r].back().s[2];
 			}
-			
+
 			assign[c][r+1].insert(assign[c][r+1].end(), pos, assign[c][r].end());
 			assign[c][r].erase(pos, assign[c][r].end());
 
@@ -909,7 +909,7 @@ void Placement::solve() {
 		printf("error: Placement has not been initialized.\n");
 		return;
 	}
-	
+
 	if (placer->schem[root].numCells() == 0) {
 		printf("error: no cells to place.\n");
 		return;
@@ -917,7 +917,7 @@ void Placement::solve() {
 
 	doGlobal();
 	//doDetail();
-	//doLegal();
+	doLegal();
 }
 
 void Placement::save(phy::Layout &layout) {
