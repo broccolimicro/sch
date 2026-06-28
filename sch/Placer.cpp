@@ -917,7 +917,7 @@ void Placement::solve() {
 
 	doGlobal();
 	//doDetail();
-	doLegal();
+	//doLegal();
 }
 
 void Placement::save(phy::Layout &layout) {
