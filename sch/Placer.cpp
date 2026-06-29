@@ -637,7 +637,7 @@ void Placement::doGlobal() {
 	if (side == 0) {
 		side = 1;
 	}
-	cl_uint scale = std::numeric_limits<cl_uint>::max() / (side-1);
+	cl_uint scale = side <= 1 ? 0 : (std::numeric_limits<cl_uint>::max() / (side-1));
 
 	try {
 		cl::Buffer hilbertBuffer(placer->context, CL_MEM_READ_WRITE, bufferSize(schem->hilbert));
@@ -790,7 +790,7 @@ void Placement::doLegal() {
 	// x-coord, x-bound, y-bound, cell index
 	vector<vector<vector<cl_uint4> > > assign(numCol);
 	for (int i = 0; i < (int)rows.size(); i++) {
-		cl_uint count = (rows[i]+colWidth-1)/colWidth;
+		cl_uint count = std::max(1u, (rows[i]+colWidth-1)/colWidth);
 		count += count%2;
 		assign[i].resize(count);
 	}

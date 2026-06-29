@@ -86,7 +86,12 @@ kernel void globalStep(
 	if (i >= num) return;
 
 	ulong h = hilbert[i] * (ULONG_MAX / total);
-	position[i].s01 = cartesianFromHilbert(h, 32) / scale;
+	if (scale == 0) {
+		position[i].s0 = 0;
+		position[i].s1 = 0;
+	} else {
+		position[i].s01 = cartesianFromHilbert(h, 32) / scale;
+	}
 	position[i].s2 = i;
 }
 
