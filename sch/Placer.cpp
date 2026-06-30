@@ -643,9 +643,9 @@ void Placement::doGlobal() {
 		cl::Buffer hilbertBuffer(placer->context, CL_MEM_READ_WRITE, bufferSize(schem->hilbert));
 		placer->globalStep.setArg(0, positionBuffer);
 		placer->globalStep.setArg(1, hilbertBuffer);
-		placer->globalStep.setArg(2, schem->numCells());
-		placer->globalStep.setArg(3, schem->totalArea);
-		placer->globalStep.setArg(4, scale);
+		placer->globalStep.setArg(2, (cl_uint)schem->numCells());
+		placer->globalStep.setArg(3, (cl_ulong)schem->totalArea);
+		placer->globalStep.setArg(4, (cl_uint)scale);
 
 		placer->queue.enqueueWriteBuffer(hilbertBuffer, CL_TRUE, 0, bufferSize(schem->hilbert), schem->hilbert.data());
 
