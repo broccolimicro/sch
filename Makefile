@@ -55,13 +55,13 @@ ifeq ($(OS),Windows_NT)
             CXXFLAGS += -D IA32
         endif
     endif
-    TEST_LIBRARIES += -l:libgdstk.a -l:libclipper.a -l:libqhullstatic_r.a -lz
+    TEST_LIBRARIES += -l:libgdstk.a -l:libqhullstatic_r.a -lz
     TEST_LIBRARY_PATHS += -L../gdstk/build/lib -L../gdstk/build/lib64
 else
     UNAME_S := $(shell uname -s)
     ifeq ($(UNAME_S),Linux)
         CXXFLAGS += -D LINUX
-        TEST_LIBRARIES += -l:libgdstk.a -l:libclipper.a -l:libqhullstatic_r.a -lz -lOpenCL
+        TEST_LIBRARIES += -l:libgdstk.a -l:libqhullstatic_r.a -lz -lOpenCL
         TEST_LIBRARY_PATHS += -L../gdstk/build/lib -L../gdstk/build/lib64
     endif
     ifeq ($(UNAME_S),Darwin)
@@ -69,7 +69,7 @@ else
         INCLUDE_PATHS += -I$(shell brew --prefix qhull)/include -I$(shell brew --prefix opencl-headers)/include -I$(shell brew --prefix opencl-clhpp-headers)/include
         TEST_INCLUDE_PATHS += -I$(shell brew --prefix qhull)/include -I$(shell brew --prefix opencl-headers)/include -I$(shell brew --prefix opencl-clhpp-headers)/include
         TEST_LIBRARY_PATHS += -L../gdstk/build/lib -L$(shell brew --prefix qhull)/lib
-        TEST_LIBRARIES += -lgdstk -lclipper -lqhullstatic_r -lz -framework OpenCL
+        TEST_LIBRARIES += -lgdstk -lqhullstatic_r -lz -framework OpenCL
         LDFLAGS	      += -Wl,-rpath,/opt/homebrew/opt/python@3.15/Frameworks/Python.framework/Versions/Current/lib \
 -Wl,-rpath,/opt/homebrew/opt/python@3.14/Frameworks/Python.framework/Versions/Current/lib \
 -Wl,-rpath,/opt/homebrew/opt/python@3.13/Frameworks/Python.framework/Versions/Current/lib \
