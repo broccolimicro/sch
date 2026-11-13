@@ -260,33 +260,119 @@ struct CellRouter {
 	vector<set<int> > createAdjacencyList();
 
 	// Finish building the constraint graph, filling out vcon and hcon.
+
+	// Remove a route and its route constraints. Update route indices
+	// in the remaining route constraints and stacks.
 	void delRoute(int route);
+
+	// Build vertical ordering constraints between PMOS and NMOS pins.
+	// Levels 0, 1, and 2 compare pin to pin, pin to contact, and contact
+	// to contact, respectively. Retain old constraints unless reset is
+	// true. Return true if the set changes.
 	bool buildPinConstraints(int level=1, bool reset=false);
+
+	// Fix the horizontal order of neighboring pins to preserve existing
+	// vertical pin constraints. Return true if any order is fixed.
 	bool lockPinConstraints();
+
+	// Clear the via constraints. Constraint generation is disabled.
 	void buildViaConstraints();
+
+	// Return true if the adjacency list Ak has a cycle through s.
+	// If cycles is supplied, accumulate counts and other cycle members
+	// in its entries, one per route.
 	bool findCycle(int s, const vector<set<int> > &Ak, vector<pair<int, set<int> > > *cycles=nullptr);
+
+	// Return true if the current route graph has a cycle. If cycles is
+	// supplied, accumulate cycle counts and members for each route.
 	bool findCycles(vector<pair<int, set<int> > > *cycles=nullptr);
+
+	// Try to split a route to break a cycle. Join the split routes at a
+	// shared pin, creating a virtual pin if needed. Return true if split.
 	bool breakRoute(int route, set<int> cycleRoutes);
+
+	// Split routes until the graph has no cycles or no further split
+	// succeeds. Return true if any route was split.
 	bool breakCycles();
+
+	// Reserved for resolving via constraint cycles. Currently has no effect.
 	void findAndBreakViaCycles();
+
+	// Add a virtual pin for net, draw it, and add its spacing constraints.
+	// Return the new pin index.
 	Index createVirtualPin(int net);
+
+	// Choose horizontal spacing directions around a virtual pin and
+	// update the affected pin offsets.
 	void alignVirtualPin(Index Idx);
+
+	// Rebuild the contact geometry for all routes.
 	void buildContacts();
+
+	// Rebuild horizontal pin-to-pin and pin-to-contact spacing constraints.
+	// Preserve prior constraint information unless reset is true.
 	void buildStackConstraints(bool reset=false);
+
+	// Propagate horizontal pin and contact offsets for the given direction.
+	// An empty start list starts at all pins. Pass reset to clear old offsets
+	// first. Return true if propagation changes any offsets.
 	bool buildPinOffsets(int type, vector<Index> start=vector<Index>(), bool reset=false);
+
+	// Clear and redraw the layout geometry for all routes.
 	void drawRoutes();
+
+	// Add or update the vertical spacing constraint between routes i and j
+	// when their geometry or stack placement requires one.
 	void createRouteConstraint(int i, int j);
+
+	// Rebuild pairwise route constraints. The reset flags control whether
+	// prior spacing and order are retained. Return true if the build
+	// detects a change.
 	bool buildRouteConstraints(bool resetSpacing=false, bool resetOrder=false);
+
+	// Rebuild the groups that link a route to pins it must clear.
 	void buildGroupConstraints();
+
+	// Apply the selected route order to unassigned constraints in the
+	// same group. Return the indices of the constraints assigned.
 	set<int> propagateRouteConstraint(int idx);
+
+	// Clear the cell height and both vertical offsets for every route.
 	void zeroWeights();
+
+	// Clear the route offsets and recompute them in both directions.
 	void resetGraph();
+
+	// Extend each pin's vertical bounds to cover its route connections.
+	// Pass reset to clear old bounds first. Return true if any bound expands.
 	bool buildPinBounds(bool reset=false);
+
+	// Propagate vertical route offsets in the given direction. If start
+	// is empty, start at routes with no predecessor in that direction.
+	// Record detected cycles and rebuild pin bounds. Return true if any
+	// route offset increases.
 	bool buildRouteOffsets(int type, vector<int> start=vector<int>());
+
+	// Choose horizontal pin spacing directions that improve alignment
+	// or reduce route overlap. Update pin offsets after each choice.
 	void alignPins();
+
+	// Use current horizontal positions to order unassigned pin and
+	// contact constraints where their vertical ranges intersect.
+	// Return true if any order is assigned.
 	bool assignStackConstraints();
+
+	// Assign vertical order to unresolved route constraints and propagate
+	// the choices. Pass reset to recompute offsets first. Return true if
+	// any order is assigned.
 	bool assignRouteConstraints(bool reset=true);
+
+	// Choose the lowest available routing layer for each eligible segment.
+	// Check nearby segments within window for blocked layers, then rebuild
+	// contacts.
 	void lowerRoutes(int window=0);
+
+	// Store and return the current cell height as the routing cost.
 	int computeCost();
 
 	// Solve the constraint and circuit graph, filling out layers and constraints
