@@ -18,6 +18,21 @@ namespace sch {
 // 6. With those pin constraints locked in, the route ordering won't change the horizontal relationships between pins, just the relative distances. This means that we can just compute the route ordering once and then expand out the pins to match, keeping those relationships.
 // 7. Lower the routes as much as possible. Check/eliminate/add route constraints.
 
+// Build an initial transistor placement for ckt. Store a pointer to ckt,
+// which must outlive this placement, and save the scoring weights l, w, and g.
+//
+// Mark nets that need wiring based on their gate, diffusion, and child
+// instance connections. Use the technology rules to set the gaps for
+// shared diffusion, shared diffusion with a contact, and diffusion breaks.
+// Use default dimensions where the technology data is unavailable.
+//
+// Put each transistor in its NMOS or PMOS row. Use rand to choose its
+// source/drain orientation and shuffle each row. Cache the row count
+// differences and estimate the minimum number of extra device positions
+// from the odd source/drain connection counts.
+//
+// Set the first gate position in each row to zero. Use dist() to place
+// each subsequent gate relative to the preceding device.
 CellPlacement::CellPlacement(const Tech &tech, const Subckt &ckt, int l, int w, int g, std::default_random_engine &rand) {
 	this->ckt = &ckt;
 
@@ -103,6 +118,13 @@ CellPlacement::CellPlacement(const Tech &tech, const Subckt &ckt, int l, int w, 
 CellPlacement::~CellPlacement() {
 }
 
+// Return the horizontal distance from the gate start of d0 to the gate
+// start of the adjacent device d1. Use each device's orientation to find
+// the source or drain net on the side that faces the other device.
+//
+// Add the gate length of d0 to the required gap. Use brkDist for different
+// nets, parDist for a shared net marked as wired, and seqDist for a shared
+// net that can use continuous diffusion without contact spacing.
 int CellPlacement::dist(const Device &d0, const Device &d1) {
 	int n0 = ckt->mos[d0.device].right(d0.flip);
 	int n1 = ckt->mos[d1.device].left(d1.flip);
@@ -112,6 +134,14 @@ int CellPlacement::dist(const Device &d0, const Device &d1) {
 				seqDist));
 }
 
+// Reverse the device range and flip each device in the selected rows.
+// choice[0] and choice[1] give the first row and the exclusive row limit.
+// choice[2] and choice[3] give the first and last device indices.
+// Clamp the last device index to the end of each row.
+//
+// Recompute horizontal positions from the first changed index. Stop
+// when a device past the reversed range keeps its previous position.
+// Apply the same move again to restore the previous placement.
 void CellPlacement::move(vec4i choice) {
 	for (int i = choice[0]; i < choice[1]; i++) {
 		int j = choice[2], k = min(choice[3], (int)stack[i].size()-1);
@@ -136,7 +166,22 @@ void CellPlacement::move(vec4i choice) {
 	}
 }
 
-// Compute the cost of this placement using the cost function documented in floret/floret/CellPlacer.h
+// Compute the placement cost from the row width, estimated horizontal net
+// spans, and estimated route overlap using the cost function documented in
+// CellPlacer.h. Lower scores are better.
+//
+// Use the rightmost gate start as the width estimate. Build horizontal
+// bounds for gate and source/drain terminals with each row aligned to the
+// left and right edges. Use these bounds to estimate the total net span
+// and the overlap between nets that connect to gates.
+//
+// Use the difference in row widths as the alignment window. Count matching
+// gate nets across the rows and give extra credit for matching source/drain
+// nets on the same side of each pair.
+//
+// Weight width by w, net span by l, and route overlap by g. Divide the
+// combined routing penalty by one plus the alignment count. Scale the
+// costs by 100 and clamp the result to zero.
 int CellPlacement::score() {
 	vector<vec4i> nets(ckt->nets.size(), vec2i(
 			std::numeric_limits<int>::max(),
@@ -240,6 +285,21 @@ int CellPlacement::score() {
 	return max(0, w*width*100 + (l*extent + g*overlap)*100/(aligned+1));
 }
 
+// Search for a compact transistor placement in separate NMOS and PMOS rows.
+// Use technology spacing rules to set device positions. Score each placement
+// by row width (w), estimated horizontal net span (l), and estimated route
+// overlap (g). Cross-row terminal alignment reduces the routing penalty.
+//
+// Start from an initial random placement and run starts additional searches
+// from randomized device orders and orientations. Use a fixed random seed.
+// Each move reverses a range and flips its devices in one or both rows.
+// Accept the first move whose score is below the current score multiplied
+// by the acceptance factor. The factor starts at step and moves toward 1
+// at the specified rate, so the search can accept some higher-cost moves
+// early and become more selective as it runs.
+//
+// Return the selected device order, orientation, and horizontal positions.
+// The returned placement refers to ckt, which must outlive it.
 CellPlacement CellPlacement::solve(const Tech &tech, const Subckt &ckt, int starts, int l, int w, int g, float step, float rate) {
 	//printf("Running CellPlacement\n");
 	std::default_random_engine rand(0/*std::random_device{}()*/);
