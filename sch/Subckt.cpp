@@ -118,6 +118,8 @@ bool Mos::combineParallel(const Mos &m) {
 Mos Mos::flip() const {
 	Mos result(*this);
 	swap(result.source, result.drain);
+	swap(result.area[0], result.area[1]);
+	swap(result.perim[0], result.perim[1]);
 	return result;
 }
 
