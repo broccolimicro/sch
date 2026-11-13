@@ -216,7 +216,7 @@ void Placer::configureSource(string source, int platformId, int deviceId) {
 		} else {
 			std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
 		}
-		exit(1);
+		return;
 	}
 
 	globalStep = cl::Kernel(program, "globalStep");
@@ -655,7 +655,7 @@ void Placement::doGlobal() {
 		placer->queue.enqueueReadBuffer(positionBuffer, CL_TRUE, 0, bufferSize(position), position.data());
 	} catch (cl::Error &err) {
 		std::cerr << "OpenCL Error: " << err.what() << " (" << err.err() << ")" << std::endl;
-		exit(1);
+		return;
 	}
 }
 

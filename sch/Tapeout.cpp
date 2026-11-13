@@ -34,12 +34,11 @@ vector<Subckt> mapCells(const Tech &tech, Subckt &ckt, bool progress) {
 	auto segments = ckt.segment();
 	cells.reserve(segments.size());
 	for (auto s = segments.begin(); s != segments.end(); s++) {
-		int index = cells.size();
 		cells.push_back(Subckt(true));
 		Mapping<int> m = s->generate(cells.back(), ckt);
 		m *= cells.back().canonicalize();
 		// TODO(edward.bingham) clean dangling?
-		cells.back().name = "cell_" + encodeBase32(index);
+		cells.back().name = "cell_" + encodeBase32(cells.back().id);
 
 		ckt.extract(*s);
 		ckt.push(Instance(cells.back(), m.flip()));
