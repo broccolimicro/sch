@@ -63,6 +63,8 @@ This target cleans the build, rebuilds with coverage instrumentation, and runs t
 
 ## License
 
+Licensed by Broccoli, LLC under GNU GPL v3.
+
 Written by Ned Bingham.
 Copyright © 2024 Broccoli, LLC.
 
